@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Settings - {{ settings.system_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="card-title h4 mb-0">
+                        <i class="fas fa-cog me-2"></i>System Settings
+                    </h2>
+                    <button type="submit" form="settingsForm" class="btn btn-primary btn-sm">
+                        <i class="fas fa-save me-1"></i>Save
+                    </button>
+                </div>
+
+                <form method="post" novalidate id="settingsForm">
+                    {% csrf_token %}
+                    
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <div class="card h-100 border-0 bg-light">
+                                <div class="card-body p-3">
+                                    <h5 class="card-title h6 mb-2">General</h5>
+                                    {{ form.system_name|as_crispy_field }}
+                                    {{ form.login_title|as_crispy_field }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="card h-100 border-0 bg-light">
+                                <div class="card-body p-3">
+                                    <h5 class="card-title h6 mb-2">Presets</h5>
+                                    {{ form.color_preset|as_crispy_field }}
+                                    <div class="color-preview mt-2 p-2 rounded" style="background: var(--background-color);">
+                                        <div class="d-flex gap-1 mb-1">
+                                            <div class="color-box" style="background: var(--primary-color);"></div>
+                                            <div class="color-box" style="background: var(--secondary-color);"></div>
+                                            <div class="color-box" style="background: var(--accent-color);"></div>
+                                        </div>
+                                        <button class="btn btn-primary btn-sm w-100">Preview</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="card h-100 border-0 bg-light">
+                                <div class="card-body p-3">
+                                    <h5 class="card-title h6 mb-2">Colors</h5>
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            {{ form.primary_color|as_crispy_field }}
+                                            {{ form.secondary_color|as_crispy_field }}
+                                            {{ form.accent_color|as_crispy_field }}
+                                        </div>
+                                        <div class="col-6">
+                                            {{ form.text_color|as_crispy_field }}
+                                            {{ form.background_color|as_crispy_field }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .color-box {
+        width: 30px;
+        height: 30px;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .color-preview {
+        border: 1px solid var(--light-gray);
+        transition: all 0.3s ease;
+    }
+
+    .form-control-color {
+        width: 100%;
+        height: 32px;
+        padding: 0.25rem;
+    }
+
+    .card {
+        border: 1px solid var(--light-gray);
+    }
+
+    .form-group {
+        margin-bottom: 0.5rem;
+    }
+
+    .form-label {
+        margin-bottom: 0.25rem;
+        font-size: 0.875rem;
+    }
+
+    .form-control {
+        padding: 0.375rem 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .form-select {
+        padding: 0.375rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>
+
+<script>
+const colorPresets = {
+    'navy': {
+        primary: '#1a237e',
+        secondary: '#283593',
+        accent: '#3949ab',
+        text: '#333333',
+        background: '#f5f5f5'
+    },
+    'forest': {
+        primary: '#1b5e20',
+        secondary: '#2e7d32',
+        accent: '#388e3c',
+        text: '#333333',
+        background: '#f5f5f5'
+    },
+    'burgundy': {
+        primary: '#880e4f',
+        secondary: '#ad1457',
+        accent: '#c2185b',
+        text: '#333333',
+        background: '#f5f5f5'
+    },
+    'midnight': {
+        primary: '#000051',
+        secondary: '#1a237e',
+        accent: '#283593',
+        text: '#ffffff',
+        background: '#121212'
+    },
+    'ocean': {
+        primary: '#006064',
+        secondary: '#00838f',
+        accent: '#0097a7',
+        text: '#333333',
+        background: '#f5f5f5'
+    }
+};
+
+function applyColorPreset(preset) {
+    if (!preset || !colorPresets[preset]) return;
+    
+    const colors = colorPresets[preset];
+    document.getElementById('id_primary_color').value = colors.primary;
+    document.getElementById('id_secondary_color').value = colors.secondary;
+    document.getElementById('id_accent_color').value = colors.accent;
+    document.getElementById('id_text_color').value = colors.text;
+    document.getElementById('id_background_color').value = colors.background;
+    
+    // Update preview
+    document.documentElement.style.setProperty('--primary-color', colors.primary);
+    document.documentElement.style.setProperty('--secondary-color', colors.secondary);
+    document.documentElement.style.setProperty('--accent-color', colors.accent);
+    document.documentElement.style.setProperty('--text-color', colors.text);
+    document.documentElement.style.setProperty('--background-color', colors.background);
+}
+
+// Update preview when color inputs change
+document.querySelectorAll('input[type="color"]').forEach(input => {
+    input.addEventListener('input', function() {
+        const colorVar = this.id.replace('id_', '').replace('_color', '');
+        document.documentElement.style.setProperty(`--${colorVar}-color`, this.value);
+    });
+});
+</script>
+{% endblock %} 
