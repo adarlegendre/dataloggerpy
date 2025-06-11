@@ -1,5 +1,5 @@
 from django import forms
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings
 
 COLOR_PRESETS = {
     'navy': {
@@ -69,50 +69,177 @@ class SystemSettingsForm(forms.ModelForm):
             'onchange': 'applyColorPreset(this.value)'
         })
 
-class TCPIPSettingsForm(forms.ModelForm):
+class TCPIPForm(forms.ModelForm):
     class Meta:
         model = TCPIPConfig
         fields = ['ip_address', 'gateway', 'subnet_mask', 'dns', 'timeout']
         widgets = {
-            'ip_address': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'gateway': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'subnet_mask': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'dns': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'timeout': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 120px;'}),
+            'ip_address': forms.TextInput(attrs={'class': 'form-control'}),
+            'gateway': forms.TextInput(attrs={'class': 'form-control'}),
+            'subnet_mask': forms.TextInput(attrs={'class': 'form-control'}),
+            'dns': forms.TextInput(attrs={'class': 'form-control'}),
+            'timeout': forms.NumberInput(attrs={'class': 'form-control'})
         }
 
-class TimeSettingsForm(forms.ModelForm):
+class TimeForm(forms.ModelForm):
     class Meta:
         model = TimeConfig
         fields = ['timezone', 'date_format', 'time_format']
         widgets = {
-            'timezone': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
-            'date_format': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
-            'time_format': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'timezone': forms.Select(attrs={'class': 'form-select'}),
+            'date_format': forms.Select(attrs={'class': 'form-select'}),
+            'time_format': forms.Select(attrs={'class': 'form-select'})
         }
 
-class FTPSettingsForm(forms.ModelForm):
+class FTPForm(forms.ModelForm):
     class Meta:
         model = FTPConfig
         fields = ['server', 'port', 'username', 'password', 'remote_directory']
         widgets = {
-            'server': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'port': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 120px;'}),
-            'username': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 180px;'}),
-            'password': forms.PasswordInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 180px;'}),
-            'remote_directory': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 180px;'}),
+            'server': forms.TextInput(attrs={'class': 'form-control'}),
+            'port': forms.NumberInput(attrs={'class': 'form-control'}),
+            'username': forms.TextInput(attrs={'class': 'form-control'}),
+            'password': forms.PasswordInput(attrs={'class': 'form-control'}),
+            'remote_directory': forms.TextInput(attrs={'class': 'form-control'})
         }
 
-class RadarConfigForm(forms.ModelForm):
+class RadarForm(forms.ModelForm):
     class Meta:
         model = RadarConfig
         fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 'is_active']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'port': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
-            'baud_rate': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
-            'data_bits': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
-            'parity': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
-            'stop_bits': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'port': forms.TextInput(attrs={'class': 'form-control'}),
+            'baud_rate': forms.NumberInput(attrs={'class': 'form-control'}),
+            'data_bits': forms.NumberInput(attrs={'class': 'form-control'}),
+            'parity': forms.Select(attrs={'class': 'form-control'}),
+            'stop_bits': forms.NumberInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        } 
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        name = cleaned_data.get('name')
+        port = cleaned_data.get('port')
+        instance = getattr(self, 'instance', None)
+
+        # Validate name
+        if name:
+            # Check for duplicate name
+            name_exists = RadarConfig.objects.filter(name=name)
+            if instance and instance.pk:
+                name_exists = name_exists.exclude(pk=instance.pk)
+            if name_exists.exists():
+                existing_radar = name_exists.first()
+                self.add_error('name', f'Radar name "{name}" is already in use by another radar (Port: {existing_radar.port}). Please choose a different name.')
+
+        # Validate port
+        if port:
+            # Check for duplicate port
+            port_exists = RadarConfig.objects.filter(port=port)
+            if instance and instance.pk:
+                port_exists = port_exists.exclude(pk=instance.pk)
+            if port_exists.exists():
+                existing_radar = port_exists.first()
+                self.add_error('port', f'Port "{port}" is already in use by radar "{existing_radar.name}". Please choose a different port.')
+
+            # Validate port format
+            if not port.startswith(('COM', '/dev/tty')):
+                self.add_error('port', 'Port must start with "COM" (Windows) or "/dev/tty" (Linux)')
+            elif port.startswith('COM') and not port[3:].isdigit():
+                self.add_error('port', 'Windows COM port must be followed by a number (e.g., COM1, COM2)')
+            elif port.startswith('/dev/tty') and not port[8:].isalnum():
+                self.add_error('port', 'Linux port must be followed by alphanumeric characters (e.g., /dev/ttyUSB0)')
+
+        return cleaned_data
+
+class NotificationForm(forms.ModelForm):
+    DAYS_OF_WEEK = [
+        ('Monday', 'Monday'),
+        ('Tuesday', 'Tuesday'),
+        ('Wednesday', 'Wednesday'),
+        ('Thursday', 'Thursday'),
+        ('Friday', 'Friday'),
+        ('Saturday', 'Saturday'),
+        ('Sunday', 'Sunday'),
+    ]
+    days_of_week = forms.MultipleChoiceField(
+        choices=DAYS_OF_WEEK,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label='Days of the Week',
+        help_text='Select days to send notifications.'
+    )
+    notification_times = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., 08:00,14:00'}),
+        label='Notification Times',
+        help_text='Enter one or more times in HH:MM format, separated by commas.'
+    )
+    class Meta:
+        model = NotificationSettings
+        fields = [
+            'primary_email',
+            'frequency',
+            'cc_emails',
+            'smtp_server',
+            'smtp_port',
+            'smtp_username',
+            'smtp_password',
+            'enable_notifications',
+            'use_tls',
+            'days_of_week',
+            'notification_times',
+        ]
+        widgets = {
+            'primary_email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'frequency': forms.Select(attrs={'class': 'form-select'}),
+            'cc_emails': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'Enter multiple email addresses separated by commas'
+            }),
+            'smtp_server': forms.TextInput(attrs={'class': 'form-control'}),
+            'smtp_port': forms.NumberInput(attrs={'class': 'form-control'}),
+            'smtp_username': forms.TextInput(attrs={'class': 'form-control'}),
+            'smtp_password': forms.PasswordInput(attrs={'class': 'form-control'}),
+            'enable_notifications': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'use_tls': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+        }
+
+    def clean_cc_emails(self):
+        cc_emails = self.cleaned_data.get('cc_emails', '')
+        if cc_emails:
+            emails = [email.strip() for email in cc_emails.split(',')]
+            email_validator = forms.EmailField()
+            for email in emails:
+                if email:  # Skip empty strings
+                    try:
+                        email_validator.clean(email)
+                    except forms.ValidationError:
+                        raise forms.ValidationError(f"Invalid email address in CC list: {email}")
+        return cc_emails
+
+    def clean_notification_times(self):
+        times = self.cleaned_data.get('notification_times', '')
+        if times:
+            for t in times.split(','):
+                t = t.strip()
+                if t:
+                    try:
+                        hour, minute = map(int, t.split(':'))
+                        if not (0 <= hour < 24 and 0 <= minute < 60):
+                            raise ValueError
+                    except Exception:
+                        raise forms.ValidationError(f"Invalid time format: {t}. Use HH:MM.")
+        return times
+
+    def clean_days_of_week(self):
+        days = self.cleaned_data.get('days_of_week', [])
+        return ','.join(days) if days else ''
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # If instance exists, populate days_of_week as a list
+        if self.instance and self.instance.days_of_week:
+            self.initial['days_of_week'] = [d.strip() for d in self.instance.days_of_week.split(',') if d.strip()] 

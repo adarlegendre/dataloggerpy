@@ -5,58 +5,106 @@
 <div class="container mt-4">
     <h2 class="mb-4">Configuration Settings</h2>
     
-    <form method="post" class="needs-validation" novalidate>
-        {% csrf_token %}
-        <ul class="nav nav-tabs" id="configTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="tcp-tab" data-bs-toggle="tab" data-bs-target="#tcp" type="button" role="tab" aria-controls="tcp" aria-selected="true">TCP/IP Settings</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="time-tab" data-bs-toggle="tab" data-bs-target="#time" type="button" role="tab" aria-controls="time" aria-selected="false">Time Settings</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="ftp-tab" data-bs-toggle="tab" data-bs-target="#ftp" type="button" role="tab" aria-controls="ftp" aria-selected="false">FTP Settings</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="radar-tab" data-bs-toggle="tab" data-bs-target="#radar" type="button" role="tab" aria-controls="radar" aria-selected="false">Radar Settings</button>
-            </li>
-        </ul>
+    {% if messages %}
+    <div class="messages">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <ul class="nav nav-tabs" id="configTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tcp-tab" data-bs-toggle="tab" data-bs-target="#tcp" type="button" role="tab" aria-controls="tcp" aria-selected="false">TCP/IP Settings</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="time-tab" data-bs-toggle="tab" data-bs-target="#time" type="button" role="tab" aria-controls="time" aria-selected="false">Time Settings</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="ftp-tab" data-bs-toggle="tab" data-bs-target="#ftp" type="button" role="tab" aria-controls="ftp" aria-selected="false">FTP Settings</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="radar-tab" data-bs-toggle="tab" data-bs-target="#radar" type="button" role="tab" aria-controls="radar" aria-selected="false">Radar Settings</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="notification-tab" data-bs-toggle="tab" data-bs-target="#notification" type="button" role="tab" aria-controls="notification" aria-selected="false">Notification Settings</button>
+        </li>
+    </ul>
 
-        <div class="tab-content mt-3" id="configTabsContent">
-            <!-- TCP/IP Settings Tab -->
-            <div class="tab-pane fade show active" id="tcp" role="tabpanel" aria-labelledby="tcp-tab">
+    <div class="tab-content mt-3" id="configTabsContent">
+        <!-- TCP/IP Settings Tab -->
+        <div class="tab-pane fade" id="tcp" role="tabpanel" aria-labelledby="tcp-tab">
+            <form method="post" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="tcp">
                 <div class="card">
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label for="tcp-ip_address" class="form-label">IP Address</label>
                                 {{ tcp_form.ip_address }}
+                                {% if tcp_form.ip_address.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ tcp_form.ip_address.errors }}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-4">
                                 <label for="tcp-gateway" class="form-label">Gateway</label>
                                 {{ tcp_form.gateway }}
+                                {% if tcp_form.gateway.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ tcp_form.gateway.errors }}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-4">
                                 <label for="tcp-subnet_mask" class="form-label">Subnet Mask</label>
                                 {{ tcp_form.subnet_mask }}
+                                {% if tcp_form.subnet_mask.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ tcp_form.subnet_mask.errors }}
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
                             <div class="col-md-4">
                                 <label for="tcp-dns" class="form-label">DNS</label>
                                 {{ tcp_form.dns }}
+                                {% if tcp_form.dns.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ tcp_form.dns.errors }}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-4">
                                 <label for="tcp-timeout" class="form-label">Timeout (seconds)</label>
                                 {{ tcp_form.timeout }}
+                                {% if tcp_form.timeout.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ tcp_form.timeout.errors }}
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Save TCP/IP Settings</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
 
-            <!-- Time Settings Tab -->
-            <div class="tab-pane fade" id="time" role="tabpanel" aria-labelledby="time-tab">
+        <!-- Time Settings Tab -->
+        <div class="tab-pane fade" id="time" role="tabpanel" aria-labelledby="time-tab">
+            <form method="post" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="time">
                 <div class="card">
                     <div class="card-body">
                         <div class="row g-3">
@@ -75,10 +123,18 @@
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Save Time Settings</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
 
-            <!-- FTP Settings Tab -->
-            <div class="tab-pane fade" id="ftp" role="tabpanel" aria-labelledby="ftp-tab">
+        <!-- FTP Settings Tab -->
+        <div class="tab-pane fade" id="ftp" role="tabpanel" aria-labelledby="ftp-tab">
+            <form method="post" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="ftp">
                 <div class="card">
                     <div class="card-body">
                         <div class="row g-3">
@@ -107,10 +163,18 @@
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Save FTP Settings</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
 
-            <!-- Radar Settings Tab -->
-            <div class="tab-pane fade" id="radar" role="tabpanel" aria-labelledby="radar-tab">
+        <!-- Radar Settings Tab -->
+        <div class="tab-pane fade" id="radar" role="tabpanel" aria-labelledby="radar-tab">
+            <form method="post" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="radar">
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title mb-4">Add New Radar Connection</h5>
@@ -154,63 +218,239 @@
                         </div>
                     </div>
                 </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Save Radar Settings</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
 
-                <!-- Radar Configurations Table -->
-                <div class="card mt-4">
-                    <div class="card-body">
-                        <h5 class="card-title mb-4">Connected Radars</h5>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead>
+            <!-- Radar Configurations Table -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Connected Radars</h5>
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-striped table-hover">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Port</th>
+                                    <th>Baud Rate</th>
+                                    <th>Data Bits</th>
+                                    <th>Parity</th>
+                                    <th>Stop Bits</th>
+                                    <th>Status</th>
+                                    <th>Last Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if radar_configs %}
+                                    {% for radar in radar_configs %}
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Port</th>
-                                        <th>Baud Rate</th>
-                                        <th>Data Bits</th>
-                                        <th>Parity</th>
-                                        <th>Stop Bits</th>
-                                        <th>Status</th>
-                                        <th>Last Updated</th>
+                                        <td>{{ radar.name }}</td>
+                                        <td>{{ radar.port }}</td>
+                                        <td>{{ radar.baud_rate }}</td>
+                                        <td>{{ radar.data_bits }}</td>
+                                        <td>{{ radar.get_parity_display }}</td>
+                                        <td>{{ radar.stop_bits }}</td>
+                                        <td>
+                                            {% if radar.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                            {% else %}
+                                            <span class="badge bg-danger">Inactive</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ radar.updated_at|date:"Y-m-d H:i" }}</td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="{% url 'edit_radar' radar.id %}" class="btn btn-primary">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <button type="button" class="btn btn-danger" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#deleteRadarModal{{ radar.id }}">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                            
+                                            <!-- Delete Confirmation Modal -->
+                                            <div class="modal fade" id="deleteRadarModal{{ radar.id }}" tabindex="-1" 
+                                                 aria-labelledby="deleteRadarModalLabel{{ radar.id }}" aria-hidden="true"
+                                                 data-bs-backdrop="static" data-bs-keyboard="false">
+                                               <div class="modal-dialog modal-dialog-centered" 
+                                                    style="z-index: 1060; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); margin: 0;">
+                                                   <div class="modal-content">
+                                                       <div class="modal-header bg-danger text-white">
+                                                           <h5 class="modal-title" id="deleteRadarModalLabel{{ radar.id }}">
+                                                               <i class="fas fa-exclamation-triangle me-2"></i>Confirm Delete
+                                                           </h5>
+                                                           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" 
+                                                                   aria-label="Close"></button>
+                                                       </div>
+                                                       <div class="modal-body">
+                                                           <p class="mb-0">Are you sure you want to delete the radar configuration "<strong>{{ radar.name }}</strong>"?</p>
+                                                           <p class="text-danger mt-2 mb-0"><small>This action cannot be undone.</small></p>
+                                                       </div>
+                                                       <div class="modal-footer">
+                                                           <button type="button" class="btn btn-secondary" 
+                                                                   data-bs-dismiss="modal">Cancel</button>
+                                                           <form method="post" action="{% url 'delete_radar' radar.id %}" 
+                                                                 style="display: inline;">
+                                                               {% csrf_token %}
+                                                               <input type="hidden" name="form_type" value="delete_radar">
+                                                               <button type="submit" class="btn btn-danger">
+                                                                   <i class="fas fa-trash me-1"></i>Delete
+                                                               </button>
+                                                           </form>
+                                                       </div>
+                                                   </div>
+                                               </div>
+                                           </div>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {% if radar_configs %}
-                                        {% for radar in radar_configs %}
-                                        <tr>
-                                            <td>{{ radar.name }}</td>
-                                            <td>{{ radar.port }}</td>
-                                            <td>{{ radar.baud_rate }}</td>
-                                            <td>{{ radar.data_bits }}</td>
-                                            <td>{{ radar.get_parity_display }}</td>
-                                            <td>{{ radar.stop_bits }}</td>
-                                            <td>
-                                                {% if radar.is_active %}
-                                                <span class="badge bg-success">Active</span>
-                                                {% else %}
-                                                <span class="badge bg-danger">Inactive</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>{{ radar.updated_at|date:"Y-m-d H:i" }}</td>
-                                        </tr>
-                                        {% endfor %}
-                                    {% else %}
-                                        <tr>
-                                            <td colspan="8" class="text-center">No radar configurations found</td>
-                                        </tr>
-                                    {% endif %}
-                                </tbody>
-                            </table>
-                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9" class="text-center">No radar configurations found</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="mt-4">
-            <button type="submit" class="btn btn-primary btn-sm">Save Configuration</button>
-            <button type="reset" class="btn btn-secondary btn-sm">Reset</button>
+        <!-- Notification Settings Tab -->
+        <div class="tab-pane fade" id="notification" role="tabpanel" aria-labelledby="notification-tab">
+            <form method="post" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="notification">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="notification-primary_email" class="form-label">Primary Email Address</label>
+                                {{ notification_form.primary_email }}
+                                {% if notification_form.primary_email.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.primary_email.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="notification-frequency" class="form-label">Notification Frequency</label>
+                                {{ notification_form.frequency }}
+                                {% if notification_form.frequency.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.frequency.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-12">
+                                <label for="notification-cc_emails" class="form-label">CC Email Addresses (comma-separated)</label>
+                                {{ notification_form.cc_emails }}
+                                {% if notification_form.cc_emails.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.cc_emails.errors }}
+                                </div>
+                                {% endif %}
+                                <div class="form-text">Enter multiple email addresses separated by commas</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-6">
+                                <label for="notification-smtp_server" class="form-label">SMTP Server</label>
+                                {{ notification_form.smtp_server }}
+                                {% if notification_form.smtp_server.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.smtp_server.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="notification-smtp_port" class="form-label">SMTP Port</label>
+                                {{ notification_form.smtp_port }}
+                                {% if notification_form.smtp_port.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.smtp_port.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-6">
+                                <label for="notification-smtp_username" class="form-label">SMTP Username</label>
+                                {{ notification_form.smtp_username }}
+                                {% if notification_form.smtp_username.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.smtp_username.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="notification-smtp_password" class="form-label">SMTP Password</label>
+                                {{ notification_form.smtp_password }}
+                                {% if notification_form.smtp_password.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.smtp_password.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    {{ notification_form.enable_notifications }}
+                                    <label class="form-check-label" for="notification-enable_notifications">
+                                        Enable Email Notifications
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    {{ notification_form.use_tls }}
+                                    <label class="form-check-label" for="notification-use_tls">
+                                        Use TLS for SMTP
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-12">
+                                <label class="form-label">Days of the Week</label>
+                                {{ notification_form.days_of_week }}
+                                {% if notification_form.days_of_week.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.days_of_week.errors }}
+                                </div>
+                                {% endif %}
+                                <div class="form-text">Select days to send notifications.</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-12">
+                                <label for="notification-notification_times" class="form-label">Notification Times</label>
+                                {{ notification_form.notification_times }}
+                                {% if notification_form.notification_times.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ notification_form.notification_times.errors }}
+                                </div>
+                                {% endif %}
+                                <div class="form-text">Enter one or more times in HH:MM format, separated by commas (e.g., 08:00,14:00).</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Save Notification Settings</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
         </div>
-    </form>
+    </div>
 </div>
 
 {% block extra_js %}
@@ -229,6 +469,132 @@
             }, false)
         })
     })()
+
+    // Add input validation for IP addresses
+    document.querySelectorAll('input[type="text"]').forEach(function(input) {
+        if (input.id.includes('ip_address') || input.id.includes('gateway') || 
+            input.id.includes('subnet_mask') || input.id.includes('dns')) {
+            input.addEventListener('input', function(e) {
+                const value = e.target.value;
+                const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+                if (value && !ipPattern.test(value)) {
+                    e.target.setCustomValidity('Please enter a valid IP address (e.g., 192.168.1.1)');
+                } else {
+                    e.target.setCustomValidity('');
+                }
+            });
+        }
+    });
+
+    // Add input validation for port numbers
+    document.querySelectorAll('input[type="number"]').forEach(function(input) {
+        if (input.id.includes('port') || input.id.includes('timeout')) {
+            input.addEventListener('input', function(e) {
+                const value = parseInt(e.target.value);
+                if (value < 1 || value > 65535) {
+                    e.target.setCustomValidity('Port number must be between 1 and 65535');
+                } else {
+                    e.target.setCustomValidity('');
+                }
+            });
+        }
+    });
+
+    // Add input validation for email addresses
+    document.querySelectorAll('input[type="email"]').forEach(function(input) {
+        input.addEventListener('input', function(e) {
+            const value = e.target.value;
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (value && !emailPattern.test(value)) {
+                e.target.setCustomValidity('Please enter a valid email address');
+            } else {
+                e.target.setCustomValidity('');
+            }
+        });
+    });
+
+    // Add input validation for CC emails
+    const ccEmailsInput = document.querySelector('#notification-cc_emails');
+    if (ccEmailsInput) {
+        ccEmailsInput.addEventListener('input', function(e) {
+            const value = e.target.value;
+            const emails = value.split(',').map(email => email.trim());
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            
+            const invalidEmails = emails.filter(email => email && !emailPattern.test(email));
+            if (invalidEmails.length > 0) {
+                e.target.setCustomValidity('Please enter valid email addresses separated by commas');
+            } else {
+                e.target.setCustomValidity('');
+            }
+        });
+    }
+
+    // Handle tab state
+    document.addEventListener('DOMContentLoaded', function() {
+        // Get the hash from the URL
+        const hash = window.location.hash;
+        
+        // If there's a hash, activate that tab
+        if (hash) {
+            const tab = document.querySelector(`button[data-bs-target="${hash}"]`);
+            if (tab) {
+                const tabInstance = new bootstrap.Tab(tab);
+                tabInstance.show();
+            }
+        } else {
+            // Otherwise, activate the first tab
+            const firstTab = document.querySelector('#configTabs button');
+            if (firstTab) {
+                const tabInstance = new bootstrap.Tab(firstTab);
+                tabInstance.show();
+            }
+        }
+
+        // Store the active tab in localStorage when changed
+        document.querySelectorAll('#configTabs button').forEach(function(tab) {
+            tab.addEventListener('shown.bs.tab', function(e) {
+                localStorage.setItem('activeConfigTab', e.target.dataset.bsTarget);
+            });
+        });
+
+        // Restore the active tab from localStorage if no hash is present
+        if (!hash) {
+            const activeTab = localStorage.getItem('activeConfigTab');
+            if (activeTab) {
+                const tab = document.querySelector(`button[data-bs-target="${activeTab}"]`);
+                if (tab) {
+                    const tabInstance = new bootstrap.Tab(tab);
+                    tabInstance.show();
+                }
+            }
+        }
+
+        // Fix modal backdrop issues and positioning
+        const deleteButtons = document.querySelectorAll('[data-bs-target^="#deleteRadarModal"]');
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                // Remove any existing modal backdrops
+                const existingBackdrops = document.querySelectorAll('.modal-backdrop');
+                existingBackdrops.forEach(backdrop => backdrop.remove());
+                
+                // Remove modal-open class from body
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+
+                // Scroll to top when modal opens
+                window.scrollTo(0, 0);
+            });
+        });
+
+        // Ensure modal is visible when opened
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('show.bs.modal', function() {
+                window.scrollTo(0, 0);
+            });
+        });
+    });
 </script>
 {% endblock %}
 {% endblock %} 

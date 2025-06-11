@@ -1,9 +1,9 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import logout
 from django.contrib import messages
-from .forms import SystemSettingsForm, TCPIPSettingsForm, TimeSettingsForm, FTPSettingsForm, RadarConfigForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig
+from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings
 
 # Create your views here.
 
@@ -34,72 +34,93 @@ def settings(request):
     })
 
 @login_required
-def config_view(request):
+def config(request):
+    # Get or create notification settings
+    notification_settings, created = NotificationSettings.objects.get_or_create(
+        pk=1,  # We'll use a single instance for notification settings
+        defaults={
+            'primary_email': '',
+            'frequency': 'daily',
+            'smtp_server': 'smtp.gmail.com',
+            'smtp_port': 587,
+            'use_tls': True
+        }
+    )
+
+    # Initialize forms
+    tcp_form = TCPIPForm(instance=TCPIPConfig.objects.first())
+    time_form = TimeForm(instance=TimeConfig.objects.first())
+    ftp_form = FTPForm(instance=FTPConfig.objects.first())
+    radar_form = RadarForm()
+    notification_form = NotificationForm(instance=notification_settings)
+
     if request.method == 'POST':
         form_type = request.POST.get('form_type')
         
         if form_type == 'tcp':
-            form = TCPIPSettingsForm(request.POST)
-            if form.is_valid():
-                config = form.save(commit=False)
-                config.save()
-                messages.success(request, 'TCP/IP settings saved successfully!')
+            tcp_form = TCPIPForm(request.POST, instance=TCPIPConfig.objects.first())
+            if tcp_form.is_valid():
+                tcp_form.save()
+                messages.success(request, 'TCP/IP settings updated successfully.')
                 return redirect('config')
-            else:
-                messages.error(request, 'Please correct the errors in the TCP/IP settings.')
         elif form_type == 'time':
-            form = TimeSettingsForm(request.POST)
-            if form.is_valid():
-                config = form.save(commit=False)
-                config.save()
-                messages.success(request, 'Time settings saved successfully!')
+            time_form = TimeForm(request.POST, instance=TimeConfig.objects.first())
+            if time_form.is_valid():
+                time_form.save()
+                messages.success(request, 'Time settings updated successfully.')
                 return redirect('config')
-            else:
-                messages.error(request, 'Please correct the errors in the time settings.')
         elif form_type == 'ftp':
-            form = FTPSettingsForm(request.POST)
-            if form.is_valid():
-                config = form.save(commit=False)
-                config.save()
-                messages.success(request, 'FTP settings saved successfully!')
+            ftp_form = FTPForm(request.POST, instance=FTPConfig.objects.first())
+            if ftp_form.is_valid():
+                ftp_form.save()
+                messages.success(request, 'FTP settings updated successfully.')
                 return redirect('config')
-            else:
-                messages.error(request, 'Please correct the errors in the FTP settings.')
         elif form_type == 'radar':
-            form = RadarConfigForm(request.POST)
-            if form.is_valid():
-                try:
-                    # Create a new radar configuration
-                    radar_config = form.save()
-                    messages.success(request, f'Radar configuration "{radar_config.name}" added successfully!')
-                except Exception as e:
-                    messages.error(request, f'Error saving radar configuration: {str(e)}')
+            radar_form = RadarForm(request.POST)
+            if radar_form.is_valid():
+                radar_form.save()
+                messages.success(request, 'Radar configuration added successfully.')
                 return redirect('config')
-            else:
-                for field, errors in form.errors.items():
-                    for error in errors:
-                        messages.error(request, f'Error in {field}: {error}')
-    
-    # Get the latest configuration for each type
-    tcp_config = TCPIPConfig.objects.first()
-    time_config = TimeConfig.objects.first()
-    ftp_config = FTPConfig.objects.first()
-    
-    # Get all radar configurations, ordered by creation date
-    radar_configs = RadarConfig.objects.all().order_by('-created_at')
-    
-    # Initialize forms with existing data
-    tcp_form = TCPIPSettingsForm(instance=tcp_config)
-    time_form = TimeSettingsForm(instance=time_config)
-    ftp_form = FTPSettingsForm(instance=ftp_config)
-    radar_form = RadarConfigForm()
-    
+        elif form_type == 'notification':
+            notification_form = NotificationForm(request.POST, instance=notification_settings)
+            if notification_form.is_valid():
+                notification_form.save()
+                messages.success(request, 'Notification settings updated successfully.')
+                return redirect('config')
+
     context = {
         'tcp_form': tcp_form,
         'time_form': time_form,
         'ftp_form': ftp_form,
         'radar_form': radar_form,
-        'radar_configs': radar_configs,
+        'notification_form': notification_form,
+        'radar_configs': RadarConfig.objects.all().order_by('-created_at'),
     }
     
     return render(request, 'app/config.html', context)
+
+@login_required
+def edit_radar(request, radar_id):
+    radar = get_object_or_404(RadarConfig, id=radar_id)
+    if request.method == 'POST':
+        form = RadarForm(request.POST, instance=radar)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Radar configuration updated successfully.')
+            return redirect('config')
+    else:
+        form = RadarForm(instance=radar)
+    
+    return render(request, 'app/edit_radar.html', {
+        'form': form,
+        'radar': radar
+    })
+
+@login_required
+def delete_radar(request, radar_id):
+    radar = get_object_or_404(RadarConfig, id=radar_id)
+    if request.method == 'POST':
+        radar_name = radar.name
+        radar.delete()
+        messages.success(request, f'Radar configuration "{radar_name}" deleted successfully.')
+    return redirect('config')

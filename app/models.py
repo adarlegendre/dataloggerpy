@@ -1,4 +1,6 @@
 from django.db import models
+from django.core.validators import EmailValidator, MinValueValidator, MaxValueValidator
+import re
 
 # Create your models here.
 
@@ -97,7 +99,7 @@ class FTPConfig(models.Model):
 
 class RadarConfig(models.Model):
     name = models.CharField(max_length=100, help_text="Name to identify this radar")
-    port = models.CharField(max_length=50, help_text="Serial port (e.g., COM1, /dev/ttyUSB0)")
+    port = models.CharField(max_length=50, help_text="Serial port (e.g., COM1, /dev/ttyUSB0)", unique=True)
     baud_rate = models.IntegerField(
         choices=[
             (9600, '9600'),
@@ -139,6 +141,94 @@ class RadarConfig(models.Model):
         verbose_name = 'Radar Configuration'
         verbose_name_plural = 'Radar Configurations'
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='unique_radar_name')
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.port})"
+
+class NotificationSettings(models.Model):
+    FREQUENCY_CHOICES = [
+        ('hourly', 'Hourly'),
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+    ]
+
+    primary_email = models.EmailField(
+        validators=[EmailValidator()],
+        help_text="Primary email address for notifications"
+    )
+    frequency = models.CharField(
+        max_length=10,
+        choices=FREQUENCY_CHOICES,
+        default='daily',
+        help_text="How often to send notifications"
+    )
+    cc_emails = models.TextField(
+        blank=True,
+        help_text="Comma-separated list of CC email addresses"
+    )
+    smtp_server = models.CharField(
+        max_length=255,
+        help_text="SMTP server address"
+    )
+    smtp_port = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        default=587,
+        help_text="SMTP server port"
+    )
+    smtp_username = models.CharField(
+        max_length=255,
+        help_text="SMTP username"
+    )
+    smtp_password = models.CharField(
+        max_length=255,
+        help_text="SMTP password"
+    )
+    enable_notifications = models.BooleanField(
+        default=True,
+        help_text="Enable/disable email notifications"
+    )
+    use_tls = models.BooleanField(
+        default=True,
+        help_text="Use TLS for SMTP connection"
+    )
+    days_of_week = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Comma-separated days of the week (e.g., Monday,Tuesday,Friday)"
+    )
+    notification_times = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Comma-separated times in HH:MM format (e.g., 08:00,14:00)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Notification Settings"
+        verbose_name_plural = "Notification Settings"
+
+    def clean(self):
+        super().clean()
+        if self.cc_emails:
+            emails = [email.strip() for email in self.cc_emails.split(',')]
+            email_validator = EmailValidator()
+            for email in emails:
+                if email:  # Skip empty strings
+                    try:
+                        email_validator(email)
+                    except:
+                        raise ValidationError(f"Invalid email address in CC list: {email}")
+
+    def __str__(self):
+        return f"Notification Settings for {self.primary_email}"
+
+    def get_cc_emails_list(self):
+        """Returns a list of CC email addresses"""
+        if not self.cc_emails:
+            return []
+        return [email.strip() for email in self.cc_emails.split(',') if email.strip()]

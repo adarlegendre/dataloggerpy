@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Edit Radar Configuration</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post" class="needs-validation" novalidate>
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="id_name" class="form-label">Radar Name</label>
+                                {{ form.name }}
+                                {% if form.name.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.name.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="id_port" class="form-label">Serial Port</label>
+                                {{ form.port }}
+                                {% if form.port.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.port.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <label for="id_baud_rate" class="form-label">Baud Rate</label>
+                                {{ form.baud_rate }}
+                                {% if form.baud_rate.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.baud_rate.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="id_data_bits" class="form-label">Data Bits</label>
+                                {{ form.data_bits }}
+                                {% if form.data_bits.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.data_bits.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="id_parity" class="form-label">Parity</label>
+                                {{ form.parity }}
+                                {% if form.parity.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.parity.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <label for="id_stop_bits" class="form-label">Stop Bits</label>
+                                {{ form.stop_bits }}
+                                {% if form.stop_bits.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.stop_bits.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    {{ form.is_active }}
+                                    <label class="form-check-label" for="id_is_active">
+                                        Active
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                            <a href="{% url 'config' %}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Form validation
+    (function () {
+        'use strict'
+        var forms = document.querySelectorAll('.needs-validation')
+        Array.prototype.slice.call(forms).forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                }
+                form.classList.add('was-validated')
+            }, false)
+        })
+    })()
+</script>
+{% endblock %}
+{% endblock %} 
