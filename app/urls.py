@@ -10,4 +10,11 @@ urlpatterns = [
     path('config/', views.config, name='config'),
     path('radar/<int:radar_id>/edit/', views.edit_radar, name='edit_radar'),
     path('radar/<int:radar_id>/delete/', views.delete_radar, name='delete_radar'),
+    path('api/system-info/', views.system_info_api, name='system_info_api'),
+    path('api/radar-data/<int:radar_id>/', views.radar_data_api, name='radar_data_api'),
+    path('users/', views.user_list, name='user_list'),
+    path('users/create/', views.user_create, name='user_create'),
+    path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
+    path('users/<int:user_id>/delete/', views.user_delete, name='user_delete'),
+    path('api/user-permissions/<int:user_id>/', views.user_permissions_api, name='user_permissions_api'),
 ] 

@@ -1,0 +1,220 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- System Status Cards -->
+        <div class="col-12 mb-4">
+            <div class="row">
+                <!-- Disk Usage Card -->
+                <div class="col-md-3 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-hdd me-2"></i>Disk Usage
+                            </h5>
+                            {% if system_info.disk %}
+                            <div class="progress mb-3" style="height: 20px;">
+                                <div class="progress-bar disk-progress {% if system_info.disk.percent > 90 %}bg-danger{% elif system_info.disk.percent > 70 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ system_info.disk.percent }}%"
+                                     aria-valuenow="{{ system_info.disk.percent }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ system_info.disk.percent }}%
+                                </div>
+                            </div>
+                            {% if system_info.history.disk_avg %}
+                            <div class="text-center text-muted small disk-avg">
+                                <i class="fas fa-chart-line me-1"></i>24h Avg: {{ system_info.history.disk_avg }}%
+                            </div>
+                            {% endif %}
+                            <div class="row text-center">
+                                <div class="col">
+                                    <small class="text-muted">Total</small>
+                                    <p class="mb-0 disk-total">{{ system_info.disk.total }} GB</p>
+                                </div>
+                                <div class="col">
+                                    <small class="text-muted">Used</small>
+                                    <p class="mb-0 disk-used">{{ system_info.disk.used }} GB</p>
+                                </div>
+                                <div class="col">
+                                    <small class="text-muted">Free</small>
+                                    <p class="mb-0 disk-free">{{ system_info.disk.free }} GB</p>
+                                </div>
+                            </div>
+                            {% else %}
+                            <p class="text-danger">Unable to get disk information</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RAM Usage Card -->
+                <div class="col-md-3 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-memory me-2"></i>RAM Usage
+                            </h5>
+                            {% if system_info.ram %}
+                            <div class="progress mb-3" style="height: 20px;">
+                                <div class="progress-bar ram-progress {% if system_info.ram.percent > 90 %}bg-danger{% elif system_info.ram.percent > 70 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ system_info.ram.percent }}%"
+                                     aria-valuenow="{{ system_info.ram.percent }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ system_info.ram.percent }}%
+                                </div>
+                            </div>
+                            {% if system_info.history.ram_avg %}
+                            <div class="text-center text-muted small ram-avg">
+                                <i class="fas fa-chart-line me-1"></i>24h Avg: {{ system_info.history.ram_avg }}%
+                            </div>
+                            {% endif %}
+                            <div class="row text-center">
+                                <div class="col">
+                                    <small class="text-muted">Total</small>
+                                    <p class="mb-0 ram-total">{{ system_info.ram.total }} GB</p>
+                                </div>
+                                <div class="col">
+                                    <small class="text-muted">Used</small>
+                                    <p class="mb-0 ram-used">{{ system_info.ram.used }} GB</p>
+                                </div>
+                                <div class="col">
+                                    <small class="text-muted">Free</small>
+                                    <p class="mb-0 ram-free">{{ system_info.ram.free }} GB</p>
+                                </div>
+                            </div>
+                            {% else %}
+                            <p class="text-danger">Unable to get RAM information</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CPU Temperature Card -->
+                <div class="col-md-3 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-thermometer-half me-2"></i>CPU Temperature
+                            </h5>
+                            {% if system_info.cpu_temp is not None %}
+                            <div class="text-center">
+                                <h2 class="display-4 cpu-temp {% if system_info.cpu_temp > 80 %}text-danger{% elif system_info.cpu_temp > 70 %}text-warning{% else %}text-success{% endif %}">
+                                    {{ system_info.cpu_temp }}°C
+                                </h2>
+                                {% if system_info.history.cpu_avg %}
+                                <div class="text-muted small cpu-avg">
+                                    <i class="fas fa-chart-line me-1"></i>24h Avg: {{ system_info.history.cpu_avg }}°C
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <p class="text-danger">Unable to get CPU temperature</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Uptime Card -->
+                <div class="col-md-3 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-clock me-2"></i>System Uptime
+                            </h5>
+                            <div class="text-center">
+                                <h2 class="display-6 uptime">{{ system_info.uptime }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Radar Configurations Table -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Connected Radars</h5>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Port</th>
+                                    <th>Status</th>
+                                    <th>Last Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for radar in radars %}
+                                <tr>
+                                    <td>{{ radar.name }}</td>
+                                    <td>{{ radar.port }}</td>
+                                    <td>
+                                        {% if radar.is_active %}
+                                        <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ radar.last_updated|date:"Y-m-d H:i:s" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center">No radar configurations found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-refresh script -->
+<script>
+    // Update system info every 30 minutes (1800000 ms)
+    function updateSystemInfo() {
+        fetch('{% url "system_info_api" %}')
+            .then(response => response.json())
+            .then(data => {
+                // Disk
+                document.querySelector('.disk-progress').style.width = data.disk.percent + '%';
+                document.querySelector('.disk-progress').innerText = data.disk.percent + '%';
+                document.querySelector('.disk-total').innerText = data.disk.total + ' GB';
+                document.querySelector('.disk-used').innerText = data.disk.used + ' GB';
+                document.querySelector('.disk-free').innerText = data.disk.free + ' GB';
+                if (data.history.disk_avg !== null) {
+                    document.querySelector('.disk-avg').innerText = '24h Avg: ' + data.history.disk_avg + '%';
+                }
+                // RAM
+                document.querySelector('.ram-progress').style.width = data.ram.percent + '%';
+                document.querySelector('.ram-progress').innerText = data.ram.percent + '%';
+                document.querySelector('.ram-total').innerText = data.ram.total + ' GB';
+                document.querySelector('.ram-used').innerText = data.ram.used + ' GB';
+                document.querySelector('.ram-free').innerText = data.ram.free + ' GB';
+                if (data.history.ram_avg !== null) {
+                    document.querySelector('.ram-avg').innerText = '24h Avg: ' + data.history.ram_avg + '%';
+                }
+                // CPU Temp
+                document.querySelector('.cpu-temp').innerText = data.cpu_temp + '°C';
+                if (data.history.cpu_avg !== null) {
+                    document.querySelector('.cpu-avg').innerText = '24h Avg: ' + data.history.cpu_avg + '°C';
+                }
+                // Uptime
+                document.querySelector('.uptime').innerText = data.uptime;
+            });
+    }
+    setInterval(updateSystemInfo, 1800000); // 30 minutes
+    // Optionally, update once on page load
+    // updateSystemInfo();
+</script>
+{% endblock %} 

@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">User Management</h3>
+                    <div class="card-tools">
+                        <a href="{% url 'user_create' %}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add New User
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs" id="userTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab" aria-controls="users" aria-selected="true">Users</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab" aria-controls="permissions" aria-selected="false">Permissions</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content mt-3" id="userTabsContent">
+                        <!-- Users Tab -->
+                        <div class="tab-pane fade show active" id="users" role="tabpanel" aria-labelledby="users-tab">
+                            <form method="get" class="mb-4">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        {{ search_form.search }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ search_form.role }}
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="submit" class="btn btn-primary w-100">Search</button>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Username</th>
+                                            <th>Email</th>
+                                            <th>Full Name</th>
+                                            <th>Role</th>
+                                            <th>Department</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for user in users %}
+                                        <tr>
+                                            <td>{{ user.username }}</td>
+                                            <td>{{ user.email }}</td>
+                                            <td>{{ user.get_full_name }}</td>
+                                            <td>{{ user.get_role_display }}</td>
+                                            <td>{{ user.department|default:"-" }}</td>
+                                            <td>
+                                                {% if user.is_active %}
+                                                <span class="badge badge-success">Active</span>
+                                                {% else %}
+                                                <span class="badge badge-danger">Inactive</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <a href="{% url 'user_edit' user.id %}" class="btn btn-sm btn-info">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <a href="{% url 'user_delete' user.id %}" class="btn btn-sm btn-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="7" class="text-center">No users found.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Permissions Tab -->
+                        <div class="tab-pane fade" id="permissions" role="tabpanel" aria-labelledby="permissions-tab">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <select class="form-select" id="userSelect">
+                                        <option value="">Select a user...</option>
+                                        {% for user in users %}
+                                        <option value="{{ user.id }}">{{ user.username }} ({{ user.get_role_display }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div id="permissionsContent" style="display: none;">
+                                <form id="permissionsForm" method="post">
+                                    {% csrf_token %}
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h5 class="card-title mb-0">System Settings</h5>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.view_systemsettings">
+                                                        <label class="form-check-label">View Settings</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.change_systemsettings">
+                                                        <label class="form-check-label">Modify Settings</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h5 class="card-title mb-0">Radar Management</h5>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.view_radarconfig">
+                                                        <label class="form-check-label">View Radars</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.add_radarconfig">
+                                                        <label class="form-check-label">Add Radars</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.change_radarconfig">
+                                                        <label class="form-check-label">Modify Radars</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.delete_radarconfig">
+                                                        <label class="form-check-label">Delete Radars</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h5 class="card-title mb-0">User Management</h5>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.view_user">
+                                                        <label class="form-check-label">View Users</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.add_user">
+                                                        <label class="form-check-label">Add Users</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.change_user">
+                                                        <label class="form-check-label">Modify Users</label>
+                                                    </div>
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" class="form-check-input" name="permissions" value="app.delete_user">
+                                                        <label class="form-check-label">Delete Users</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row mt-3">
+                                        <div class="col-12">
+                                            <button type="submit" class="btn btn-primary">Save Permissions</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const userSelect = document.getElementById('userSelect');
+    const permissionsContent = document.getElementById('permissionsContent');
+    const permissionsForm = document.getElementById('permissionsForm');
+
+    userSelect.addEventListener('change', function() {
+        if (this.value) {
+            permissionsContent.style.display = 'block';
+            // Load user permissions
+            fetch(`/api/user-permissions/${this.value}/`)
+                .then(response => response.json())
+                .then(data => {
+                    // Uncheck all permissions first
+                    document.querySelectorAll('input[name="permissions"]').forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                    // Check the permissions the user has
+                    data.permissions.forEach(permission => {
+                        const checkbox = document.querySelector(`input[value="${permission}"]`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                });
+        } else {
+            permissionsContent.style.display = 'none';
+        }
+    });
+
+    permissionsForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const userId = userSelect.value;
+        const permissions = Array.from(document.querySelectorAll('input[name="permissions"]:checked'))
+            .map(checkbox => checkbox.value);
+
+        fetch(`/api/user-permissions/${userId}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ permissions: permissions })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Permissions updated successfully!');
+            } else {
+                alert('Error updating permissions: ' + data.error);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %} 

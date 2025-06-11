@@ -1,5 +1,6 @@
 from django import forms
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings
+from django.contrib.auth.forms import UserCreationForm
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User
 
 COLOR_PRESETS = {
     'navy': {
@@ -106,7 +107,7 @@ class FTPForm(forms.ModelForm):
 class RadarForm(forms.ModelForm):
     class Meta:
         model = RadarConfig
-        fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 'is_active']
+        fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 'update_interval', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'port': forms.TextInput(attrs={'class': 'form-control'}),
@@ -114,6 +115,12 @@ class RadarForm(forms.ModelForm):
             'data_bits': forms.NumberInput(attrs={'class': 'form-control'}),
             'parity': forms.Select(attrs={'class': 'form-control'}),
             'stop_bits': forms.NumberInput(attrs={'class': 'form-control'}),
+            'update_interval': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '50',
+                'max': '1000',
+                'step': '10'
+            }),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
@@ -242,4 +249,48 @@ class NotificationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # If instance exists, populate days_of_week as a list
         if self.instance and self.instance.days_of_week:
-            self.initial['days_of_week'] = [d.strip() for d in self.instance.days_of_week.split(',') if d.strip()] 
+            self.initial['days_of_week'] = [d.strip() for d in self.instance.days_of_week.split(',') if d.strip()]
+
+class UserForm(forms.ModelForm):
+    password = forms.CharField(widget=forms.PasswordInput(), required=False)
+    confirm_password = forms.CharField(widget=forms.PasswordInput(), required=False)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'department', 'is_active']
+        widgets = {
+            'role': forms.Select(attrs={'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields:
+            if field not in ['is_active']:
+                self.fields[field].widget.attrs.update({'class': 'form-control'})
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get('password')
+        confirm_password = cleaned_data.get('confirm_password')
+
+        if password and confirm_password and password != confirm_password:
+            raise forms.ValidationError("Passwords don't match")
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if self.cleaned_data.get('password'):
+            user.set_password(self.cleaned_data['password'])
+        if commit:
+            user.save()
+        return user
+
+class UserSearchForm(forms.Form):
+    search = forms.CharField(required=False, widget=forms.TextInput(attrs={
+        'class': 'form-control',
+        'placeholder': 'Search users...'
+    }))
+    role = forms.ChoiceField(required=False, choices=[('', 'All Roles')] + User.ROLE_CHOICES,
+                           widget=forms.Select(attrs={'class': 'form-control'})) 

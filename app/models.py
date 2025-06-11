@@ -1,8 +1,50 @@
 from django.db import models
 from django.core.validators import EmailValidator, MinValueValidator, MaxValueValidator
 import re
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.contrib.auth.models import AbstractUser
 
 # Create your models here.
+
+class User(AbstractUser):
+    ROLE_CHOICES = [
+        ('admin', 'Administrator'),
+        ('manager', 'Manager'),
+        ('operator', 'Operator'),
+        ('viewer', 'Viewer'),
+    ]
+    
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='viewer')
+    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    department = models.CharField(max_length=100, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Fix reverse accessor conflicts
+    groups = models.ManyToManyField(
+        'auth.Group',
+        related_name='custom_user_set',
+        blank=True,
+        help_text='The groups this user belongs to.',
+        verbose_name='groups',
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        related_name='custom_user_set',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        verbose_name='user permissions',
+    )
+
+    class Meta:
+        verbose_name = 'User'
+        verbose_name_plural = 'Users'
+        ordering = ['-date_joined']
+
+    def __str__(self):
+        return f"{self.username} ({self.get_role_display()})"
 
 class SystemSettings(models.Model):
     system_name = models.CharField(max_length=100, default="Secure Login")
@@ -133,6 +175,10 @@ class RadarConfig(models.Model):
         ],
         default=1
     )
+    update_interval = models.IntegerField(
+        default=100,
+        help_text="Update interval in milliseconds (min: 50ms, max: 1000ms)"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -144,6 +190,12 @@ class RadarConfig(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['name'], name='unique_radar_name')
         ]
+
+    def clean(self):
+        if self.update_interval < 50:
+            raise ValidationError({'update_interval': 'Update interval cannot be less than 50ms'})
+        if self.update_interval > 1000:
+            raise ValidationError({'update_interval': 'Update interval cannot be more than 1000ms'})
 
     def __str__(self):
         return f"{self.name} ({self.port})"
@@ -232,3 +284,58 @@ class NotificationSettings(models.Model):
         if not self.cc_emails:
             return []
         return [email.strip() for email in self.cc_emails.split(',') if email.strip()]
+
+class SystemMetrics(models.Model):
+    """Model to store historical system metrics."""
+    timestamp = models.DateTimeField(auto_now_add=True)
+    disk_used_percent = models.FloatField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Disk usage percentage"
+    )
+    ram_used_percent = models.FloatField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="RAM usage percentage"
+    )
+    cpu_temperature = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="CPU temperature in Celsius"
+    )
+    uptime_seconds = models.IntegerField(
+        help_text="System uptime in seconds"
+    )
+
+    class Meta:
+        verbose_name = 'System Metric'
+        verbose_name_plural = 'System Metrics'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['timestamp']),
+        ]
+
+    def __str__(self):
+        return f"System Metrics at {self.timestamp}"
+
+    @classmethod
+    def get_latest_metrics(cls):
+        """Get the most recent system metrics."""
+        return cls.objects.order_by('-timestamp').first()
+
+    @classmethod
+    def get_metrics_history(cls, hours=24):
+        """Get system metrics for the last specified hours."""
+        cutoff_time = timezone.now() - timezone.timedelta(hours=hours)
+        return cls.objects.filter(timestamp__gte=cutoff_time).order_by('timestamp')
+
+    @classmethod
+    def get_average_metrics(cls, hours=24):
+        """Calculate average metrics for the last specified hours."""
+        metrics = cls.get_metrics_history(hours)
+        if not metrics:
+            return None
+
+        return {
+            'disk_used_percent': metrics.aggregate(models.Avg('disk_used_percent'))['disk_used_percent__avg'],
+            'ram_used_percent': metrics.aggregate(models.Avg('ram_used_percent'))['ram_used_percent__avg'],
+            'cpu_temperature': metrics.aggregate(models.Avg('cpu_temperature'))['cpu_temperature__avg'],
+        }
