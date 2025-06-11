@@ -1,5 +1,5 @@
 from django import forms
-from .models import SystemSettings
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig
 
 COLOR_PRESETS = {
     'navy': {
@@ -67,4 +67,52 @@ class SystemSettingsForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['color_preset'].widget.attrs.update({
             'onchange': 'applyColorPreset(this.value)'
-        }) 
+        })
+
+class TCPIPSettingsForm(forms.ModelForm):
+    class Meta:
+        model = TCPIPConfig
+        fields = ['ip_address', 'gateway', 'subnet_mask', 'dns', 'timeout']
+        widgets = {
+            'ip_address': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'gateway': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'subnet_mask': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'dns': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'timeout': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 120px;'}),
+        }
+
+class TimeSettingsForm(forms.ModelForm):
+    class Meta:
+        model = TimeConfig
+        fields = ['timezone', 'date_format', 'time_format']
+        widgets = {
+            'timezone': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'date_format': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'time_format': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+        }
+
+class FTPSettingsForm(forms.ModelForm):
+    class Meta:
+        model = FTPConfig
+        fields = ['server', 'port', 'username', 'password', 'remote_directory']
+        widgets = {
+            'server': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'port': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 120px;'}),
+            'username': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 180px;'}),
+            'password': forms.PasswordInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 180px;'}),
+            'remote_directory': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 180px;'}),
+        }
+
+class RadarConfigForm(forms.ModelForm):
+    class Meta:
+        model = RadarConfig
+        fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'port': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'style': 'max-width: 220px;'}),
+            'baud_rate': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'data_bits': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'parity': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'stop_bits': forms.Select(attrs={'class': 'form-select form-select-sm', 'style': 'max-width: 220px;'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        } 

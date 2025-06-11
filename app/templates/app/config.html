@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Configuration Settings</h2>
+    
+    <form method="post" class="needs-validation" novalidate>
+        {% csrf_token %}
+        <ul class="nav nav-tabs" id="configTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tcp-tab" data-bs-toggle="tab" data-bs-target="#tcp" type="button" role="tab" aria-controls="tcp" aria-selected="true">TCP/IP Settings</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="time-tab" data-bs-toggle="tab" data-bs-target="#time" type="button" role="tab" aria-controls="time" aria-selected="false">Time Settings</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="ftp-tab" data-bs-toggle="tab" data-bs-target="#ftp" type="button" role="tab" aria-controls="ftp" aria-selected="false">FTP Settings</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="radar-tab" data-bs-toggle="tab" data-bs-target="#radar" type="button" role="tab" aria-controls="radar" aria-selected="false">Radar Settings</button>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-3" id="configTabsContent">
+            <!-- TCP/IP Settings Tab -->
+            <div class="tab-pane fade show active" id="tcp" role="tabpanel" aria-labelledby="tcp-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="tcp-ip_address" class="form-label">IP Address</label>
+                                {{ tcp_form.ip_address }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="tcp-gateway" class="form-label">Gateway</label>
+                                {{ tcp_form.gateway }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="tcp-subnet_mask" class="form-label">Subnet Mask</label>
+                                {{ tcp_form.subnet_mask }}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <label for="tcp-dns" class="form-label">DNS</label>
+                                {{ tcp_form.dns }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="tcp-timeout" class="form-label">Timeout (seconds)</label>
+                                {{ tcp_form.timeout }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Time Settings Tab -->
+            <div class="tab-pane fade" id="time" role="tabpanel" aria-labelledby="time-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="time-timezone" class="form-label">Timezone</label>
+                                {{ time_form.timezone }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="time-date_format" class="form-label">Date Format</label>
+                                {{ time_form.date_format }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="time-time_format" class="form-label">Time Format</label>
+                                {{ time_form.time_format }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FTP Settings Tab -->
+            <div class="tab-pane fade" id="ftp" role="tabpanel" aria-labelledby="ftp-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="ftp-server" class="form-label">FTP Server</label>
+                                {{ ftp_form.server }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="ftp-port" class="form-label">FTP Port</label>
+                                {{ ftp_form.port }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="ftp-username" class="form-label">Username</label>
+                                {{ ftp_form.username }}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <label for="ftp-password" class="form-label">Password</label>
+                                {{ ftp_form.password }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="ftp-remote_directory" class="form-label">Remote Directory</label>
+                                {{ ftp_form.remote_directory }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Radar Settings Tab -->
+            <div class="tab-pane fade" id="radar" role="tabpanel" aria-labelledby="radar-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Add New Radar Connection</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="radar-name" class="form-label">Radar Name</label>
+                                {{ radar_form.name }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="radar-port" class="form-label">Serial Port</label>
+                                {{ radar_form.port }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="radar-baud_rate" class="form-label">Baud Rate</label>
+                                {{ radar_form.baud_rate }}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <label for="radar-data_bits" class="form-label">Data Bits</label>
+                                {{ radar_form.data_bits }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="radar-parity" class="form-label">Parity</label>
+                                {{ radar_form.parity }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="radar-stop_bits" class="form-label">Stop Bits</label>
+                                {{ radar_form.stop_bits }}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    {{ radar_form.is_active }}
+                                    <label class="form-check-label" for="radar-is_active">
+                                        Active
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Radar Configurations Table -->
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Connected Radars</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Port</th>
+                                        <th>Baud Rate</th>
+                                        <th>Data Bits</th>
+                                        <th>Parity</th>
+                                        <th>Stop Bits</th>
+                                        <th>Status</th>
+                                        <th>Last Updated</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if radar_configs %}
+                                        {% for radar in radar_configs %}
+                                        <tr>
+                                            <td>{{ radar.name }}</td>
+                                            <td>{{ radar.port }}</td>
+                                            <td>{{ radar.baud_rate }}</td>
+                                            <td>{{ radar.data_bits }}</td>
+                                            <td>{{ radar.get_parity_display }}</td>
+                                            <td>{{ radar.stop_bits }}</td>
+                                            <td>
+                                                {% if radar.is_active %}
+                                                <span class="badge bg-success">Active</span>
+                                                {% else %}
+                                                <span class="badge bg-danger">Inactive</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ radar.updated_at|date:"Y-m-d H:i" }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="8" class="text-center">No radar configurations found</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary btn-sm">Save Configuration</button>
+            <button type="reset" class="btn btn-secondary btn-sm">Reset</button>
+        </div>
+    </form>
+</div>
+
+{% block extra_js %}
+<script>
+    // Form validation
+    (function () {
+        'use strict'
+        var forms = document.querySelectorAll('.needs-validation')
+        Array.prototype.slice.call(forms).forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                }
+                form.classList.add('was-validated')
+            }, false)
+        })
+    })()
+</script>
+{% endblock %}
+{% endblock %} 
