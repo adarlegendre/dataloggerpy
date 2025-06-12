@@ -13,6 +13,10 @@ import time
 import json
 from django.db.models import Q
 from functools import wraps
+from .services import RadarDataService
+import logging
+
+logger = logging.getLogger(__name__)
 
 def superuser_required(view_func):
     @wraps(view_func)
@@ -193,53 +197,22 @@ def radar_data_api(request, radar_id):
                 'connection_status': 'inactive'
             })
         
-        # Try to read data from the serial port
-        try:
-            with serial.Serial(
-                port=radar.port,
-                baudrate=radar.baud_rate,
-                bytesize=radar.data_bits,
-                parity=radar.parity,
-                stopbits=radar.stop_bits,
-                timeout=0.1  # Short timeout for real-time updates
-            ) as ser:
-                # Read available data
-                if ser.in_waiting:
-                    data = ser.readline().decode('utf-8').strip()
-                    try:
-                        # Try to parse the data as JSON
-                        parsed_data = json.loads(data)
-                        return JsonResponse({
-                            'status': 'success',
-                            'range': parsed_data.get('range'),
-                            'speed': parsed_data.get('speed'),
-                            'direction': parsed_data.get('direction'),
-                            'timestamp': time.time(),
-                            'connection_status': 'connected'
-                        })
-                    except json.JSONDecodeError:
-                        # If not JSON, return raw data
-                        return JsonResponse({
-                            'status': 'success',
-                            'raw_data': data,
-                            'timestamp': time.time(),
-                            'connection_status': 'connected'
-                        })
-                else:
-                    return JsonResponse({
-                        'status': 'success',
-                        'message': 'No new data available',
-                        'timestamp': time.time(),
-                        'connection_status': 'connected'
-                    })
-        except serial.SerialException as e:
+        # Get data from the background service
+        data_service = RadarDataService()
+        data = data_service.get_latest_data(radar_id)
+        
+        if data is None:
             return JsonResponse({
-                'status': 'error',
-                'message': f'Serial port error: {str(e)}',
-                'connection_status': 'disconnected'
+                'status': 'success',
+                'message': 'No new data available',
+                'timestamp': time.time(),
+                'connection_status': 'connected'
             })
             
+        return JsonResponse(data)
+            
     except Exception as e:
+        logger.error(f"Error in radar_data_api: {str(e)}")
         return JsonResponse({
             'status': 'error',
             'message': f'Error: {str(e)}',
