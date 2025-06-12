@@ -17,4 +17,6 @@ urlpatterns = [
     path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
     path('users/<int:user_id>/delete/', views.user_delete, name='user_delete'),
     path('api/user-permissions/<int:user_id>/', views.user_permissions_api, name='user_permissions_api'),
+    path('radar-file/<int:file_id>/download/', views.download_radar_file, name='download_radar_file'),
+    path('api/radar-file/<int:file_id>/delete/', views.delete_radar_file, name='delete_radar_file'),
 ] 

@@ -216,6 +216,18 @@
                                 <div class="form-text">Update interval in milliseconds (50-1000ms)</div>
                             </div>
                             <div class="col-md-4">
+                                <label for="radar-file_save_interval" class="form-label">File Save Interval (minutes)</label>
+                                {{ radar_form.file_save_interval }}
+                                <div class="form-text">Interval for saving data to files (1-60 minutes)</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="radar-data_storage_path" class="form-label">Data Storage Path</label>
+                                {{ radar_form.data_storage_path }}
+                                <div class="form-text">Path where radar data files will be stored</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
                                 <div class="form-check">
                                     {{ radar_form.is_active }}
                                     <label class="form-check-label" for="radar-is_active">
@@ -247,6 +259,8 @@
                                     <th>Parity</th>
                                     <th>Stop Bits</th>
                                     <th>Update Interval</th>
+                                    <th>File Save Interval</th>
+                                    <th>Data Path</th>
                                     <th>Status</th>
                                     <th>Last Updated</th>
                                     <th>Actions</th>
@@ -263,6 +277,8 @@
                                         <td>{{ radar.get_parity_display }}</td>
                                         <td>{{ radar.stop_bits }}</td>
                                         <td>{{ radar.update_interval }} ms</td>
+                                        <td>{{ radar.file_save_interval }} min</td>
+                                        <td>{{ radar.data_storage_path }}</td>
                                         <td>
                                             {% if radar.is_active %}
                                             <span class="badge bg-success">Active</span>

@@ -107,7 +107,8 @@ class FTPForm(forms.ModelForm):
 class RadarForm(forms.ModelForm):
     class Meta:
         model = RadarConfig
-        fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 'update_interval', 'is_active']
+        fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 
+                 'update_interval', 'file_save_interval', 'data_storage_path', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'port': forms.TextInput(attrs={'class': 'form-control'}),
@@ -120,6 +121,16 @@ class RadarForm(forms.ModelForm):
                 'min': '50',
                 'max': '1000',
                 'step': '10'
+            }),
+            'file_save_interval': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '1',
+                'max': '60',
+                'step': '1'
+            }),
+            'data_storage_path': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Enter path for data storage'
             }),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }

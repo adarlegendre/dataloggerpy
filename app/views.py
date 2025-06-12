@@ -2,9 +2,9 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth import logout
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm, UserForm, UserSearchForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile
 from .utils import get_system_info
 from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import Permission
@@ -15,6 +15,7 @@ from django.db.models import Q
 from functools import wraps
 from .services import RadarDataService
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +36,14 @@ def home(request):
     # Get system information
     system_info = get_system_info()
     
-    # Get all radar configurations
-    radars = RadarConfig.objects.all().order_by('name')
+    # Get all radar configurations with their data files
+    radars = RadarConfig.objects.all().order_by('name').prefetch_related('data_files')
     
     context = {
         'radars': radars,
         'system_info': system_info,
     }
-    return render(request, 'home.html', context)
+    return render(request, 'app/home.html', context)
 
 def logout_view(request):
     logout(request)
@@ -343,3 +344,51 @@ def user_permissions_api(request, user_id):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+@login_required
+@permission_required('app.view_radardatafile', raise_exception=True)
+def download_radar_file(request, file_id):
+    """Download a radar data file."""
+    try:
+        data_file = get_object_or_404(RadarDataFile, id=file_id)
+        
+        # Check if file exists
+        if not os.path.exists(data_file.file_path):
+            messages.error(request, 'File not found on server.')
+            return redirect('home')
+            
+        # Open and read the file
+        with open(data_file.file_path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/json')
+            response['Content-Disposition'] = f'attachment; filename="{data_file.filename}"'
+            return response
+            
+    except Exception as e:
+        messages.error(request, f'Error downloading file: {str(e)}')
+        return redirect('home')
+
+@login_required
+@permission_required('app.delete_radardatafile', raise_exception=True)
+@require_POST
+def delete_radar_file(request, file_id):
+    """Delete a radar data file."""
+    try:
+        data_file = get_object_or_404(RadarDataFile, id=file_id)
+        
+        # Delete the physical file
+        if os.path.exists(data_file.file_path):
+            os.remove(data_file.file_path)
+            
+        # Delete the database record
+        data_file.delete()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'File deleted successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error deleting file: {str(e)}'
+        }, status=500)

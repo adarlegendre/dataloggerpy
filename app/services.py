@@ -5,6 +5,9 @@ import serial
 from django.apps import apps
 from queue import Queue
 import logging
+import os
+from datetime import datetime
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,8 @@ class RadarDataService:
         self.radar_threads = {}
         self.data_queues = {}
         self.stop_events = {}
+        self.data_cache = {}  # Cache for storing radar data
+        self.last_save_time = {}  # Track last save time for each radar
         logger.info("RadarDataService initialized")
     
     def start_service(self):
@@ -53,6 +58,8 @@ class RadarDataService:
             
         self.data_queues[radar_id] = Queue()
         self.stop_events[radar_id] = threading.Event()
+        self.data_cache[radar_id] = deque(maxlen=1000)  # Cache last 1000 readings
+        self.last_save_time[radar_id] = time.time()
         
         thread = threading.Thread(
             target=self._stream_radar_data,
@@ -69,9 +76,14 @@ class RadarDataService:
             self.stop_events[radar_id].set()
             if radar_id in self.radar_threads:
                 self.radar_threads[radar_id].join(timeout=5.0)
+            # Save any remaining data before stopping
+            if radar_id in self.data_cache and self.data_cache[radar_id]:
+                self._save_data_to_file(radar_id)
             del self.stop_events[radar_id]
             del self.radar_threads[radar_id]
             del self.data_queues[radar_id]
+            del self.data_cache[radar_id]
+            del self.last_save_time[radar_id]
             logger.info(f"Stopped streaming for radar {radar_id}")
     
     def get_latest_data(self, radar_id):
@@ -82,6 +94,46 @@ class RadarDataService:
             except:
                 return None
         return None
+
+    def _save_data_to_file(self, radar_id):
+        """Save cached data to file"""
+        try:
+            RadarConfig = apps.get_model('app', 'RadarConfig')
+            RadarDataFile = apps.get_model('app', 'RadarDataFile')
+            radar = RadarConfig.objects.get(id=radar_id)
+            
+            # Create directory if it doesn't exist
+            save_dir = os.path.join(radar.data_storage_path)
+            os.makedirs(save_dir, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"radar_{radar.name}_{timestamp}.json"
+            filepath = os.path.join(save_dir, filename)
+            
+            # Save data to file
+            with open(filepath, 'w') as f:
+                json.dump(list(self.data_cache[radar_id]), f, indent=2)
+            
+            # Get file size
+            file_size = os.path.getsize(filepath)
+            record_count = len(self.data_cache[radar_id])
+            
+            # Create RadarDataFile record
+            RadarDataFile.objects.create(
+                radar=radar,
+                filename=filename,
+                file_path=filepath,
+                record_count=record_count,
+                file_size=file_size
+            )
+            
+            logger.info(f"Saved {record_count} readings to {filepath}")
+            # Clear the cache after saving
+            self.data_cache[radar_id].clear()
+            
+        except Exception as e:
+            logger.error(f"Error saving data to file for radar {radar_id}: {str(e)}")
     
     def _stream_radar_data(self, radar, data_queue, stop_event):
         """Background thread function for streaming radar data"""
@@ -105,21 +157,34 @@ class RadarDataService:
                                 
                                 try:
                                     parsed_data = json.loads(data)
-                                    data_queue.put({
+                                    data_dict = {
                                         'status': 'success',
                                         'range': parsed_data.get('range'),
                                         'speed': parsed_data.get('speed'),
                                         'direction': parsed_data.get('direction'),
                                         'timestamp': time.time(),
                                         'connection_status': 'connected'
-                                    })
+                                    }
+                                    # Add to cache
+                                    self.data_cache[radar.id].append(data_dict)
+                                    data_queue.put(data_dict)
                                 except json.JSONDecodeError:
-                                    data_queue.put({
+                                    data_dict = {
                                         'status': 'success',
                                         'raw_data': data,
                                         'timestamp': time.time(),
                                         'connection_status': 'connected'
-                                    })
+                                    }
+                                    # Add to cache
+                                    self.data_cache[radar.id].append(data_dict)
+                                    data_queue.put(data_dict)
+
+                                # Check if it's time to save data
+                                current_time = time.time()
+                                if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
+                                    self._save_data_to_file(radar.id)
+                                    self.last_save_time[radar.id] = current_time
+
                             except Exception as e:
                                 logger.error(f"Error reading data from radar {radar.id}: {str(e)}")
                                 data_queue.put({

@@ -179,6 +179,15 @@ class RadarConfig(models.Model):
         default=100,
         help_text="Update interval in milliseconds (min: 50ms, max: 1000ms)"
     )
+    file_save_interval = models.IntegerField(
+        default=5,
+        help_text="Interval for saving data to files in minutes (min: 1min, max: 60min)"
+    )
+    data_storage_path = models.CharField(
+        max_length=255,
+        default='data',
+        help_text="Path to store radar data files"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -339,3 +348,44 @@ class SystemMetrics(models.Model):
             'ram_used_percent': metrics.aggregate(models.Avg('ram_used_percent'))['ram_used_percent__avg'],
             'cpu_temperature': metrics.aggregate(models.Avg('cpu_temperature'))['cpu_temperature__avg'],
         }
+
+class RadarData(models.Model):
+    radar = models.ForeignKey(RadarConfig, on_delete=models.CASCADE, related_name='data')
+    timestamp = models.DateTimeField(auto_now_add=True)
+    range = models.FloatField(null=True, blank=True, help_text="Range measurement in meters")
+    speed = models.FloatField(null=True, blank=True, help_text="Speed measurement in m/s")
+    direction = models.FloatField(null=True, blank=True, help_text="Direction in degrees")
+    raw_data = models.TextField(null=True, blank=True, help_text="Raw data if parsing failed")
+    status = models.CharField(max_length=20, default='success', help_text="Status of the reading")
+    connection_status = models.CharField(max_length=20, default='connected', help_text="Connection status")
+
+    class Meta:
+        verbose_name = 'Radar Data'
+        verbose_name_plural = 'Radar Data'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['radar', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"{self.radar.name} - {self.timestamp}"
+
+class RadarDataFile(models.Model):
+    radar = models.ForeignKey(RadarConfig, on_delete=models.CASCADE, related_name='data_files')
+    filename = models.CharField(max_length=255, help_text="Name of the saved file")
+    file_path = models.CharField(max_length=512, help_text="Full path to the saved file")
+    timestamp = models.DateTimeField(auto_now_add=True, help_text="When the file was saved")
+    record_count = models.IntegerField(help_text="Number of records in the file")
+    file_size = models.BigIntegerField(help_text="Size of the file in bytes")
+    is_valid = models.BooleanField(default=True, help_text="Whether the file is valid and complete")
+
+    class Meta:
+        verbose_name = 'Radar Data File'
+        verbose_name_plural = 'Radar Data Files'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['radar', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"{self.radar.name} - {self.filename} ({self.timestamp})"
