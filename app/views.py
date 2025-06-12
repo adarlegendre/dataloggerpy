@@ -192,6 +192,7 @@ def config(request):
     return render(request, 'app/config.html', context)
 
 @login_required
+@permission_required('app.change_radarconfig', raise_exception=True)
 def edit_radar(request, radar_id):
     radar = get_object_or_404(RadarConfig, id=radar_id)
     if request.method == 'POST':

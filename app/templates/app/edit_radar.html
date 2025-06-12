@@ -82,6 +82,28 @@
                                 {% endif %}
                             </div>
                             <div class="col-md-4">
+                                <label for="id_file_save_interval" class="form-label">File Save Interval (minutes)</label>
+                                {{ form.file_save_interval }}
+                                <div class="form-text">Interval for saving data to files (1-60 minutes)</div>
+                                {% if form.file_save_interval.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.file_save_interval.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-8">
+                                <label for="id_data_storage_path" class="form-label">Data Storage Path</label>
+                                {{ form.data_storage_path }}
+                                <div class="form-text">Path where radar data files will be stored</div>
+                                {% if form.data_storage_path.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.data_storage_path.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
                                 <div class="form-check mt-4">
                                     {{ form.is_active }}
                                     <label class="form-check-label" for="id_is_active">
