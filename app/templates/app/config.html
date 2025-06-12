@@ -30,6 +30,9 @@
             <button class="nav-link" id="radar-tab" data-bs-toggle="tab" data-bs-target="#radar" type="button" role="tab" aria-controls="radar" aria-selected="false">Radar Settings</button>
         </li>
         <li class="nav-item" role="presentation">
+            <button class="nav-link" id="display-tab" data-bs-toggle="tab" data-bs-target="#display" type="button" role="tab" aria-controls="display" aria-selected="false">Display Settings</button>
+        </li>
+        <li class="nav-item" role="presentation">
             <button class="nav-link" id="notification-tab" data-bs-toggle="tab" data-bs-target="#notification" type="button" role="tab" aria-controls="notification" aria-selected="false">Notification Settings</button>
         </li>
     </ul>
@@ -321,6 +324,91 @@
                                         <td colspan="9" class="text-center">No radar configurations found</td>
                                     </tr>
                                 {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Display Settings Tab -->
+        <div class="tab-pane fade" id="display" role="tabpanel" aria-labelledby="display-tab">
+            <form method="post" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="display">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">CP5200 VMS Display Settings</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="display-ip_address" class="form-label">Display IP Address</label>
+                                {{ display_form.ip_address }}
+                                <div class="form-text">Default: 192.168.1.222</div>
+                                {% if display_form.ip_address.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ display_form.ip_address.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="display-port" class="form-label">Port</label>
+                                {{ display_form.port }}
+                                {% if display_form.port.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ display_form.port.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
+                                <label for="display-font_size" class="form-label">Font Size</label>
+                                {{ display_form.font_size }}
+                                <div class="form-text">Default: 16</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="display-effect_type" class="form-label">Effect Type</label>
+                                {{ display_form.effect_type }}
+                                <div class="form-text">Default: draw</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="display-justify" class="form-label">Text Alignment</label>
+                                {{ display_form.justify }}
+                                <div class="form-text">Default: right</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-12">
+                                <label for="display-test_message" class="form-label">Test Message</label>
+                                {{ display_form.test_message }}
+                                <div class="form-text">Enter text to test the display</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Save Display Settings</button>
+                    <button type="button" class="btn btn-info" id="testDisplayBtn">Test Display</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+
+            <!-- Display Test Results -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Display Test Results</h5>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Message</th>
+                                    <th>Protocol Data</th>
+                                    <th>Status</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody id="displayTestResults">
+                                <!-- Test results will be populated here -->
                             </tbody>
                         </table>
                     </div>
