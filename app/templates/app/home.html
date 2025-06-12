@@ -236,7 +236,7 @@
 
 <!-- Auto-refresh script -->
 <script>
-    // Update system info every 30 minutes (1800000 ms)
+    // Update system info every minute (60000 ms)
     function updateSystemInfo() {
         fetch('{% url "system_info_api" %}')
             .then(response => response.json())
@@ -268,7 +268,7 @@
                 document.querySelector('.uptime').innerText = data.uptime;
             });
     }
-    setInterval(updateSystemInfo, 1800000); // 30 minutes
+    setInterval(updateSystemInfo, 60000); // 1 minute
 
     // Initialize radar charts
     const radarCharts = {};

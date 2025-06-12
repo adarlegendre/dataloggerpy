@@ -4,7 +4,7 @@ from django.contrib.auth import logout
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm, UserForm, UserSearchForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo
 from .utils import get_system_info
 from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.models import Permission
@@ -16,8 +16,36 @@ from functools import wraps
 from .services import RadarDataService
 import logging
 import os
+import threading
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+# Global variable to store latest system info
+latest_system_info = None
+system_info_lock = threading.Lock()
+
+def update_system_info_thread():
+    """Background thread to update system info every minute without saving"""
+    while True:
+        try:
+            # Get system info without saving
+            info = get_system_info()
+            
+            # Update global variable with thread safety
+            with system_info_lock:
+                global latest_system_info
+                latest_system_info = info
+                
+            # Sleep for 1 minute
+            time.sleep(60)
+        except Exception as e:
+            print(f"Error in system info update thread: {e}")
+            time.sleep(60)  # Still sleep on error to prevent tight loop
+
+# Start the background thread when the application starts
+system_info_thread = threading.Thread(target=update_system_info_thread, daemon=True)
+system_info_thread.start()
 
 def superuser_required(view_func):
     @wraps(view_func)
@@ -179,10 +207,40 @@ def delete_radar(request, radar_id):
         messages.success(request, f'Radar configuration "{radar_name}" deleted successfully.')
     return redirect('config')
 
-@require_GET
+@login_required
+def update_system_info(request):
+    """API endpoint to update system info and save to database"""
+    if request.method == 'POST':
+        try:
+            # Get system info
+            info = get_system_info()
+            
+            # Update global variable with thread safety
+            with system_info_lock:
+                global latest_system_info
+                latest_system_info = info
+            
+            # Save to database
+            SystemInfo.objects.create(
+                disk_usage=info['disk']['percent'],
+                ram_usage=info['ram']['percent'],
+                cpu_temp=info['cpu_temp'],
+                timestamp=datetime.now()
+            )
+            
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+
+@login_required
 def system_info_api(request):
-    """API endpoint to return system info as JSON."""
-    return JsonResponse(get_system_info())
+    """API endpoint to get latest system info"""
+    with system_info_lock:
+        if latest_system_info is None:
+            # If no cached info, get fresh info
+            latest_system_info = get_system_info()
+        return JsonResponse(latest_system_info)
 
 @login_required
 @require_GET
