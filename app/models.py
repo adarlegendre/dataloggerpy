@@ -389,3 +389,18 @@ class RadarDataFile(models.Model):
 
     def __str__(self):
         return f"{self.radar.name} - {self.filename} ({self.timestamp})"
+
+class SystemInfo(models.Model):
+    """Model to store system information history"""
+    disk_usage = models.FloatField()
+    ram_usage = models.FloatField()
+    cpu_temp = models.FloatField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'System Info'
+        verbose_name_plural = 'System Info'
+
+    def __str__(self):
+        return f"System Info at {self.timestamp}"

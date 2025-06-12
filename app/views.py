@@ -18,24 +18,34 @@ import logging
 import os
 import threading
 from datetime import datetime, timedelta
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
-# Global variable to store latest system info
+# Global variables for system info caching
 latest_system_info = None
 system_info_lock = threading.Lock()
+system_info_history = deque(maxlen=1440)  # Store last 24 hours of data (1 reading per minute)
 
 def update_system_info_thread():
-    """Background thread to update system info every minute without saving"""
+    """Background thread to update system info every minute"""
     while True:
         try:
-            # Get system info without saving
+            # Get system info
             info = get_system_info()
             
-            # Update global variable with thread safety
+            # Update global variables with thread safety
             with system_info_lock:
                 global latest_system_info
                 latest_system_info = info
+                
+                # Add to history
+                system_info_history.append({
+                    'disk_usage': info['disk']['percent'],
+                    'ram_usage': info['ram']['percent'],
+                    'cpu_temp': info['cpu_temp'],
+                    'timestamp': datetime.now()
+                })
                 
             # Sleep for 1 minute
             time.sleep(60)
@@ -240,7 +250,26 @@ def system_info_api(request):
         if latest_system_info is None:
             # If no cached info, get fresh info
             latest_system_info = get_system_info()
-        return JsonResponse(latest_system_info)
+            
+        # Calculate 24h averages
+        if system_info_history:
+            disk_avg = sum(entry['disk_usage'] for entry in system_info_history) / len(system_info_history)
+            ram_avg = sum(entry['ram_usage'] for entry in system_info_history) / len(system_info_history)
+            cpu_avg = sum(entry['cpu_temp'] for entry in system_info_history) / len(system_info_history)
+        else:
+            disk_avg = None
+            ram_avg = None
+            cpu_avg = None
+            
+        # Add averages to response
+        response = latest_system_info.copy()
+        response['history'] = {
+            'disk_avg': round(disk_avg, 1) if disk_avg is not None else None,
+            'ram_avg': round(ram_avg, 1) if ram_avg is not None else None,
+            'cpu_avg': round(cpu_avg, 1) if cpu_avg is not None else None
+        }
+        
+        return JsonResponse(response)
 
 @login_required
 @require_GET
