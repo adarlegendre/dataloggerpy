@@ -185,17 +185,17 @@ class RadarDataService:
                     while not stop_event.is_set():
                         if ser.in_waiting:
                             try:
-                                data = ser.readline().strip()
+                                data = ser.readline()  # This returns bytes
                                 logger.debug(f"Raw data received from radar {radar.id}: {data}")
                                 
                                 data_dict = None
                                 # Parse the specific format b'*+/-000.0,000'
-                                if data.startswith("b'*") and data.endswith("'"):
-                                    # Remove b' prefix and ' suffix
-                                    data = data[2:-1]
-                                    # Extract the measurement value
-                                    measurement = data[1:]  # Remove *
+                                if data.startswith(b'*'):  # Check for bytes prefix
                                     try:
+                                        # Decode bytes to string and remove whitespace
+                                        data_str = data.decode('utf-8').strip()
+                                        # Extract the measurement value
+                                        measurement = data_str[1:]  # Remove *
                                         # Split by comma and convert to float
                                         range_value, speed_value = map(float, measurement.split(','))
                                         data_dict = {
@@ -204,7 +204,7 @@ class RadarDataService:
                                             'speed': speed_value,
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
-                                            'raw_data': data,  # Store raw data for debugging
+                                            'raw_data': data_str,  # Store raw data for debugging
                                             'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'  # More readable display
                                         }
                                         logger.info(f"Successfully parsed data from radar {radar.id}: range={range_value}, speed={speed_value}")
@@ -213,7 +213,7 @@ class RadarDataService:
                                         data_dict = {
                                             'status': 'error',
                                             'message': f'Error parsing measurement: {str(e)}',
-                                            'raw_data': data,
+                                            'raw_data': data.decode('utf-8', errors='replace'),
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
                                             'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
@@ -223,10 +223,10 @@ class RadarDataService:
                                     logger.warning(f"Received non-standard format from radar {radar.id}: {data}")
                                     data_dict = {
                                         'status': 'success',
-                                        'raw_data': data,
+                                        'raw_data': data.decode('utf-8', errors='replace'),
                                         'timestamp': time.time(),
                                         'connection_status': 'connected',
-                                        'display_text': f'[CONNECTED] {data}'  # Add display text for terminal
+                                        'display_text': f'[CONNECTED] {data.decode("utf-8", errors="replace")}'  # Add display text for terminal
                                     }
 
                                 if data_dict:
