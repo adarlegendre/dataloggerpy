@@ -195,10 +195,11 @@ class RadarDataService:
                         if ser.in_waiting:
                             try:
                                 data = ser.readline()  # This returns bytes
-                                logger.debug(f"Raw data received from radar {radar.id}: {data}")
+                                logger.info(f"Raw bytes received from radar {radar.id}: {data}")  # Log raw bytes
                                 
                                 # Skip empty lines or lines with only \r
                                 if data in [b'\r', b'\n', b'\r\n']:
+                                    logger.debug(f"Skipping empty line for radar {radar.id}")
                                     continue
                                 
                                 data_dict = None
@@ -207,20 +208,25 @@ class RadarDataService:
                                     try:
                                         # Data is in bytes, decode it first
                                         data_str = data.decode('utf-8').strip()
+                                        logger.info(f"Decoded data for radar {radar.id}: {data_str}")  # Log decoded string
+                                        
                                         # Extract the measurement value (remove * and any leading/trailing whitespace)
                                         measurement = data_str.lstrip('*').strip()
+                                        logger.info(f"Measurement string for radar {radar.id}: {measurement}")  # Log measurement string
+                                        
                                         # Split by comma and convert to float
                                         range_value, speed_value = map(float, measurement.split(','))
+                                        logger.info(f"Parsed values for radar {radar.id}: range={range_value}, speed={speed_value}")  # Log parsed values
+                                        
                                         data_dict = {
                                             'status': 'success',
                                             'range': range_value,
                                             'speed': speed_value,
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
-                                            'raw_data': data_str,  # Store raw data for debugging
-                                            'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'  # More readable display
+                                            'raw_data': data_str,
+                                            'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'
                                         }
-                                        logger.info(f"Successfully parsed data from radar {radar.id}: range={range_value}, speed={speed_value}")
                                     except ValueError as e:
                                         logger.error(f"Error parsing measurement values for radar {radar.id}: {str(e)}")
                                         data_dict = {
@@ -229,7 +235,7 @@ class RadarDataService:
                                             'raw_data': data.decode('utf-8', errors='replace'),
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
-                                            'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
+                                            'display_text': f'[ERROR] {str(e)}'
                                         }
                                 else:
                                     # Only log non-standard format if it's not just a control character
@@ -240,7 +246,7 @@ class RadarDataService:
                                             'raw_data': data.decode('utf-8', errors='replace'),
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
-                                            'display_text': f'[CONNECTED] {data.decode("utf-8", errors="replace")}'  # Add display text for terminal
+                                            'display_text': f'[CONNECTED] {data.decode("utf-8", errors="replace")}'
                                         }
 
                                 if data_dict:
@@ -249,7 +255,7 @@ class RadarDataService:
                                     # Add to cache and queue
                                     self.data_cache[radar.id].append(data_dict)
                                     data_queue.put(data_dict)
-                                    logger.debug(f"Data queued for radar {radar.id}: {data_dict}")
+                                    logger.info(f"Data queued for radar {radar.id}: {data_dict}")  # Log queued data
 
                                     # Check if it's time to save data
                                     current_time = time.time()
@@ -264,8 +270,10 @@ class RadarDataService:
                                     'status': 'error',
                                     'message': f'Error reading data: {str(e)}',
                                     'connection_status': 'error',
-                                    'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
+                                    'display_text': f'[ERROR] {str(e)}'
                                 })
+                        else:
+                            logger.debug(f"No data in waiting for radar {radar.id}")  # Log when no data is waiting
                         time.sleep(radar.update_interval / 1000.0)  # Convert ms to seconds
                         
             except serial.SerialException as e:
