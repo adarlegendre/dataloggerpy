@@ -267,6 +267,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 <script src="https://cdn.jsdelivr.net/npm/date-fns"></script>
+<script src="https://cdn.jsdelivr.net/npm/date-fns/locale/en-US/index.js"></script>
 
 <script>
     // Update system info every minute (60000 ms)
@@ -344,7 +345,7 @@
                     },
                     adapters: {
                         date: {
-                            locale: enUS
+                            locale: dateFns.enUS
                         }
                     }
                 },
