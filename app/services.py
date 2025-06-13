@@ -235,17 +235,25 @@ class RadarDataService:
                                         }
 
                                 if data_dict:
-                                    # Add to cache and queue
-                                    self.data_cache[radar.id].append(data_dict)
-                                    data_queue.put(data_dict)
-                                    logger.debug(f"Data queued for radar {radar.id}: {data_dict}")
+                                    # Check if both range and speed are zero
+                                    if data_dict.get('range') == 0 and data_dict.get('speed') == 0:
+                                        data_dict['display_text'] = f'[NO CHANGE] Range: 0.0m, Speed: 0mm/s'
+                                        data_queue.put(data_dict)
+                                        logger.info(f"No change in data detected for radar {radar.id}")
+                                    else:
+                                        # Format the display text with clear values
+                                        data_dict['display_text'] = f'[ACTIVE] Range: {data_dict.get("range", 0):.1f}m, Speed: {data_dict.get("speed", 0):.0f}mm/s'
+                                        # Add to cache and queue only if there is actual data
+                                        self.data_cache[radar.id].append(data_dict)
+                                        data_queue.put(data_dict)
+                                        logger.debug(f"Data queued for radar {radar.id}: {data_dict}")
 
-                                    # Check if it's time to save data
-                                    current_time = time.time()
-                                    if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
-                                        logger.info(f"Saving data to file for radar {radar.id}")
-                                        self._save_data_to_file(radar.id)
-                                        self.last_save_time[radar.id] = current_time
+                                        # Check if it's time to save data
+                                        current_time = time.time()
+                                        if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
+                                            logger.info(f"Saving data to file for radar {radar.id}")
+                                            self._save_data_to_file(radar.id)
+                                            self.last_save_time[radar.id] = current_time
 
                             except Exception as e:
                                 logger.error(f"Error reading data from radar {radar.id}: {str(e)}")

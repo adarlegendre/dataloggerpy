@@ -19,6 +19,7 @@ import os
 import threading
 from datetime import datetime, timedelta
 from collections import deque
+from django.core.paginator import Paginator
 
 logger = logging.getLogger(__name__)
 
@@ -498,3 +499,24 @@ def delete_radar_file(request, file_id):
             'status': 'error',
             'message': f'Error deleting file: {str(e)}'
         }, status=500)
+
+@login_required
+@permission_required('app.view_radardatafile', raise_exception=True)
+def radar_data_view(request, radar_id):
+    """View for displaying radar data in a paginated table"""
+    radar = get_object_or_404(RadarConfig, id=radar_id)
+    
+    # Get all data files for this radar
+    data_files = RadarDataFile.objects.filter(radar=radar).order_by('-created_at')
+    
+    # Paginate the data files
+    paginator = Paginator(data_files, 10)  # Show 10 files per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'radar': radar,
+        'page_obj': page_obj,
+        'data_files': page_obj,
+    }
+    return render(request, 'app/radar_data.html', context)
