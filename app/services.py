@@ -134,13 +134,22 @@ class RadarDataService:
             filename = f"radar_{radar.name}_{timestamp}.json"
             filepath = os.path.join(save_dir, filename)
             
-            # Save data to file
+            # Extract only timestamp and values from the data
+            simplified_data = []
+            for data_point in self.data_cache[radar_id]:
+                simplified_data.append({
+                    'timestamp': data_point['timestamp'],
+                    'range': data_point.get('range', 0),
+                    'speed': data_point.get('speed', 0)
+                })
+            
+            # Save simplified data to file
             with open(filepath, 'w') as f:
-                json.dump(list(self.data_cache[radar_id]), f, indent=2)
+                json.dump(simplified_data, f, indent=2)
             
             # Get file size
             file_size = os.path.getsize(filepath)
-            record_count = len(self.data_cache[radar_id])
+            record_count = len(simplified_data)
             
             # Create RadarDataFile record
             RadarDataFile.objects.create(

@@ -472,10 +472,19 @@ def delete_radar_file(request, file_id):
         
         # Delete the physical file
         if os.path.exists(data_file.file_path):
-            os.remove(data_file.file_path)
+            try:
+                os.remove(data_file.file_path)
+                logger.info(f"Deleted file: {data_file.file_path}")
+            except Exception as e:
+                logger.error(f"Error deleting physical file {data_file.file_path}: {str(e)}")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Error deleting physical file: {str(e)}'
+                }, status=500)
             
         # Delete the database record
         data_file.delete()
+        logger.info(f"Deleted database record for file ID: {file_id}")
         
         return JsonResponse({
             'status': 'success',
@@ -483,6 +492,7 @@ def delete_radar_file(request, file_id):
         })
         
     except Exception as e:
+        logger.error(f"Error in delete_radar_file: {str(e)}")
         return JsonResponse({
             'status': 'error',
             'message': f'Error deleting file: {str(e)}'
