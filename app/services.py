@@ -155,35 +155,50 @@ class RadarDataService:
                                 data = ser.readline().decode('utf-8').strip()
                                 logger.debug(f"Raw data from radar {radar.id}: {data}")
                                 
-                                try:
-                                    parsed_data = json.loads(data)
-                                    data_dict = {
-                                        'status': 'success',
-                                        'range': parsed_data.get('range'),
-                                        'speed': parsed_data.get('speed'),
-                                        'direction': parsed_data.get('direction'),
-                                        'timestamp': time.time(),
-                                        'connection_status': 'connected'
-                                    }
-                                    # Add to cache
-                                    self.data_cache[radar.id].append(data_dict)
-                                    data_queue.put(data_dict)
-                                except json.JSONDecodeError:
+                                data_dict = None
+                                # Parse the specific format *?000.0,000
+                                if data.startswith('*?'):
+                                    # Extract the measurement value
+                                    measurement = data[2:]  # Remove *?
+                                    try:
+                                        # Split by comma and convert to float
+                                        range_value, speed_value = map(float, measurement.split(','))
+                                        data_dict = {
+                                            'status': 'success',
+                                            'range': range_value,
+                                            'speed': speed_value,
+                                            'timestamp': time.time(),
+                                            'connection_status': 'connected',
+                                            'raw_data': data  # Store raw data for debugging
+                                        }
+                                    except ValueError as e:
+                                        logger.error(f"Error parsing measurement values: {str(e)}")
+                                        data_dict = {
+                                            'status': 'error',
+                                            'message': f'Error parsing measurement: {str(e)}',
+                                            'raw_data': data,
+                                            'timestamp': time.time(),
+                                            'connection_status': 'connected'
+                                        }
+                                else:
+                                    # Handle non-standard format
                                     data_dict = {
                                         'status': 'success',
                                         'raw_data': data,
                                         'timestamp': time.time(),
                                         'connection_status': 'connected'
                                     }
-                                    # Add to cache
+
+                                if data_dict:
+                                    # Add to cache and queue
                                     self.data_cache[radar.id].append(data_dict)
                                     data_queue.put(data_dict)
 
-                                # Check if it's time to save data
-                                current_time = time.time()
-                                if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
-                                    self._save_data_to_file(radar.id)
-                                    self.last_save_time[radar.id] = current_time
+                                    # Check if it's time to save data
+                                    current_time = time.time()
+                                    if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
+                                        self._save_data_to_file(radar.id)
+                                        self.last_save_time[radar.id] = current_time
 
                             except Exception as e:
                                 logger.error(f"Error reading data from radar {radar.id}: {str(e)}")

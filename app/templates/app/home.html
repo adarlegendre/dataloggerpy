@@ -151,6 +151,9 @@
                         <small class="text-muted">Port: {{ radar.port }}</small>
                     </div>
 
+                    <!-- Error Message Display -->
+                    <div id="error_{{ radar.id }}" class="alert alert-danger mb-3" style="display: none;"></div>
+
                     <!-- Radar Graphs -->
                     <div class="row mb-4">
                         <div class="col-md-4">
@@ -179,6 +182,32 @@
                         </div>
                     </div>
                     
+                    <!-- Raw Serial Data Display -->
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0 d-flex align-items-center">
+                                <i class="fas fa-terminal me-2"></i>Raw Serial Data
+                                <button class="btn btn-sm btn-outline-secondary ms-2" type="button" 
+                                        onclick="toggleSerialDataCollapse({{ radar.id }})">
+                                    <i class="fas fa-chevron-down" id="collapseIcon_{{ radar.id }}"></i>
+                                </button>
+                            </h6>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary" onclick="clearSerialData({{ radar.id }})">
+                                    <i class="fas fa-trash"></i> Clear
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="toggleAutoScroll({{ radar.id }})">
+                                    <i class="fas fa-scroll"></i> Auto-scroll
+                                </button>
+                            </div>
+                        </div>
+                        <div id="serialDataCollapse_{{ radar.id }}" class="card-body p-0">
+                            <div id="serialData_{{ radar.id }}" class="serial-terminal">
+                                <div class="serial-content"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Radar Data Files Table -->
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
@@ -420,55 +449,213 @@
         {% endfor %}
     }
 
-    // Update radar data every 5 seconds
+    // Serial data handling
+    const serialData = {};
+    const autoScroll = {};
+    const MAX_LINES = 100; // Reduced from 1000 to 100 lines
+    const MAX_LINE_LENGTH = 1000; // Maximum characters per line
+
+    class CircularBuffer {
+        constructor(capacity) {
+            this.capacity = capacity;
+            this.buffer = new Array(capacity);
+            this.head = 0;
+            this.size = 0;
+        }
+
+        push(item) {
+            // Truncate item if it's too long
+            if (item.length > MAX_LINE_LENGTH) {
+                item = item.substring(0, MAX_LINE_LENGTH - 3) + '...';
+            }
+            
+            this.buffer[this.head] = item;
+            this.head = (this.head + 1) % this.capacity;
+            if (this.size < this.capacity) {
+                this.size++;
+            }
+        }
+
+        getLines() {
+            const lines = [];
+            for (let i = 0; i < this.size; i++) {
+                const index = (this.head - this.size + i + this.capacity) % this.capacity;
+                lines.push(this.buffer[index]);
+            }
+            return lines;
+        }
+
+        clear() {
+            this.buffer = new Array(this.capacity);
+            this.head = 0;
+            this.size = 0;
+        }
+    }
+
+    // Add collapse state management
+    const serialDataCollapsed = {};
+
+    function initSerialData() {
+        {% for radar in radars %}
+        serialData[{{ radar.id }}] = new CircularBuffer(MAX_LINES);
+        autoScroll[{{ radar.id }}] = true;
+        // Initialize collapse state from localStorage
+        serialDataCollapsed[{{ radar.id }}] = localStorage.getItem(`serialDataCollapsed_${ {{ radar.id }} }`) === 'true';
+        // Set initial collapse state
+        const collapseElement = document.getElementById(`serialDataCollapse_${ {{ radar.id }} }`);
+        const collapseIcon = document.getElementById(`collapseIcon_${ {{ radar.id }} }`);
+        if (collapseElement && collapseIcon) {
+            if (serialDataCollapsed[{{ radar.id }}]) {
+                collapseElement.classList.add('collapsed');
+                collapseIcon.classList.remove('fa-chevron-down');
+                collapseIcon.classList.add('fa-chevron-right');
+            } else {
+                collapseElement.classList.remove('collapsed');
+                collapseIcon.classList.remove('fa-chevron-right');
+                collapseIcon.classList.add('fa-chevron-down');
+            }
+        }
+        {% endfor %}
+    }
+
+    function clearSerialData(radarId) {
+        const terminal = document.querySelector(`#serialData_${radarId} .serial-content`);
+        serialData[radarId].clear();
+        terminal.innerHTML = '';
+    }
+
+    function toggleAutoScroll(radarId) {
+        autoScroll[radarId] = !autoScroll[radarId];
+        const button = event.currentTarget;
+        if (autoScroll[radarId]) {
+            button.classList.remove('btn-secondary');
+            button.classList.add('btn-outline-secondary');
+        } else {
+            button.classList.remove('btn-outline-secondary');
+            button.classList.add('btn-secondary');
+        }
+    }
+
+    function appendSerialData(radarId, data) {
+        const terminal = document.querySelector(`#serialData_${radarId} .serial-content`);
+        const timestamp = new Date().toLocaleTimeString();
+        
+        // Extract the numeric part from the raw data (000.0,000)
+        let numericData = '';
+        if (data.includes('*?')) {
+            const parts = data.split('*?');
+            if (parts.length > 1) {
+                numericData = parts[1].trim();
+            }
+        }
+        
+        // Format the line with timestamp and numeric data
+        const line = `${timestamp}.${numericData}`;
+        
+        serialData[radarId].push(line);
+        
+        // Update display efficiently
+        const lines = serialData[radarId].getLines();
+        terminal.innerHTML = lines.join('\n');
+        
+        if (autoScroll[radarId]) {
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    }
+
+    // Add memory monitoring
+    function updateMemoryUsage() {
+        const memoryInfo = performance.memory;
+        if (memoryInfo) {
+            const usedHeap = Math.round(memoryInfo.usedJSHeapSize / 1024 / 1024);
+            const totalHeap = Math.round(memoryInfo.totalJSHeapSize / 1024 / 1024);
+            console.log(`Memory Usage: ${usedHeap}MB / ${totalHeap}MB`);
+        }
+    }
+
+    // Modify the updateRadarData function to handle data separately
     function updateRadarData() {
         {% for radar in radars %}
         fetch('{% url "radar_data_api" radar.id %}')
             .then(response => response.json())
             .then(data => {
-                if (data.status === 'success' && data.connection_status === 'connected') {
-                    const radarId = {{ radar.id }};
-                    const timestamp = new Date(data.timestamp * 1000).toLocaleTimeString();
+                const radarId = {{ radar.id }};
+                const timestamp = new Date(data.timestamp * 1000).toLocaleTimeString();
 
-                    // Update range chart
-                    if (data.range !== null && data.range !== undefined) {
-                        const rangeChart = radarCharts[`range_${radarId}`];
-                        rangeChart.data.labels.push(timestamp);
-                        rangeChart.data.datasets[0].data.push(data.range);
-                        if (rangeChart.data.labels.length > 20) {
-                            rangeChart.data.labels.shift();
-                            rangeChart.data.datasets[0].data.shift();
-                        }
-                        rangeChart.update('none');
+                // Update connection status
+                const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
+                if (statusBadge) {
+                    if (data.connection_status === 'connected') {
+                        statusBadge.className = 'badge bg-success';
+                        statusBadge.textContent = 'Active';
+                    } else if (data.connection_status === 'disconnected') {
+                        statusBadge.className = 'badge bg-danger';
+                        statusBadge.textContent = 'Disconnected';
+                    } else {
+                        statusBadge.className = 'badge bg-warning';
+                        statusBadge.textContent = 'Error';
                     }
+                }
 
-                    // Update speed chart
-                    if (data.speed !== null && data.speed !== undefined) {
-                        const speedChart = radarCharts[`speed_${radarId}`];
-                        speedChart.data.labels.push(timestamp);
-                        speedChart.data.datasets[0].data.push(data.speed);
-                        if (speedChart.data.labels.length > 20) {
-                            speedChart.data.labels.shift();
-                            speedChart.data.datasets[0].data.shift();
-                        }
-                        speedChart.update('none');
+                // Handle raw data separately
+                if (data.raw_data) {
+                    appendSerialData(radarId, data.raw_data);
+                }
+
+                // Update radar graphs if valid data is available
+                if (data.range !== null && data.range !== undefined && !isNaN(data.range)) {
+                    const rangeChart = radarCharts[`range_${radarId}`];
+                    rangeChart.data.labels.push(timestamp);
+                    rangeChart.data.datasets[0].data.push(data.range);
+                    if (rangeChart.data.labels.length > 20) {
+                        rangeChart.data.labels.shift();
+                        rangeChart.data.datasets[0].data.shift();
                     }
+                    rangeChart.update('none');
+                }
 
-                    // Update direction chart
-                    if (data.direction !== null && data.direction !== undefined) {
-                        const directionChart = radarCharts[`direction_${radarId}`];
-                        directionChart.data.labels.push(timestamp);
-                        directionChart.data.datasets[0].data.push(data.direction);
-                        if (directionChart.data.labels.length > 20) {
-                            directionChart.data.labels.shift();
-                            directionChart.data.datasets[0].data.shift();
-                        }
-                        directionChart.update('none');
+                if (data.speed !== null && data.speed !== undefined && !isNaN(data.speed)) {
+                    const speedChart = radarCharts[`speed_${radarId}`];
+                    speedChart.data.labels.push(timestamp);
+                    speedChart.data.datasets[0].data.push(data.speed);
+                    if (speedChart.data.labels.length > 20) {
+                        speedChart.data.labels.shift();
+                        speedChart.data.datasets[0].data.shift();
+                    }
+                    speedChart.update('none');
+                }
+
+                if (data.direction !== null && data.direction !== undefined && !isNaN(data.direction)) {
+                    const directionChart = radarCharts[`direction_${radarId}`];
+                    directionChart.data.labels.push(timestamp);
+                    directionChart.data.datasets[0].data.push(data.direction);
+                    if (directionChart.data.labels.length > 20) {
+                        directionChart.data.labels.shift();
+                        directionChart.data.datasets[0].data.shift();
+                    }
+                    directionChart.update('none');
+                }
+
+                // Show error message if any
+                if (data.status === 'error' && data.message) {
+                    const errorDiv = document.getElementById(`error_${radarId}`);
+                    if (errorDiv) {
+                        errorDiv.textContent = data.message;
+                        errorDiv.style.display = 'block';
+                        setTimeout(() => {
+                            errorDiv.style.display = 'none';
+                        }, 5000);
                     }
                 }
             })
             .catch(error => {
                 console.error('Error fetching radar data:', error);
+                const radarId = {{ radar.id }};
+                const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
+                if (statusBadge) {
+                    statusBadge.className = 'badge bg-danger';
+                    statusBadge.textContent = 'Error';
+                }
             });
         {% endfor %}
     }
@@ -476,7 +663,9 @@
     // Initialize charts and start updates
     document.addEventListener('DOMContentLoaded', function() {
         initRadarCharts();
+        initSerialData();
         setInterval(updateRadarData, 5000);
+        setInterval(updateMemoryUsage, 30000);
     });
 
     // Function to delete radar file
@@ -520,5 +709,100 @@
         }
         return cookieValue;
     }
+
+    function toggleSerialDataCollapse(radarId) {
+        const collapseElement = document.getElementById(`serialDataCollapse_${radarId}`);
+        const collapseIcon = document.getElementById(`collapseIcon_${radarId}`);
+        
+        if (collapseElement && collapseIcon) {
+            serialDataCollapsed[radarId] = !serialDataCollapsed[radarId];
+            localStorage.setItem(`serialDataCollapsed_${radarId}`, serialDataCollapsed[radarId]);
+            
+            if (serialDataCollapsed[radarId]) {
+                collapseElement.classList.add('collapsed');
+                collapseIcon.classList.remove('fa-chevron-down');
+                collapseIcon.classList.add('fa-chevron-right');
+            } else {
+                collapseElement.classList.remove('collapsed');
+                collapseIcon.classList.remove('fa-chevron-right');
+                collapseIcon.classList.add('fa-chevron-down');
+            }
+        }
+    }
 </script>
+
+<style>
+.serial-terminal {
+    background-color: #1e1e1e;
+    color: #00ff00;
+    font-family: 'Consolas', 'Monaco', monospace;
+    height: 200px;
+    overflow-y: auto;
+    padding: 10px;
+    border-radius: 0 0 0.25rem 0.25rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.serial-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* Style for the timestamp */
+.serial-content {
+    color: #00ff00;
+}
+
+/* Style for the raw data */
+.serial-content {
+    color: #00ff00;
+}
+
+/* Add a subtle separator between lines */
+.serial-content {
+    border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+    padding-bottom: 2px;
+    margin-bottom: 2px;
+}
+
+.serial-terminal::-webkit-scrollbar {
+    width: 8px;
+}
+
+.serial-terminal::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.serial-terminal::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 4px;
+}
+
+.serial-terminal::-webkit-scrollbar-thumb:hover {
+    background: #888;
+}
+
+.collapsed {
+    display: none !important;
+}
+
+/* Add styles for the collapse button */
+.btn-outline-secondary {
+    border-color: #6c757d;
+    color: #6c757d;
+}
+
+.btn-outline-secondary:hover {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-outline-secondary i {
+    font-size: 0.875rem;
+    width: 1rem;
+    text-align: center;
+}
+</style>
 {% endblock %} 
