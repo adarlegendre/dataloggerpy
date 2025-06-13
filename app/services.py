@@ -201,28 +201,45 @@ class RadarDataService:
                                 if not data:
                                     continue
                                 
-                                # Try to decode the data
-                                try:
-                                    data_str = data.decode('utf-8')
-                                    logger.info(f"Decoded data: {data_str}")
-                                    
-                                    # Create a simple data dictionary with the raw data
-                                    data_dict = {
-                                        'status': 'success',
-                                        'raw_data': data_str,
-                                        'timestamp': time.time(),
-                                        'connection_status': 'connected',
-                                        'display_text': f'[CONNECTED] {data_str}'
-                                    }
-                                    
-                                    # Add to cache and queue
-                                    self.data_cache[radar.id].append(data_dict)
-                                    data_queue.put(data_dict)
-                                    logger.info(f"Data queued: {data_dict}")
-                                    
-                                except UnicodeDecodeError as e:
-                                    logger.error(f"Failed to decode data: {str(e)}")
-                                    continue
+                                # Parse the specific format b'*+/-000.0,000'
+                                if data.startswith(b'*'):
+                                    try:
+                                        # Decode the data
+                                        data_str = data.decode('utf-8')
+                                        logger.info(f"Processing data: {data_str}")
+                                        
+                                        # Remove * and split by comma
+                                        measurement = data_str.lstrip('*')
+                                        range_value, speed_value = map(float, measurement.split(','))
+                                        
+                                        data_dict = {
+                                            'status': 'success',
+                                            'range': range_value,
+                                            'speed': speed_value,
+                                            'timestamp': time.time(),
+                                            'connection_status': 'connected',
+                                            'raw_data': data_str,
+                                            'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'
+                                        }
+                                        
+                                        # Add to cache and queue
+                                        self.data_cache[radar.id].append(data_dict)
+                                        data_queue.put(data_dict)
+                                        logger.info(f"Data queued: {data_dict}")
+                                        
+                                        # Check if it's time to save data
+                                        current_time = time.time()
+                                        if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
+                                            logger.info(f"Saving data to file for radar {radar.id}")
+                                            self._save_data_to_file(radar.id)
+                                            self.last_save_time[radar.id] = current_time
+                                            
+                                    except (UnicodeDecodeError, ValueError) as e:
+                                        logger.error(f"Error processing data: {str(e)}")
+                                        logger.error(f"Problematic data: {data}")
+                                        continue
+                                else:
+                                    logger.warning(f"Received non-standard format: {data}")
                                     
                             except Exception as e:
                                 logger.error(f"Error reading data: {str(e)}")
