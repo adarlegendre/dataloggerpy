@@ -309,6 +309,24 @@ def radar_data_api(request, radar_id):
         })
 
 @login_required
+@require_GET
+def serial_ports_api(request):
+    """API endpoint for checking available serial ports."""
+    try:
+        data_service = RadarDataService()
+        ports = data_service.check_serial_ports()
+        return JsonResponse({
+            'status': 'success',
+            'ports': ports
+        })
+    except Exception as e:
+        logger.error(f"Error in serial_ports_api: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error: {str(e)}'
+        })
+
+@login_required
 @permission_required('app.view_user', raise_exception=True)
 def user_list(request):
     search_form = UserSearchForm(request.GET)

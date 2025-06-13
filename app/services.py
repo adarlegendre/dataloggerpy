@@ -34,6 +34,29 @@ class RadarDataService:
         self.last_save_time = {}  # Track last save time for each radar
         logger.info("RadarDataService initialized")
     
+    def check_serial_ports(self):
+        """Check available serial ports and their status"""
+        import serial.tools.list_ports
+        ports = serial.tools.list_ports.comports()
+        port_info = []
+        for port in ports:
+            try:
+                with serial.Serial(port.device, timeout=0.1) as ser:
+                    port_info.append({
+                        'device': port.device,
+                        'description': port.description,
+                        'hwid': port.hwid,
+                        'status': 'available'
+                    })
+            except serial.SerialException:
+                port_info.append({
+                    'device': port.device,
+                    'description': port.description,
+                    'hwid': port.hwid,
+                    'status': 'in_use'
+                })
+        return port_info
+
     def start_service(self):
         """Start the radar data service"""
         logger.info("Starting radar data service")
@@ -141,6 +164,7 @@ class RadarDataService:
         
         while not stop_event.is_set():
             try:
+                logger.info(f"Attempting to connect to radar {radar.id} on port {radar.port}")
                 with serial.Serial(
                     port=radar.port,
                     baudrate=radar.baud_rate,
@@ -149,6 +173,7 @@ class RadarDataService:
                     stopbits=radar.stop_bits,
                     timeout=0.1
                 ) as ser:
+                    logger.info(f"Successfully connected to radar {radar.id} on port {radar.port}")
                     # Send connection status
                     data_queue.put({
                         'status': 'success',
@@ -160,13 +185,16 @@ class RadarDataService:
                     while not stop_event.is_set():
                         if ser.in_waiting:
                             try:
-                                data = ser.readline().decode('utf-8').strip()
+                                data = ser.readline().strip()
+                                logger.debug(f"Raw data received from radar {radar.id}: {data}")
                                 
                                 data_dict = None
-                                # Parse the specific format *?000.0,000
-                                if data.startswith('*?'):
+                                # Parse the specific format b'*+/-000.0,000'
+                                if data.startswith("b'*") and data.endswith("'"):
+                                    # Remove b' prefix and ' suffix
+                                    data = data[2:-1]
                                     # Extract the measurement value
-                                    measurement = data[2:]  # Remove *?
+                                    measurement = data[1:]  # Remove *
                                     try:
                                         # Split by comma and convert to float
                                         range_value, speed_value = map(float, measurement.split(','))
@@ -177,10 +205,11 @@ class RadarDataService:
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
                                             'raw_data': data,  # Store raw data for debugging
-                                            'display_text': f'[CONNECTED] {data}'  # Add display text for terminal
+                                            'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'  # More readable display
                                         }
+                                        logger.info(f"Successfully parsed data from radar {radar.id}: range={range_value}, speed={speed_value}")
                                     except ValueError as e:
-                                        logger.error(f"Error parsing measurement values: {str(e)}")
+                                        logger.error(f"Error parsing measurement values for radar {radar.id}: {str(e)}")
                                         data_dict = {
                                             'status': 'error',
                                             'message': f'Error parsing measurement: {str(e)}',
@@ -191,6 +220,7 @@ class RadarDataService:
                                         }
                                 else:
                                     # Handle non-standard format
+                                    logger.warning(f"Received non-standard format from radar {radar.id}: {data}")
                                     data_dict = {
                                         'status': 'success',
                                         'raw_data': data,
@@ -203,10 +233,12 @@ class RadarDataService:
                                     # Add to cache and queue
                                     self.data_cache[radar.id].append(data_dict)
                                     data_queue.put(data_dict)
+                                    logger.debug(f"Data queued for radar {radar.id}: {data_dict}")
 
                                     # Check if it's time to save data
                                     current_time = time.time()
                                     if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
+                                        logger.info(f"Saving data to file for radar {radar.id}")
                                         self._save_data_to_file(radar.id)
                                         self.last_save_time[radar.id] = current_time
 

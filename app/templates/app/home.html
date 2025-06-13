@@ -264,6 +264,9 @@
 </div>
 
 <!-- Auto-refresh script -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
 <script>
     // Update system info every minute (60000 ms)
     function updateSystemInfo() {
@@ -302,6 +305,8 @@
     // Initialize radar charts
     const radarCharts = {};
     const radarData = {};
+    const MAX_DATA_POINTS = 30; // Show last 30 seconds of data
+    const UPDATE_INTERVAL = 100; // Update every 0.1 seconds
 
     function initRadarCharts() {
         {% for radar in radars %}
@@ -309,7 +314,10 @@
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
-            animation: false,
+            animation: {
+                duration: 750,
+                easing: 'easeInOutQuart'
+            },
             scales: {
                 x: {
                     type: 'time',
@@ -317,7 +325,8 @@
                         unit: 'second',
                         displayFormats: {
                             second: 'HH:mm:ss'
-                        }
+                        },
+                        tooltipFormat: 'HH:mm:ss'
                     },
                     title: {
                         display: true,
@@ -326,6 +335,11 @@
                     grid: {
                         display: true,
                         color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 8
                     }
                 },
                 y: {
@@ -339,14 +353,28 @@
             plugins: {
                 legend: {
                     display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
+                        }
+                    }
                 }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
             }
         };
 
         // Initialize with empty data
         const now = new Date();
-        const emptyLabels = Array(20).fill(now.toLocaleTimeString());
-        const emptyData = Array(20).fill(null);
+        const emptyLabels = Array(MAX_DATA_POINTS).fill(now);
+        const emptyData = Array(MAX_DATA_POINTS).fill(null);
 
         // Range Chart
         radarCharts[`range_${radarId}`] = new Chart(document.getElementById('rangeChart_{{ radar.id }}'), {
@@ -357,10 +385,12 @@
                     label: 'Range (m)',
                     data: emptyData,
                     borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    fill: false,
-                    pointRadius: 3,
-                    pointHoverRadius: 5
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    borderWidth: 2
                 }]
             },
             options: {
@@ -372,6 +402,18 @@
                         title: {
                             display: true,
                             text: 'Range (m)'
+                        },
+                        autoScale: true
+                    }
+                },
+                plugins: {
+                    ...commonOptions.plugins,
+                    tooltip: {
+                        ...commonOptions.plugins.tooltip,
+                        callbacks: {
+                            label: function(context) {
+                                return `Range: ${context.parsed.y.toFixed(1)}m`;
+                            }
                         }
                     }
                 }
@@ -384,13 +426,15 @@
             data: {
                 labels: emptyLabels,
                 datasets: [{
-                    label: 'Speed (m/s)',
+                    label: 'Speed (mm/s)',
                     data: emptyData,
                     borderColor: 'rgb(255, 99, 132)',
-                    tension: 0.1,
-                    fill: false,
-                    pointRadius: 3,
-                    pointHoverRadius: 5
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    borderWidth: 2
                 }]
             },
             options: {
@@ -401,44 +445,27 @@
                         ...commonOptions.scales.y,
                         title: {
                             display: true,
-                            text: 'Speed (m/s)'
+                            text: 'Speed (mm/s)'
+                        },
+                        autoScale: true
+                    }
+                },
+                plugins: {
+                    ...commonOptions.plugins,
+                    tooltip: {
+                        ...commonOptions.plugins.tooltip,
+                        callbacks: {
+                            label: function(context) {
+                                return `Speed: ${context.parsed.y.toFixed(0)}mm/s`;
+                            }
                         }
                     }
                 }
             }
         });
 
-        // Direction Chart
-        radarCharts[`direction_${radarId}`] = new Chart(document.getElementById('directionChart_{{ radar.id }}'), {
-            type: 'line',
-            data: {
-                labels: emptyLabels,
-                datasets: [{
-                    label: 'Direction (°)',
-                    data: emptyData,
-                    borderColor: 'rgb(54, 162, 235)',
-                    tension: 0.1,
-                    fill: false,
-                    pointRadius: 3,
-                    pointHoverRadius: 5
-                }]
-            },
-            options: {
-                ...commonOptions,
-                scales: {
-                    ...commonOptions.scales,
-                    y: {
-                        ...commonOptions.scales.y,
-                        min: 0,
-                        max: 360,
-                        title: {
-                            display: true,
-                            text: 'Direction (°)'
-                        }
-                    }
-                }
-            }
-        });
+        // Remove direction chart since it's not used in the data format
+        document.getElementById('directionChart_{{ radar.id }}').closest('.col-md-4').style.display = 'none';
 
         // Initialize data storage for this radar
         radarData[radarId] = {
@@ -450,11 +477,31 @@
     }
 
     // Initialize serial data display
+    const serialDataCollapsed = {};
+
     function initSerialData() {
         {% for radar in radars %}
         const radarId = {{ radar.id }};
         const serialContent = document.querySelector(`#serialData_${radarId} .serial-content`);
         const autoScroll = localStorage.getItem(`autoScroll_${radarId}`) !== 'false';
+        
+        // Initialize collapse state from localStorage
+        serialDataCollapsed[radarId] = localStorage.getItem(`serialDataCollapsed_${radarId}`) === 'true';
+        
+        // Set initial collapse state
+        const collapseElement = document.getElementById(`serialDataCollapse_${radarId}`);
+        const collapseIcon = document.getElementById(`collapseIcon_${radarId}`);
+        if (collapseElement && collapseIcon) {
+            if (serialDataCollapsed[radarId]) {
+                collapseElement.classList.add('collapsed');
+                collapseIcon.classList.remove('fa-chevron-down');
+                collapseIcon.classList.add('fa-chevron-right');
+            } else {
+                collapseElement.classList.remove('collapsed');
+                collapseIcon.classList.remove('fa-chevron-right');
+                collapseIcon.classList.add('fa-chevron-down');
+            }
+        }
         
         // Store auto-scroll state
         window.autoScrollStates = window.autoScrollStates || {};
@@ -541,8 +588,42 @@
                     updateSerialData({{ radar.id }}, data);
                 }
                 
-                // Rest of the existing chart update code...
-                // ... existing code ...
+                // Update charts if valid data is available
+                if (data.range !== null && data.range !== undefined && !isNaN(data.range)) {
+                    const rangeChart = radarCharts[`range_${ {{ radar.id }} }`];
+                    const timestamp = new Date(data.timestamp * 1000);
+                    
+                    // Remove old data points
+                    while (rangeChart.data.labels.length >= MAX_DATA_POINTS) {
+                        rangeChart.data.labels.shift();
+                        rangeChart.data.datasets[0].data.shift();
+                    }
+                    
+                    // Add new data point
+                    rangeChart.data.labels.push(timestamp);
+                    rangeChart.data.datasets[0].data.push(data.range);
+                    
+                    // Update the chart with animation
+                    rangeChart.update('none'); // Disable animation for smoother updates
+                }
+
+                if (data.speed !== null && data.speed !== undefined && !isNaN(data.speed)) {
+                    const speedChart = radarCharts[`speed_${ {{ radar.id }} }`];
+                    const timestamp = new Date(data.timestamp * 1000);
+                    
+                    // Remove old data points
+                    while (speedChart.data.labels.length >= MAX_DATA_POINTS) {
+                        speedChart.data.labels.shift();
+                        speedChart.data.datasets[0].data.shift();
+                    }
+                    
+                    // Add new data point
+                    speedChart.data.labels.push(timestamp);
+                    speedChart.data.datasets[0].data.push(data.speed);
+                    
+                    // Update the chart with animation
+                    speedChart.update('none'); // Disable animation for smoother updates
+                }
             })
             .catch(error => {
                 console.error('Error fetching radar data:', error);
@@ -556,11 +637,13 @@
         {% endfor %}
     }
 
-    // Initialize charts and start updates
+    // Initialize charts when the page loads
     document.addEventListener('DOMContentLoaded', function() {
         initRadarCharts();
         initSerialData();
-        setInterval(updateRadarData, 5000);
+        // Update data immediately and then every second
+        updateRadarData();
+        setInterval(updateRadarData, UPDATE_INTERVAL);
         setInterval(updateSystemInfo, 60000);
     });
 

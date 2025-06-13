@@ -12,6 +12,7 @@ urlpatterns = [
     path('radar/<int:radar_id>/delete/', views.delete_radar, name='delete_radar'),
     path('api/system-info/', views.system_info_api, name='system_info_api'),
     path('api/radar-data/<int:radar_id>/', views.radar_data_api, name='radar_data_api'),
+    path('api/serial-ports/', views.serial_ports_api, name='serial_ports_api'),
     path('users/', views.user_list, name='user_list'),
     path('users/create/', views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
