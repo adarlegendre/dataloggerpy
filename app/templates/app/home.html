@@ -485,8 +485,8 @@
         const serialContent = document.querySelector(`#serialData_${radarId} .serial-content`);
         const autoScroll = localStorage.getItem(`autoScroll_${radarId}`) !== 'false';
         
-        // Initialize collapse state from localStorage
-        serialDataCollapsed[radarId] = localStorage.getItem(`serialDataCollapsed_${radarId}`) === 'true';
+        // Initialize collapse state - default to true (collapsed)
+        serialDataCollapsed[radarId] = localStorage.getItem(`serialDataCollapsed_${radarId}`) !== 'false';
         
         // Set initial collapse state
         const collapseElement = document.getElementById(`serialDataCollapse_${radarId}`);
@@ -517,7 +517,10 @@
     // Function to update serial data display
     function updateSerialData(radarId, data) {
         const serialContent = document.querySelector(`#serialData_${radarId} .serial-content`);
-        if (!serialContent) return;
+        if (!serialContent) {
+            console.error(`Serial content element not found for radar ${radarId}`);
+            return;
+        }
 
         // Create a new line for the data
         const line = document.createElement('div');
@@ -533,15 +536,17 @@
         // Add the data text
         const textSpan = document.createElement('span');
         textSpan.className = 'serial-text';
-        textSpan.textContent = data.display_text || data.raw_data || data.message;
         
-        // Set color based on connection status
-        if (data.connection_status === 'connected') {
-            textSpan.style.color = '#00ff00';  // Green for connected
-        } else if (data.connection_status === 'disconnected') {
-            textSpan.style.color = '#ff0000';  // Red for disconnected
-        } else if (data.connection_status === 'error') {
-            textSpan.style.color = '#ff9900';  // Orange for error
+        // Debug log the incoming data
+        console.log(`Received data for radar ${radarId}:`, data);
+        
+        // Use display_text if available, otherwise fall back to raw_data or message
+        const displayText = data.display_text || data.raw_data || data.message || 'No data available';
+        textSpan.textContent = displayText;
+        
+        // Set color based on connection status using data attributes
+        if (data.connection_status) {
+            textSpan.setAttribute('data-status', data.connection_status);
         }
         
         line.appendChild(textSpan);
@@ -583,9 +588,14 @@
         fetch(`/api/radar-data/{{ radar.id }}/`)
             .then(response => response.json())
             .then(data => {
+                // Debug log the API response
+                console.log(`API response for radar {{ radar.id }}:`, data);
+                
                 // Update serial data display
                 if (data) {
                     updateSerialData({{ radar.id }}, data);
+                } else {
+                    console.warn(`No data received for radar {{ radar.id }}`);
                 }
                 
                 // Update charts if valid data is available
@@ -717,21 +727,24 @@
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 0.9rem;
             line-height: 1.4;
+            color: #ffffff;  /* Ensure text is visible */
         }
         
         .serial-timestamp {
             color: #888;
             margin-right: 8px;
+            font-weight: bold;  /* Make timestamp more visible */
         }
         
         .serial-text {
             white-space: pre-wrap;
             word-wrap: break-word;
+            color: #ffffff;  /* Ensure text is visible */
         }
         
         .serial-terminal {
             background-color: #1e1e1e;
-            color: #00ff00;
+            color: #ffffff;  /* Default text color */
             font-family: 'Consolas', 'Monaco', monospace;
             height: 200px;
             overflow-y: auto;
@@ -739,11 +752,13 @@
             border-radius: 0 0 0.25rem 0.25rem;
             font-size: 0.9rem;
             line-height: 1.4;
+            border: 1px solid #333;  /* Add border for better visibility */
         }
         
         .serial-content {
             white-space: pre-wrap;
             word-wrap: break-word;
+            color: #ffffff;  /* Ensure text is visible */
         }
         
         .serial-terminal::-webkit-scrollbar {
@@ -766,6 +781,24 @@
         .btn-outline-secondary.active {
             background-color: #6c757d;
             color: white;
+        }
+
+        /* Add styles for collapsed state */
+        .collapsed {
+            display: none !important;
+        }
+
+        /* Add styles for connection status colors */
+        .serial-text[data-status="connected"] {
+            color: #00ff00 !important;  /* Green for connected */
+        }
+        
+        .serial-text[data-status="disconnected"] {
+            color: #ff0000 !important;  /* Red for disconnected */
+        }
+        
+        .serial-text[data-status="error"] {
+            color: #ff9900 !important;  /* Orange for error */
         }
     `;
     document.head.appendChild(style);

@@ -30,14 +30,14 @@ system_info_history = deque(maxlen=1440)  # Store last 24 hours of data (1 readi
 
 def update_system_info_thread():
     """Background thread to update system info every minute"""
+    global latest_system_info
     while True:
         try:
             # Get system info
             info = get_system_info()
             
-            # Update global variables with thread safety
+            # Update global variable with thread safety
             with system_info_lock:
-                global latest_system_info
                 latest_system_info = info
                 
                 # Add to history
@@ -229,7 +229,6 @@ def update_system_info(request):
             
             # Update global variable with thread safety
             with system_info_lock:
-                global latest_system_info
                 latest_system_info = info
             
             # Save to database
@@ -248,30 +247,12 @@ def update_system_info(request):
 @login_required
 def system_info_api(request):
     """API endpoint to get latest system info"""
+    global latest_system_info
     with system_info_lock:
         if latest_system_info is None:
-            # If no cached info, get fresh info
+            # If no system info is available yet, get it immediately
             latest_system_info = get_system_info()
-            
-        # Calculate 24h averages
-        if system_info_history:
-            disk_avg = sum(entry['disk_usage'] for entry in system_info_history) / len(system_info_history)
-            ram_avg = sum(entry['ram_usage'] for entry in system_info_history) / len(system_info_history)
-            cpu_avg = sum(entry['cpu_temp'] for entry in system_info_history) / len(system_info_history)
-        else:
-            disk_avg = None
-            ram_avg = None
-            cpu_avg = None
-            
-        # Add averages to response
-        response = latest_system_info.copy()
-        response['history'] = {
-            'disk_avg': round(disk_avg, 1) if disk_avg is not None else None,
-            'ram_avg': round(ram_avg, 1) if ram_avg is not None else None,
-            'cpu_avg': round(cpu_avg, 1) if cpu_avg is not None else None
-        }
-        
-        return JsonResponse(response)
+        return JsonResponse(latest_system_info)
 
 @login_required
 @require_GET
