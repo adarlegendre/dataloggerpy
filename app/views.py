@@ -518,3 +518,34 @@ def radar_data_view(request, radar_id):
         'data_files': page_obj,
     }
     return render(request, 'app/radar_data.html', context)
+
+@login_required
+@permission_required('app.view_radardatafile', raise_exception=True)
+def radar_files_api(request, radar_id):
+    """API endpoint for getting radar data files."""
+    try:
+        radar = get_object_or_404(RadarConfig, id=radar_id)
+        data_files = RadarDataFile.objects.filter(radar=radar).order_by('-timestamp')
+        
+        # Format the data for DataTables
+        data = []
+        for file in data_files:
+            data.append({
+                'filename': file.filename,
+                'timestamp': file.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'record_count': file.record_count,
+                'file_size': file.file_size,
+                'is_valid': file.is_valid,
+                'id': file.id
+            })
+        
+        return JsonResponse({
+            'status': 'success',
+            'data': data
+        })
+    except Exception as e:
+        logger.error(f"Error in radar_files_api: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error: {str(e)}'
+        }, status=500)

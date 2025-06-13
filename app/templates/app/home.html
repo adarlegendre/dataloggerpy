@@ -823,15 +823,19 @@
     $(document).ready(function() {
         // Initialize DataTables for each radar
         {% for radar in radars %}
-        $('#radarDataTable_{{ radar.id }}').DataTable({
+        const table_{{ radar.id }} = $('#radarDataTable_{{ radar.id }}').DataTable({
             "pageLength": 5,
-            "lengthMenu": [[5, 10, 25, 50, -1], [5, 10, 25, 50, "All"]], // Show more page length options
+            "lengthMenu": [[5, 10, 25, 50, -1], [5, 10, 25, 50, "All"]],
             "order": [[2, 'desc']], // Sort by Saved At column by default
             "columnDefs": [
-                { "orderable": false, "targets": [0, 6] }, // Disable sorting for # and Actions columns
-                { "className": "text-center", "targets": [0, 3, 4, 5, 6] }, // Center align specific columns
-                { "width": "5%", "targets": 0 }, // Set width for # column
-                { "width": "15%", "targets": 6 } // Set width for Actions column
+                { 
+                    "orderable": false, 
+                    "targets": [0, 6],
+                    "className": "text-center"
+                },
+                { "className": "text-center", "targets": [3, 4, 5] },
+                { "width": "5%", "targets": 0 },
+                { "width": "15%", "targets": 6 }
             ],
             "language": {
                 "search": "Search files:",
@@ -846,35 +850,84 @@
                     "previous": "‹"
                 }
             },
-            "pagingType": "full_numbers", // Show first/last buttons
-            "drawCallback": function() {
-                // Add row numbers
-                this.api().column(0, {search:'applied', order:'applied'}).nodes().each(function(cell, i) {
-                    cell.innerHTML = i + 1;
+            "pagingType": "full_numbers",
+            "drawCallback": function(settings) {
+                // Get the current page and page length
+                const api = this.api();
+                const pageInfo = api.page.info();
+                const startIndex = pageInfo.start;
+                
+                // Update row numbers
+                api.column(0, {search:'applied', order:'applied'}).nodes().each(function(cell, i) {
+                    cell.innerHTML = startIndex + i + 1;
                 });
             },
             "dom": "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
                    "<'row'<'col-sm-12'tr>>" +
-                   "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>", // Custom layout
-            "responsive": true
+                   "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+            "responsive": true,
+            "processing": true,
+            "serverSide": false,
+            "ajax": {
+                "url": `/api/radar-files/{{ radar.id }}/`,
+                "dataSrc": "data"
+            },
+            "columns": [
+                { 
+                    "data": null,
+                    "defaultContent": "" // Empty content, will be filled by drawCallback
+                },
+                { "data": "filename" },
+                { "data": "timestamp" },
+                { "data": "record_count" },
+                { 
+                    "data": "file_size",
+                    "render": function(data) {
+                        return formatFileSize(data);
+                    }
+                },
+                { 
+                    "data": "is_valid",
+                    "render": function(data) {
+                        return data ? 
+                            '<span class="badge bg-success">Valid</span>' : 
+                            '<span class="badge bg-danger">Invalid</span>';
+                    }
+                },
+                {
+                    "data": "id",
+                    "render": function(data, type, row) {
+                        return `
+                            <div class="btn-group btn-group-sm">
+                                <a href="/radar-file/${data}/download/" class="btn btn-primary" title="Download">
+                                    <i class="fas fa-download"></i>
+                                </a>
+                                <button type="button" class="btn btn-danger" 
+                                        onclick="deleteRadarFile(${data}, '${row.filename}')"
+                                        title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
+            ]
         });
         {% endfor %}
+
+        // Function to format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
 
         // Function to refresh all radar data tables
         function refreshRadarTables() {
             {% for radar in radars %}
-            $.ajax({
-                url: window.location.href,
-                type: 'GET',
-                success: function(response) {
-                    // Extract the table body content from the response
-                    var newContent = $(response).find('#radarDataTable_{{ radar.id }} tbody').html();
-                    // Update the table body
-                    $('#radarDataTable_{{ radar.id }} tbody').html(newContent);
-                    // Reload the DataTable
-                    $('#radarDataTable_{{ radar.id }}').DataTable().ajax.reload(null, false);
-                }
-            });
+            table_{{ radar.id }}.ajax.reload(null, false);
             {% endfor %}
         }
 
