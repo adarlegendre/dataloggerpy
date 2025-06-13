@@ -266,6 +266,7 @@
 <!-- Auto-refresh script -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+<script src="https://cdn.jsdelivr.net/npm/date-fns"></script>
 
 <script>
     // Update system info every minute (60000 ms)
@@ -340,6 +341,11 @@
                         maxRotation: 0,
                         autoSkip: true,
                         maxTicksLimit: 8
+                    },
+                    adapters: {
+                        date: {
+                            locale: enUS
+                        }
                     }
                 },
                 y: {

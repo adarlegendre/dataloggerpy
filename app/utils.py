@@ -4,6 +4,9 @@ import subprocess
 from datetime import datetime, timedelta
 from .models import SystemMetrics
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 def round_to_nearest_30_minutes(td):
     """Round a timedelta to the nearest 30 minutes."""
@@ -33,7 +36,8 @@ def get_system_info():
         try:
             temp = subprocess.check_output(['vcgencmd', 'measure_temp']).decode()
             cpu_temp = float(temp.replace('temp=', '').replace("'C", ''))
-        except:
+        except Exception as e:
+            logger.warning(f"Could not get CPU temperature: {str(e)}")
             cpu_temp = None
 
         # Get system uptime and round to nearest 30 minutes
@@ -55,25 +59,29 @@ def get_system_info():
         uptime_str += f"{minutes} minutes"
 
         # Only save if 30 minutes have passed since last record
-        now = timezone.now()
-        last = SystemMetrics.objects.order_by('-timestamp').first()
-        should_save = False
-        if not last or (now - last.timestamp) >= timedelta(minutes=30):
-            should_save = True
+        try:
+            now = timezone.now()
+            last = SystemMetrics.objects.order_by('-timestamp').first()
+            should_save = False
+            if not last or (now - last.timestamp) >= timedelta(minutes=30):
+                should_save = True
 
-        if should_save:
-            SystemMetrics.objects.create(
-                disk_used_percent=disk_percent,
-                ram_used_percent=ram_percent,
-                cpu_temperature=cpu_temp,
-                uptime_seconds=uptime_seconds
-            )
-            # Cleanup: remove records older than 7 days
-            cutoff = now - timedelta(days=7)
-            SystemMetrics.objects.filter(timestamp__lt=cutoff).delete()
+            if should_save:
+                SystemMetrics.objects.create(
+                    disk_used_percent=disk_percent,
+                    ram_used_percent=ram_percent,
+                    cpu_temperature=cpu_temp,
+                    uptime_seconds=uptime_seconds
+                )
+                # Cleanup: remove records older than 7 days
+                cutoff = now - timedelta(days=7)
+                SystemMetrics.objects.filter(timestamp__lt=cutoff).delete()
 
-        # Get historical metrics
-        avg_metrics = SystemMetrics.get_average_metrics(hours=24)
+            # Get historical metrics
+            avg_metrics = SystemMetrics.get_average_metrics(hours=24)
+        except Exception as e:
+            logger.warning(f"Could not save system metrics: {str(e)}")
+            avg_metrics = None
 
         return {
             'disk': {
@@ -97,6 +105,5 @@ def get_system_info():
             }
         }
     except Exception as e:
-        return {
-            'error': str(e)
-        } 
+        logger.error(f"Error in get_system_info: {str(e)}")
+        raise  # Re-raise the exception to be handled by the view 

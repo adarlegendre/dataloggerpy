@@ -247,12 +247,19 @@ def update_system_info(request):
 @login_required
 def system_info_api(request):
     """API endpoint to get latest system info"""
-    global latest_system_info
-    with system_info_lock:
-        if latest_system_info is None:
-            # If no system info is available yet, get it immediately
-            latest_system_info = get_system_info()
-        return JsonResponse(latest_system_info)
+    try:
+        global latest_system_info
+        with system_info_lock:
+            if latest_system_info is None:
+                # If no system info is available yet, get it immediately
+                latest_system_info = get_system_info()
+            return JsonResponse(latest_system_info)
+    except Exception as e:
+        logger.error(f"Error in system_info_api: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error getting system info: {str(e)}'
+        }, status=500)
 
 @login_required
 @require_GET
