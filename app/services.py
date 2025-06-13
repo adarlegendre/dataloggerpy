@@ -81,7 +81,7 @@ class RadarDataService:
             
         self.data_queues[radar_id] = Queue()
         self.stop_events[radar_id] = threading.Event()
-        self.data_cache[radar_id] = deque(maxlen=1000)  # Cache last 1000 readings
+        self.data_cache[radar_id] = []  # Removed maxlen limit
         self.last_save_time[radar_id] = time.time()
         
         thread = threading.Thread(
@@ -134,13 +134,15 @@ class RadarDataService:
             filename = f"radar_{radar.name}_{timestamp}.json"
             filepath = os.path.join(save_dir, filename)
             
-            # Extract only timestamp and values from the data
+            # Extract only timestamp and raw data from the data
             simplified_data = []
             for data_point in self.data_cache[radar_id]:
+                # Convert timestamp to datetime string
+                dt = datetime.fromtimestamp(data_point['timestamp'])
+                formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Format: YYYY-MM-DD HH:MM:SS.mmm
                 simplified_data.append({
-                    'timestamp': data_point['timestamp'],
-                    'range': data_point.get('range', 0),
-                    'speed': data_point.get('speed', 0)
+                    'timestamp': formatted_time,
+                    'raw_data': data_point['raw_data']
                 })
             
             # Save simplified data to file
