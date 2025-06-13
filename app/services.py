@@ -205,8 +205,8 @@ class RadarDataService:
                                 # Parse the specific format b'\r*+/-000.0,000\n'
                                 if data.startswith(b'\r*') or data.startswith(b'*'):  # Check for both formats
                                     try:
-                                        # Data is already decoded, just remove whitespace and control characters
-                                        data_str = data.strip()
+                                        # Data is in bytes, decode it first
+                                        data_str = data.decode('utf-8').strip()
                                         # Extract the measurement value (remove * and any leading/trailing whitespace)
                                         measurement = data_str.lstrip('*').strip()
                                         # Split by comma and convert to float
@@ -226,7 +226,7 @@ class RadarDataService:
                                         data_dict = {
                                             'status': 'error',
                                             'message': f'Error parsing measurement: {str(e)}',
-                                            'raw_data': data_str,  # Use already decoded data
+                                            'raw_data': data.decode('utf-8', errors='replace'),
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
                                             'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
@@ -237,10 +237,10 @@ class RadarDataService:
                                         logger.warning(f"Received non-standard format from radar {radar.id}: {data}")
                                         data_dict = {
                                             'status': 'success',
-                                            'raw_data': data_str,  # Use already decoded data
+                                            'raw_data': data.decode('utf-8', errors='replace'),
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
-                                            'display_text': f'[CONNECTED] {data_str}'  # Use already decoded data
+                                            'display_text': f'[CONNECTED] {data.decode("utf-8", errors="replace")}'  # Add display text for terminal
                                         }
 
                                 if data_dict:
