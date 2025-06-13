@@ -194,29 +194,29 @@ class RadarDataService:
                     while not stop_event.is_set():
                         if ser.in_waiting:
                             try:
-                                data = ser.readline()  # This returns bytes
-                                logger.info(f"Raw bytes received from radar {radar.id}: {data}")  # Log raw bytes
+                                data = ser.readline().strip()  # Strip immediately after reading
+                                logger.info(f"Raw bytes received from radar {radar.id}: {data}")
                                 
-                                # Skip empty lines or lines with only \r
-                                if data in [b'\r', b'\n', b'\r\n']:
+                                # Skip empty lines
+                                if not data:
                                     logger.debug(f"Skipping empty line for radar {radar.id}")
                                     continue
                                 
                                 data_dict = None
-                                # Parse the specific format b'\r*+/-000.0,000\n'
-                                if data.startswith(b'\r*') or data.startswith(b'*'):  # Check for both formats
+                                # Parse the specific format b'*+/-000.0,000'
+                                if data.startswith(b'*'):  # Check for * prefix
                                     try:
                                         # Data is in bytes, decode it first
-                                        data_str = data.decode('utf-8').strip()
-                                        logger.info(f"Decoded data for radar {radar.id}: {data_str}")  # Log decoded string
+                                        data_str = data.decode('utf-8')
+                                        logger.info(f"Decoded data for radar {radar.id}: {data_str}")
                                         
                                         # Extract the measurement value (remove * and any leading/trailing whitespace)
                                         measurement = data_str.lstrip('*').strip()
-                                        logger.info(f"Measurement string for radar {radar.id}: {measurement}")  # Log measurement string
+                                        logger.info(f"Measurement string for radar {radar.id}: {measurement}")
                                         
                                         # Split by comma and convert to float
                                         range_value, speed_value = map(float, measurement.split(','))
-                                        logger.info(f"Parsed values for radar {radar.id}: range={range_value}, speed={speed_value}")  # Log parsed values
+                                        logger.info(f"Parsed values for radar {radar.id}: range={range_value}, speed={speed_value}")
                                         
                                         data_dict = {
                                             'status': 'success',
