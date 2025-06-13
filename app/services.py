@@ -188,14 +188,18 @@ class RadarDataService:
                                 data = ser.readline()  # This returns bytes
                                 logger.debug(f"Raw data received from radar {radar.id}: {data}")
                                 
+                                # Skip empty lines or lines with only \r
+                                if data in [b'\r', b'\n', b'\r\n']:
+                                    continue
+                                
                                 data_dict = None
-                                # Parse the specific format b'*+/-000.0,000'
-                                if data.startswith(b'*'):  # Check for bytes prefix
+                                # Parse the specific format b'\r*+/-000.0,000\n'
+                                if data.startswith(b'\r*') or data.startswith(b'*'):  # Check for both formats
                                     try:
-                                        # Decode bytes to string and remove whitespace
+                                        # Decode bytes to string and remove whitespace and control characters
                                         data_str = data.decode('utf-8').strip()
-                                        # Extract the measurement value
-                                        measurement = data_str[1:]  # Remove *
+                                        # Extract the measurement value (remove * and any leading/trailing whitespace)
+                                        measurement = data_str.lstrip('*').strip()
                                         # Split by comma and convert to float
                                         range_value, speed_value = map(float, measurement.split(','))
                                         data_dict = {
@@ -219,15 +223,16 @@ class RadarDataService:
                                             'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
                                         }
                                 else:
-                                    # Handle non-standard format
-                                    logger.warning(f"Received non-standard format from radar {radar.id}: {data}")
-                                    data_dict = {
-                                        'status': 'success',
-                                        'raw_data': data.decode('utf-8', errors='replace'),
-                                        'timestamp': time.time(),
-                                        'connection_status': 'connected',
-                                        'display_text': f'[CONNECTED] {data.decode("utf-8", errors="replace")}'  # Add display text for terminal
-                                    }
+                                    # Only log non-standard format if it's not just a control character
+                                    if data not in [b'\r', b'\n', b'\r\n']:
+                                        logger.warning(f"Received non-standard format from radar {radar.id}: {data}")
+                                        data_dict = {
+                                            'status': 'success',
+                                            'raw_data': data.decode('utf-8', errors='replace'),
+                                            'timestamp': time.time(),
+                                            'connection_status': 'connected',
+                                            'display_text': f'[CONNECTED] {data.decode("utf-8", errors="replace")}'  # Add display text for terminal
+                                        }
 
                                 if data_dict:
                                     # Add to cache and queue
