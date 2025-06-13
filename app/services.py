@@ -149,11 +149,18 @@ class RadarDataService:
                     stopbits=radar.stop_bits,
                     timeout=0.1
                 ) as ser:
+                    # Send connection status
+                    data_queue.put({
+                        'status': 'success',
+                        'message': f'Connected to {radar.port}',
+                        'connection_status': 'connected',
+                        'timestamp': time.time()
+                    })
+                    
                     while not stop_event.is_set():
                         if ser.in_waiting:
                             try:
                                 data = ser.readline().decode('utf-8').strip()
-                                logger.debug(f"Raw data from radar {radar.id}: {data}")
                                 
                                 data_dict = None
                                 # Parse the specific format *?000.0,000
@@ -169,7 +176,8 @@ class RadarDataService:
                                             'speed': speed_value,
                                             'timestamp': time.time(),
                                             'connection_status': 'connected',
-                                            'raw_data': data  # Store raw data for debugging
+                                            'raw_data': data,  # Store raw data for debugging
+                                            'display_text': f'[CONNECTED] {data}'  # Add display text for terminal
                                         }
                                     except ValueError as e:
                                         logger.error(f"Error parsing measurement values: {str(e)}")
@@ -178,7 +186,8 @@ class RadarDataService:
                                             'message': f'Error parsing measurement: {str(e)}',
                                             'raw_data': data,
                                             'timestamp': time.time(),
-                                            'connection_status': 'connected'
+                                            'connection_status': 'connected',
+                                            'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
                                         }
                                 else:
                                     # Handle non-standard format
@@ -186,7 +195,8 @@ class RadarDataService:
                                         'status': 'success',
                                         'raw_data': data,
                                         'timestamp': time.time(),
-                                        'connection_status': 'connected'
+                                        'connection_status': 'connected',
+                                        'display_text': f'[CONNECTED] {data}'  # Add display text for terminal
                                     }
 
                                 if data_dict:
@@ -205,7 +215,8 @@ class RadarDataService:
                                 data_queue.put({
                                     'status': 'error',
                                     'message': f'Error reading data: {str(e)}',
-                                    'connection_status': 'error'
+                                    'connection_status': 'error',
+                                    'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
                                 })
                         time.sleep(radar.update_interval / 1000.0)  # Convert ms to seconds
                         
@@ -214,7 +225,8 @@ class RadarDataService:
                 data_queue.put({
                     'status': 'error',
                     'message': f'Serial port error: {str(e)}',
-                    'connection_status': 'disconnected'
+                    'connection_status': 'disconnected',
+                    'display_text': f'[DISCONNECTED] {str(e)}'  # Add display text for terminal
                 })
                 time.sleep(5)  # Wait before retrying connection
                 
@@ -223,6 +235,7 @@ class RadarDataService:
                 data_queue.put({
                     'status': 'error',
                     'message': f'Unexpected error: {str(e)}',
-                    'connection_status': 'error'
+                    'connection_status': 'error',
+                    'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
                 })
                 time.sleep(5)  # Wait before retrying
