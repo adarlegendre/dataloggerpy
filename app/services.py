@@ -169,11 +169,27 @@ class RadarDataService:
     
     def _stream_radar_data(self, radar, data_queue, stop_event):
         """Background thread function for streaming radar data"""
+        print(f"Starting data stream for radar {radar.id} on port {radar.port}")  # Debug print
         logger.info(f"Starting data stream for radar {radar.id} on port {radar.port}")
+        
+        # Log radar configuration
+        config_info = {
+            'port': radar.port,
+            'baud_rate': radar.baud_rate,
+            'data_bits': radar.data_bits,
+            'parity': radar.parity,
+            'stop_bits': radar.stop_bits,
+            'update_interval': radar.update_interval,
+            'file_save_interval': radar.file_save_interval
+        }
+        print(f"Radar configuration: {config_info}")  # Debug print
+        logger.info(f"Radar configuration: {config_info}")
         
         while not stop_event.is_set():
             try:
+                print(f"Attempting to connect to radar {radar.id} on port {radar.port}")  # Debug print
                 logger.info(f"Attempting to connect to radar {radar.id} on port {radar.port}")
+                
                 with serial.Serial(
                     port=radar.port,
                     baudrate=radar.baud_rate,
@@ -182,7 +198,9 @@ class RadarDataService:
                     stopbits=radar.stop_bits,
                     timeout=0.1
                 ) as ser:
+                    print(f"Successfully connected to radar {radar.id} on port {radar.port}")  # Debug print
                     logger.info(f"Successfully connected to radar {radar.id} on port {radar.port}")
+                    
                     # Send connection status
                     data_queue.put({
                         'status': 'success',
@@ -192,82 +210,104 @@ class RadarDataService:
                     })
                     
                     while not stop_event.is_set():
-                        if ser.in_waiting:
-                            try:
-                                data = ser.readline().strip()
-                                logger.info(f"Raw data received: {data}")
-                                
-                                # Skip empty lines
-                                if not data:
-                                    continue
-                                
-                                # Parse the specific format b'*+/-000.0,000'
-                                if data.startswith(b'*'):
-                                    try:
-                                        # Decode the data
-                                        data_str = data.decode('utf-8')
-                                        logger.info(f"Processing data: {data_str}")
-                                        
-                                        # Remove * and split by comma
-                                        measurement = data_str.lstrip('*')
-                                        range_value, speed_value = map(float, measurement.split(','))
-                                        
-                                        data_dict = {
-                                            'status': 'success',
-                                            'range': range_value,
-                                            'speed': speed_value,
-                                            'timestamp': time.time(),
-                                            'connection_status': 'connected',
-                                            'raw_data': data_str,
-                                            'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'
-                                        }
-                                        
-                                        # Add to cache and queue
-                                        self.data_cache[radar.id].append(data_dict)
-                                        data_queue.put(data_dict)
-                                        logger.info(f"Data queued: {data_dict}")
-                                        
-                                        # Check if it's time to save data
-                                        current_time = time.time()
-                                        if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
-                                            logger.info(f"Saving data to file for radar {radar.id}")
-                                            self._save_data_to_file(radar.id)
-                                            self.last_save_time[radar.id] = current_time
-                                            
-                                    except (UnicodeDecodeError, ValueError) as e:
-                                        logger.error(f"Error processing data: {str(e)}")
-                                        logger.error(f"Problematic data: {data}")
-                                        continue
-                                else:
-                                    logger.warning(f"Received non-standard format: {data}")
+                        try:
+                            # Debug print for in_waiting
+                            waiting = ser.in_waiting
+                            if waiting > 0:
+                                print(f"Data waiting: {waiting} bytes")  # Debug print
+                            
+                            if ser.in_waiting:
+                                try:
+                                    data = ser.readline().strip()
+                                    print(f"Raw data received: {data}")  # Debug print
+                                    logger.info(f"Raw data received: {data}")
                                     
-                            except Exception as e:
-                                logger.error(f"Error reading data: {str(e)}")
-                                data_queue.put({
-                                    'status': 'error',
-                                    'message': f'Error reading data: {str(e)}',
-                                    'connection_status': 'error',
-                                    'display_text': f'[ERROR] {str(e)}'
-                                })
-                        else:
-                            time.sleep(radar.update_interval / 1000.0)  # Convert ms to seconds
-                        
+                                    # Skip empty lines
+                                    if not data:
+                                        print("Empty line received, skipping")  # Debug print
+                                        continue
+                                    
+                                    # Parse the specific format b'*+/-000.0,000'
+                                    if data.startswith(b'*'):
+                                        try:
+                                            # Decode the data
+                                            data_str = data.decode('utf-8')
+                                            print(f"Processing data: {data_str}")  # Debug print
+                                            logger.info(f"Processing data: {data_str}")
+                                            
+                                            # Remove * and split by comma
+                                            measurement = data_str.lstrip('*')
+                                            range_value, speed_value = map(float, measurement.split(','))
+                                            print(f"Parsed values - Range: {range_value}, Speed: {speed_value}")  # Debug print
+                                            
+                                            data_dict = {
+                                                'status': 'success',
+                                                'range': range_value,
+                                                'speed': speed_value,
+                                                'timestamp': time.time(),
+                                                'connection_status': 'connected',
+                                                'raw_data': data_str,
+                                                'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'
+                                            }
+                                            
+                                            # Add to cache and queue
+                                            self.data_cache[radar.id].append(data_dict)
+                                            data_queue.put(data_dict)
+                                            print(f"Data queued: {data_dict}")  # Debug print
+                                            logger.info(f"Data queued: {data_dict}")
+                                            
+                                            # Check if it's time to save data
+                                            current_time = time.time()
+                                            if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
+                                                print(f"Saving data to file for radar {radar.id}")  # Debug print
+                                                logger.info(f"Saving data to file for radar {radar.id}")
+                                                self._save_data_to_file(radar.id)
+                                                self.last_save_time[radar.id] = current_time
+                                                
+                                        except (UnicodeDecodeError, ValueError) as e:
+                                            print(f"Error processing data: {str(e)}")  # Debug print
+                                            logger.error(f"Error processing data: {str(e)}")
+                                            logger.error(f"Problematic data: {data}")
+                                            continue
+                                    else:
+                                        print(f"Received non-standard format: {data}")  # Debug print
+                                        logger.warning(f"Received non-standard format: {data}")
+                                        
+                                except Exception as e:
+                                    print(f"Error reading data: {str(e)}")  # Debug print
+                                    logger.error(f"Error reading data: {str(e)}")
+                                    data_queue.put({
+                                        'status': 'error',
+                                        'message': f'Error reading data: {str(e)}',
+                                        'connection_status': 'error',
+                                        'display_text': f'[ERROR] {str(e)}'
+                                    })
+                            else:
+                                time.sleep(radar.update_interval / 1000.0)  # Convert ms to seconds
+                                
+                        except Exception as e:
+                            print(f"Error in inner loop: {str(e)}")  # Debug print
+                            logger.error(f"Error in inner loop: {str(e)}")
+                            time.sleep(1)  # Wait before retrying
+                            
             except serial.SerialException as e:
+                print(f"Serial port error: {str(e)}")  # Debug print
                 logger.error(f"Serial port error for radar {radar.id}: {str(e)}")
                 data_queue.put({
                     'status': 'error',
                     'message': f'Serial port error: {str(e)}',
                     'connection_status': 'disconnected',
-                    'display_text': f'[DISCONNECTED] {str(e)}'  # Add display text for terminal
+                    'display_text': f'[DISCONNECTED] {str(e)}'
                 })
                 time.sleep(5)  # Wait before retrying connection
                 
             except Exception as e:
+                print(f"Unexpected error: {str(e)}")  # Debug print
                 logger.error(f"Unexpected error for radar {radar.id}: {str(e)}")
                 data_queue.put({
                     'status': 'error',
                     'message': f'Unexpected error: {str(e)}',
                     'connection_status': 'error',
-                    'display_text': f'[ERROR] {str(e)}'  # Add display text for terminal
+                    'display_text': f'[ERROR] {str(e)}'
                 })
                 time.sleep(5)  # Wait before retrying
