@@ -549,3 +549,40 @@ def radar_files_api(request, radar_id):
             'status': 'error',
             'message': f'Error: {str(e)}'
         }, status=500)
+
+@login_required
+@require_POST
+def toggle_test_mode(request):
+    """Toggle test mode for radar data service"""
+    try:
+        data_service = RadarDataService()
+        enabled = request.POST.get('enabled', 'false').lower() == 'true'
+        data_service.set_test_mode(enabled)
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Test mode {"enabled" if enabled else "disabled"}',
+            'test_mode': enabled
+        })
+    except Exception as e:
+        logger.error(f"Error toggling test mode: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error: {str(e)}'
+        }, status=500)
+
+@login_required
+@require_GET
+def test_mode_status(request):
+    """Get current test mode status"""
+    try:
+        data_service = RadarDataService()
+        return JsonResponse({
+            'status': 'success',
+            'test_mode': data_service.get_test_mode()
+        })
+    except Exception as e:
+        logger.error(f"Error getting test mode status: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error: {str(e)}'
+        }, status=500)

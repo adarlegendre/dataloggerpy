@@ -22,4 +22,7 @@ urlpatterns = [
     path('radar-file/<int:file_id>/download/', views.download_radar_file, name='download_radar_file'),
     path('api/radar-file/<int:file_id>/delete/', views.delete_radar_file, name='delete_radar_file'),
     path('api/radar-files/<int:radar_id>/', views.radar_files_api, name='radar_files_api'),
+    path('api/toggle-test-mode/', views.toggle_test_mode, name='toggle_test_mode'),
+    path('api/test-mode/', views.toggle_test_mode, name='toggle_test_mode'),
+    path('api/test-mode-status/', views.test_mode_status, name='test_mode_status'),
 ] 

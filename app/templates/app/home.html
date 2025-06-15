@@ -156,27 +156,127 @@
 
                     <!-- Radar Graphs -->
                     <div class="row mb-4">
-                        <div class="col-md-4">
+                        <!-- Time Range Control -->
+                        <div class="col-12 mb-3">
                             <div class="card">
                                 <div class="card-body">
-                                    <h6 class="card-title">Range</h6>
-                                    <canvas id="rangeChart_{{ radar.id }}" height="200"></canvas>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-clock me-2"></i>Time Range
+                                        </h6>
+                                        <div class="d-flex align-items-center">
+                                            <div class="btn-group btn-group-sm me-3">
+                                                <button class="btn btn-outline-secondary" onclick="setTimeRange({{ radar.id }}, 0.083)">5s</button>
+                                                <button class="btn btn-outline-secondary" onclick="setTimeRange({{ radar.id }}, 1)">1m</button>
+                                                <button class="btn btn-outline-secondary" onclick="setTimeRange({{ radar.id }}, 5)">5m</button>
+                                                <button class="btn btn-outline-secondary" onclick="setTimeRange({{ radar.id }}, 10)">10m</button>
+                                                <button class="btn btn-outline-secondary" onclick="setTimeRange({{ radar.id }}, 30)">30m</button>
+                                            </div>
+                                            <div class="input-group input-group-sm" style="width: 250px;">
+                                                <input type="number" class="form-control" id="customTimeRange_{{ radar.id }}" 
+                                                       min="0.083" max="60" value="5" step="0.083"
+                                                       onchange="setCustomTimeRange({{ radar.id }}, this.value)">
+                                                <select class="form-select" style="width: 100px;" 
+                                                        onchange="updateTimeRangeUnit({{ radar.id }}, this.value)">
+                                                    <option value="minutes">minutes</option>
+                                                    <option value="seconds">seconds</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="card">
                                 <div class="card-body">
-                                    <h6 class="card-title">Speed</h6>
-                                    <canvas id="speedChart_{{ radar.id }}" height="200"></canvas>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="card-title mb-0">Range</h6>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-secondary" onclick="resetRangeLimits({{ radar.id }})">
+                                                <i class="fas fa-undo"></i> Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="range-controls mb-2">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <small class="text-muted">Min: <span class="range-min-value">-100</span></small>
+                                            <small class="text-muted">Max: <span class="range-max-value">100</span></small>
+                                        </div>
+                                        <div class="range-sliders">
+                                            <input type="range" class="form-range range-min" 
+                                                   min="-200" max="200" value="-100" step="1"
+                                                   oninput="updateRangeLimits({{ radar.id }})">
+                                            <input type="range" class="form-range range-max" 
+                                                   min="-200" max="200" value="100" step="1"
+                                                   oninput="updateRangeLimits({{ radar.id }})">
+                                        </div>
+                                    </div>
+                                    <div style="width: 100%; height: 200px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <canvas id="rangeChart_{{ radar.id }}" style="width: 100%; height: 100%;"></canvas>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="card">
                                 <div class="card-body">
-                                    <h6 class="card-title">Direction</h6>
-                                    <canvas id="directionChart_{{ radar.id }}" height="200"></canvas>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="card-title mb-0">Speed</h6>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-secondary" onclick="resetSpeedLimits({{ radar.id }})">
+                                                <i class="fas fa-undo"></i> Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="range-controls mb-2">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <small class="text-muted">Min: <span class="speed-min-value">0</span></small>
+                                            <small class="text-muted">Max: <span class="speed-max-value">1000</span></small>
+                                        </div>
+                                        <div class="range-sliders">
+                                            <input type="range" class="form-range speed-min" 
+                                                   min="0" max="2000" value="0" step="10"
+                                                   oninput="updateSpeedLimits({{ radar.id }})">
+                                            <input type="range" class="form-range speed-max" 
+                                                   min="0" max="2000" value="1000" step="10"
+                                                   oninput="updateSpeedLimits({{ radar.id }})">
+                                        </div>
+                                    </div>
+                                    <div style="width: 100%; height: 200px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <canvas id="speedChart_{{ radar.id }}" style="width: 100%; height: 100%;"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="card-title mb-0">Direction</h6>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-secondary" onclick="resetDirectionLimits({{ radar.id }})">
+                                                <i class="fas fa-undo"></i> Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="range-controls mb-2">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <small class="text-muted">Min: <span class="direction-min-value">0</span></small>
+                                            <small class="text-muted">Max: <span class="direction-max-value">1000</span></small>
+                                        </div>
+                                        <div class="range-sliders">
+                                            <input type="range" class="form-range direction-min" 
+                                                   min="0" max="2000" value="0" step="10"
+                                                   oninput="updateDirectionLimits({{ radar.id }})">
+                                            <input type="range" class="form-range direction-max" 
+                                                   min="0" max="2000" value="1000" step="10"
+                                                   oninput="updateDirectionLimits({{ radar.id }})">
+                                        </div>
+                                    </div>
+                                    <div style="width: 100%; height: 200px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <canvas id="directionChart_{{ radar.id }}" style="width: 100%; height: 100%;"></canvas>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -276,6 +376,10 @@
 <script type="text/javascript" src="https://cdn.datatables.net/buttons/2.2.2/js/dataTables.buttons.min.js"></script>
 <script type="text/javascript" src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.bootstrap5.min.js"></script>
 
+<!-- Load Chart.js and its date adapter -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
 <script>
     // Initialize radar charts
     const radarCharts = {};
@@ -283,168 +387,434 @@
     const MAX_DATA_POINTS = 30; // Show last 30 seconds of data
     const UPDATE_INTERVAL = 100; // Update every 0.1 seconds
 
+    // Add time range configuration with persistence
+    const timeRanges = {};
+    const timeRangeUnits = {};
+    
+    // Function to get stored time range or default to 5 seconds
+    function getStoredTimeRange(radarId) {
+        const storedRange = localStorage.getItem(`timeRange_${radarId}`);
+        const storedUnit = localStorage.getItem(`timeRangeUnit_${radarId}`);
+        return {
+            range: storedRange ? parseFloat(storedRange) : 0.083, // 5 seconds default
+            unit: storedUnit || 'seconds'
+        };
+    }
+    
+    // Function to set time range
+    function setTimeRange(radarId, minutes) {
+        timeRanges[radarId] = minutes;
+        timeRangeUnits[radarId] = 'minutes';
+        localStorage.setItem(`timeRange_${radarId}`, minutes);
+        localStorage.setItem(`timeRangeUnit_${radarId}`, 'minutes');
+        document.getElementById(`customTimeRange_${radarId}`).value = minutes;
+        updateChartTimeRanges(radarId);
+    }
+    
+    // Function to set custom time range
+    function setCustomTimeRange(radarId, value) {
+        const unit = timeRangeUnits[radarId] || 'minutes';
+        let minutes = parseFloat(value) || 5;
+        
+        if (unit === 'seconds') {
+            minutes = minutes / 60;
+        }
+        
+        minutes = Math.max(0.083, Math.min(60, minutes)); // 0.083 minutes = 5 seconds
+        setTimeRange(radarId, minutes);
+    }
+    
+    // Function to update time range unit
+    function updateTimeRangeUnit(radarId, unit) {
+        timeRangeUnits[radarId] = unit;
+        localStorage.setItem(`timeRangeUnit_${radarId}`, unit);
+        const input = document.getElementById(`customTimeRange_${radarId}`);
+        let value = parseFloat(input.value) || 5;
+        
+        if (unit === 'seconds') {
+            value = value * 60;
+            input.min = 5;
+            input.max = 3600;
+            input.step = 5;
+        } else {
+            value = value / 60;
+            input.min = 0.083;
+            input.max = 60;
+            input.step = 0.083;
+        }
+        
+        input.value = value;
+        setCustomTimeRange(radarId, value);
+    }
+
+    // Function to get stored range limits
+    function getStoredRangeLimits(radarId) {
+        return {
+            min: parseFloat(localStorage.getItem(`rangeMin_${radarId}`)) || -100,
+            max: parseFloat(localStorage.getItem(`rangeMax_${radarId}`)) || 100
+        };
+    }
+
+    // Function to get stored speed limits
+    function getStoredSpeedLimits(radarId) {
+        return {
+            min: parseFloat(localStorage.getItem(`speedMin_${radarId}`)) || 0,
+            max: parseFloat(localStorage.getItem(`speedMax_${radarId}`)) || 1000
+        };
+    }
+
+    // Function to get stored direction limits
+    function getStoredDirectionLimits(radarId) {
+        return {
+            min: parseFloat(localStorage.getItem(`directionMin_${radarId}`)) || 0,
+            max: parseFloat(localStorage.getItem(`directionMax_${radarId}`)) || 1000
+        };
+    }
+
+    // Function to update range limits
+    function updateRangeLimits(radarId) {
+        const minInput = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-min');
+        const maxInput = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-max');
+        const minValue = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-min-value');
+        const maxValue = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-max-value');
+        
+        const min = parseFloat(minInput.value);
+        const max = parseFloat(maxInput.value);
+        
+        // Store values
+        localStorage.setItem(`rangeMin_${radarId}`, min);
+        localStorage.setItem(`rangeMax_${radarId}`, max);
+        
+        // Update displayed values
+        minValue.textContent = min;
+        maxValue.textContent = max;
+        
+        if (min < max) {
+            const chart = radarCharts[`range_${radarId}`];
+            if (chart) {
+                chart.options.scales.y.min = min;
+                chart.options.scales.y.max = max;
+                chart.update('none');
+            }
+        }
+    }
+
+    // Function to update speed limits
+    function updateSpeedLimits(radarId) {
+        const minInput = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-min');
+        const maxInput = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-max');
+        const minValue = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-min-value');
+        const maxValue = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-max-value');
+        
+        const min = parseFloat(minInput.value);
+        const max = parseFloat(maxInput.value);
+        
+        // Store values
+        localStorage.setItem(`speedMin_${radarId}`, min);
+        localStorage.setItem(`speedMax_${radarId}`, max);
+        
+        // Update displayed values
+        minValue.textContent = min;
+        maxValue.textContent = max;
+        
+        if (min < max) {
+            const chart = radarCharts[`speed_${radarId}`];
+            if (chart) {
+                chart.options.scales.y.min = min;
+                chart.options.scales.y.max = max;
+                chart.update('none');
+            }
+        }
+    }
+
+    // Function to update direction limits
+    function updateDirectionLimits(radarId) {
+        const minInput = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-min');
+        const maxInput = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-max');
+        const minValue = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-min-value');
+        const maxValue = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-max-value');
+        
+        const min = parseFloat(minInput.value);
+        const max = parseFloat(maxInput.value);
+        
+        // Store values
+        localStorage.setItem(`directionMin_${radarId}`, min);
+        localStorage.setItem(`directionMax_${radarId}`, max);
+        
+        // Update displayed values
+        minValue.textContent = min;
+        maxValue.textContent = max;
+        
+        if (min < max) {
+            const chart = radarCharts[`direction_${radarId}`];
+            if (chart) {
+                chart.options.scales.r.min = min;
+                chart.options.scales.r.max = max;
+                chart.update('none');
+            }
+        }
+    }
+
+    // Function to reset range limits
+    function resetRangeLimits(radarId) {
+        const minInput = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-min');
+        const maxInput = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-max');
+        minInput.value = -100;
+        maxInput.value = 100;
+        localStorage.removeItem(`rangeMin_${radarId}`);
+        localStorage.removeItem(`rangeMax_${radarId}`);
+        updateRangeLimits(radarId);
+    }
+
+    // Function to reset speed limits
+    function resetSpeedLimits(radarId) {
+        const minInput = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-min');
+        const maxInput = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-max');
+        minInput.value = 0;
+        maxInput.value = 1000;
+        localStorage.removeItem(`speedMin_${radarId}`);
+        localStorage.removeItem(`speedMax_${radarId}`);
+        updateSpeedLimits(radarId);
+    }
+
+    // Function to reset direction limits
+    function resetDirectionLimits(radarId) {
+        const minInput = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-min');
+        const maxInput = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-max');
+        minInput.value = 0;
+        maxInput.value = 1000;
+        localStorage.removeItem(`directionMin_${radarId}`);
+        localStorage.removeItem(`directionMax_${radarId}`);
+        updateDirectionLimits(radarId);
+    }
+
+    // Function to update chart time ranges
+    function updateChartTimeRanges(radarId) {
+        const minutes = timeRanges[radarId] || 5;
+        const rangeChart = radarCharts[`range_${radarId}`];
+        const speedChart = radarCharts[`speed_${radarId}`];
+        
+        if (rangeChart) {
+            rangeChart.options.scales.x.min = new Date(Date.now() - minutes * 60 * 1000);
+            rangeChart.options.scales.x.max = new Date();
+            rangeChart.update('none');
+        }
+        
+        if (speedChart) {
+            speedChart.options.scales.x.min = new Date(Date.now() - minutes * 60 * 1000);
+            speedChart.options.scales.x.max = new Date();
+            speedChart.update('none');
+        }
+    }
+
+    // Add debug function
+    function debugLog(message, data) {
+        console.log(`[Chart Debug] ${message}`, data || '');
+    }
+
     function initRadarCharts() {
+        debugLog('Initializing radar charts...');
+        
         {% for radar in radars %}
         const radarId = {{ radar.id }};
+        debugLog(`Setting up charts for radar ${radarId}`);
+        
+        // Set default time range
+        timeRanges[radarId] = 5;
         
         // Common options for all charts
         const commonOptions = {
-            chart: {
-                type: 'line',
-                height: 200,
-                animations: {
-                    enabled: true,
-                    easing: 'linear',
-                    dynamicAnimation: {
-                        speed: 1000
-                    }
-                },
-                toolbar: {
-                    show: false
-                },
-                zoom: {
-                    enabled: false
-                }
-            },
-            stroke: {
-                curve: 'smooth',
-                width: 2
-            },
-            grid: {
-                borderColor: '#f1f1f1',
-                padding: {
-                    top: 10,
-                    right: 10,
-                    bottom: 10,
-                    left: 10
-                }
-            },
-            xaxis: {
-                type: 'datetime',
-                labels: {
-                    datetimeUTC: false
-                }
-            },
-            tooltip: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
                 x: {
-                    format: 'HH:mm:ss'
+                    type: 'time',
+                    time: {
+                        unit: 'second',
+                        displayFormats: {
+                            second: 'HH:mm:ss'
+                        },
+                        tooltipFormat: 'HH:mm:ss'
+                    },
+                    grid: {
+                        color: '#e0e0e0'
+                    },
+                    ticks: {
+                        color: '#666666',
+                        maxRotation: 0
+                    },
+                    min: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
+                    max: new Date() // now
                 },
                 y: {
-                    formatter: function(value) {
-                        return value.toFixed(1);
+                    grid: {
+                        color: '#e0e0e0'
+                    },
+                    ticks: {
+                        color: '#666666'
                     }
                 }
             },
-            legend: {
-                show: false
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}`;
+                        }
+                    }
+                }
             }
         };
 
         // Range Chart
-        const rangeOptions = {
-            ...commonOptions,
-            series: [{
-                name: 'Range',
-                data: []
-            }],
-            yaxis: {
-                title: {
-                    text: 'Range (m)'
-                },
-                min: -100,
-                max: 100,
-                tickAmount: 5
+        const rangeCtx = document.getElementById(`rangeChart_${radarId}`).getContext('2d');
+        const rangeChart = new Chart(rangeCtx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Range',
+                    data: [],
+                    borderColor: '#007bff',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 5
+                }]
             },
-            annotations: {
-                yaxis: [{
-                    y: 0,
-                    borderColor: '#999',
-                    label: {
-                        text: '0',
-                        style: {
-                            color: '#999'
+            options: {
+                ...commonOptions,
+                scales: {
+                    ...commonOptions.scales,
+                    y: {
+                        ...commonOptions.scales.y,
+                        min: -100,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Range (m)',
+                            color: '#666666'
                         }
                     }
-                }]
+                }
             }
-        };
+        });
 
         // Speed Chart
-        const speedOptions = {
-            ...commonOptions,
-            series: [{
-                name: 'Speed',
-                data: []
-            }],
-            yaxis: {
-                title: {
-                    text: 'Speed (mm/s)'
-                },
-                min: 0,
-                max: 1000,
-                tickAmount: 5
-            }
-        };
-
-        // Direction Chart
-        const directionOptions = {
-            ...commonOptions,
-            series: [{
-                name: 'Direction',
-                data: []
-            }],
-            yaxis: {
-                title: {
-                    text: 'Direction (°)'
-                },
-                min: -180,
-                max: 180,
-                tickAmount: 7
+        const speedCtx = document.getElementById(`speedChart_${radarId}`).getContext('2d');
+        const speedChart = new Chart(speedCtx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Speed',
+                    data: [],
+                    borderColor: '#28a745',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 5
+                }]
             },
-            annotations: {
-                yaxis: [{
-                    y: 0,
-                    borderColor: '#999',
-                    label: {
-                        text: '0°',
-                        style: {
-                            color: '#999'
+            options: {
+                ...commonOptions,
+                scales: {
+                    ...commonOptions.scales,
+                    y: {
+                        ...commonOptions.scales.y,
+                        min: 0,
+                        max: 1000,
+                        title: {
+                            display: true,
+                            text: 'Speed (mm/s)',
+                            color: '#666666'
                         }
                     }
-                }]
+                }
             }
-        };
+        });
 
-        // Initialize charts
-        const rangeChartElement = document.querySelector(`#rangeChart_${radarId}`);
-        const speedChartElement = document.querySelector(`#speedChart_${radarId}`);
-        const directionChartElement = document.querySelector(`#directionChart_${radarId}`);
+        // Direction Chart
+        const directionCtx = document.getElementById(`directionChart_${radarId}`).getContext('2d');
+        const directionChart = new Chart(directionCtx, {
+            type: 'radar',
+            data: {
+                labels: ['0° (N)', '45° (NE)', '90° (E)', '135° (SE)', '180° (S)', '225° (SW)', '270° (W)', '315° (NW)'],
+                datasets: [{
+                    label: 'Direction',
+                    data: [0, 0, 0, 0, 0, 0, 0, 0],
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.2)',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#17a2b8',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#17a2b8'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    r: {
+                        angleLines: {
+                            display: true,
+                            color: '#e0e0e0',
+                            lineWidth: 1
+                        },
+                        suggestedMin: 0,
+                        suggestedMax: 1000,
+                        ticks: {
+                            stepSize: 200,
+                            color: '#666666',
+                            backdropColor: 'transparent',
+                            z: 1
+                        },
+                        pointLabels: {
+                            color: '#666666',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            padding: 20,
+                            z: 2
+                        },
+                        grid: {
+                            color: '#e0e0e0',
+                            circular: true
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const angle = context.dataIndex * 45;
+                                return [
+                                    `Angle: ${angle}°`,
+                                    `Speed: ${context.raw.toFixed(1)} mm/s`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-        console.log('Initializing charts for radar', radarId);
-        console.log('Range chart element:', rangeChartElement);
-        console.log('Speed chart element:', speedChartElement);
-        console.log('Direction chart element:', directionChartElement);
-
-        if (rangeChartElement) {
-            console.log('Creating range chart');
-            const rangeChart = new ApexCharts(rangeChartElement, rangeOptions);
-            rangeChart.render();
-            radarCharts[`range_${radarId}`] = rangeChart;
-        }
-
-        if (speedChartElement) {
-            console.log('Creating speed chart');
-            const speedChart = new ApexCharts(speedChartElement, speedOptions);
-            speedChart.render();
-            radarCharts[`speed_${radarId}`] = speedChart;
-        }
-
-        if (directionChartElement) {
-            console.log('Creating direction chart');
-            const directionChart = new ApexCharts(directionChartElement, directionOptions);
-            directionChart.render();
-            radarCharts[`direction_${radarId}`] = directionChart;
-        }
+        // Store chart references
+        radarCharts[`range_${radarId}`] = rangeChart;
+        radarCharts[`speed_${radarId}`] = speedChart;
+        radarCharts[`direction_${radarId}`] = directionChart;
 
         // Initialize data storage
         radarData[radarId] = {
@@ -453,7 +823,7 @@
             direction: []
         };
 
-        // Initialize charts with multiple zero values to ensure visibility
+        // Initialize charts with multiple zero values
         const now = new Date();
         const initialDataPoints = [];
         
@@ -467,28 +837,37 @@
         }
 
         // Add initial data points to all charts
-        if (radarCharts[`range_${radarId}`]) {
-            console.log('Updating range chart with initial data');
-            radarCharts[`range_${radarId}`].updateSeries([{
-                name: 'Range',
-                data: initialDataPoints
-            }]);
+        if (rangeChart) {
+            try {
+                debugLog('Updating range chart with initial data');
+                rangeChart.data.datasets[0].data = initialDataPoints;
+                rangeChart.update('none');
+                debugLog('Range chart updated with initial data');
+            } catch (error) {
+                console.error('Error updating range chart:', error);
+            }
         }
 
-        if (radarCharts[`speed_${radarId}`]) {
-            console.log('Updating speed chart with initial data');
-            radarCharts[`speed_${radarId}`].updateSeries([{
-                name: 'Speed',
-                data: initialDataPoints
-            }]);
+        if (speedChart) {
+            try {
+                debugLog('Updating speed chart with initial data');
+                speedChart.data.datasets[0].data = initialDataPoints;
+                speedChart.update('none');
+                debugLog('Speed chart updated with initial data');
+            } catch (error) {
+                console.error('Error updating speed chart:', error);
+            }
         }
 
-        if (radarCharts[`direction_${radarId}`]) {
-            console.log('Updating direction chart with initial data');
-            radarCharts[`direction_${radarId}`].updateSeries([{
-                name: 'Direction',
-                data: initialDataPoints
-            }]);
+        if (directionChart) {
+            try {
+                debugLog('Updating direction chart with initial data');
+                directionChart.data.datasets[0].data = initialDataPoints;
+                directionChart.update('none');
+                debugLog('Direction chart updated with initial data');
+            } catch (error) {
+                console.error('Error updating direction chart:', error);
+            }
         }
         {% endfor %}
     }
@@ -604,87 +983,134 @@
     // Function to update radar data
     function updateRadarData() {
         {% for radar in radars %}
-        fetch(`/api/radar-data/{{ radar.id }}/`)
-            .then(response => response.json())
+        const radarId = {{ radar.id }};
+        const minutes = timeRanges[radarId] || 5;
+        const maxDataPoints = Math.ceil(minutes * 60 * 1000 / UPDATE_INTERVAL);
+        
+        // Update time ranges for charts
+        updateChartTimeRanges(radarId);
+        
+        // Original API call for real data
+        fetch(`/api/radar-data/${radarId}/`)
+            .then(response => {
+                console.log(`Response status for radar ${radarId}:`, response.status);
+                return response.json();
+            })
             .then(data => {
-                if (data) {
+                console.log(`Raw API response for radar ${radarId}:`, data);
+                
+                if (data && data.status === 'success') {
+                    const timestamp = new Date(data.timestamp * 1000);
+                    const range = parseFloat(data.range) || 0;
+                    const speed = parseFloat(data.speed) || 0;
+                    const angle = parseFloat(data.angle) || 0;
+                    
+                    console.log(`Processing data point:`, { timestamp, range, speed, angle });
+                    
+                    // Update range chart
+                    const rangeChart = radarCharts[`range_${radarId}`];
+                    if (rangeChart) {
+                        const currentData = rangeChart.data.datasets[0].data;
+                        currentData.push({
+                            x: timestamp,
+                            y: range
+                        });
+                        
+                        if (currentData.length > maxDataPoints) {
+                            currentData.shift();
+                        }
+                        
+                        rangeChart.update('none');
+                    }
+                    
+                    // Update speed chart
+                    const speedChart = radarCharts[`speed_${radarId}`];
+                    if (speedChart) {
+                        const currentData = speedChart.data.datasets[0].data;
+                        currentData.push({
+                            x: timestamp,
+                            y: speed
+                        });
+                        
+                        if (currentData.length > maxDataPoints) {
+                            currentData.shift();
+                        }
+                        
+                        speedChart.update('none');
+                    }
+
+                    // Update direction chart
+                    const directionChart = radarCharts[`direction_${radarId}`];
+                    if (directionChart) {
+                        // Convert angle to index (0-7 for 8 directions)
+                        const angleIndex = Math.round((angle % 360) / 45) % 8;
+                        
+                        // Create new data array with zeros
+                        const newData = new Array(8).fill(0);
+                        // Set speed at the correct angle
+                        newData[angleIndex] = speed;
+                        
+                        directionChart.data.datasets[0].data = newData;
+                        directionChart.update('none');
+                    }
+                    
                     // Update serial data display
-                    updateSerialData({{ radar.id }}, data);
-
-                    // Update charts if valid data is available
-                    if (data.range !== null && data.range !== undefined) {
-                        const rangeChart = radarCharts[`range_${ {{ radar.id }} }`];
-                        if (rangeChart) {
-                            const timestamp = new Date(data.timestamp * 1000);
-                            rangeChart.appendData([{
-                                data: [{
-                                    x: timestamp,
-                                    y: parseFloat(data.range) || 0
-                                }]
-                            }]);
+                    const displayText = data.display_text || 
+                        `Range: ${range.toFixed(1)}m, Speed: ${speed.toFixed(1)}mm/s`;
+                    
+                    // Update status badge based on connection status
+                    const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
+                    if (statusBadge) {
+                        if (data.connection_status === 'connected') {
+                            statusBadge.className = 'badge bg-success';
+                            statusBadge.textContent = 'Connected';
+                        } else if (data.connection_status === 'disconnected') {
+                            statusBadge.className = 'badge bg-danger';
+                            statusBadge.textContent = 'Disconnected';
+                        } else {
+                            statusBadge.className = 'badge bg-warning';
+                            statusBadge.textContent = 'Waiting for data';
                         }
                     }
-
-                    if (data.speed !== null && data.speed !== undefined) {
-                        const speedChart = radarCharts[`speed_${ {{ radar.id }} }`];
-                        if (speedChart) {
-                            const timestamp = new Date(data.timestamp * 1000);
-                            speedChart.appendData([{
-                                data: [{
-                                    x: timestamp,
-                                    y: parseFloat(data.speed) || 0
-                                }]
-                            }]);
-                        }
+                    
+                    updateSerialData(radarId, {
+                        timestamp: data.timestamp,
+                        range: range,
+                        speed: speed,
+                        display_text: displayText,
+                        connection_status: data.connection_status || 'disconnected'
+                    });
+                } else {
+                    console.log(`No valid data received for radar ${radarId}. Data:`, data);
+                    
+                    // Update status badge to show error
+                    const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
+                    if (statusBadge) {
+                        statusBadge.className = 'badge bg-danger';
+                        statusBadge.textContent = 'Error';
                     }
-
-                    if (data.direction !== null && data.direction !== undefined) {
-                        const directionChart = radarCharts[`direction_${ {{ radar.id }} }`];
-                        if (directionChart) {
-                            const timestamp = new Date(data.timestamp * 1000);
-                            directionChart.appendData([{
-                                data: [{
-                                    x: timestamp,
-                                    y: parseFloat(data.direction) || 0
-                                }]
-                            }]);
-                        }
-                    }
+                    
+                    updateSerialData(radarId, {
+                        timestamp: Math.floor(Date.now() / 1000),
+                        display_text: 'No data available',
+                        connection_status: 'disconnected'
+                    });
                 }
             })
             .catch(error => {
                 console.error('Error fetching radar data:', error);
-                const radarId = {{ radar.id }};
                 const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
                 if (statusBadge) {
                     statusBadge.className = 'badge bg-danger';
                     statusBadge.textContent = 'Error';
                 }
 
-                // Add zero value when there's an error to maintain graph visibility
-                const now = new Date();
-                const errorData = {
-                    x: now,
-                    y: 0
-                };
-
-                if (radarCharts[`range_${radarId}`]) {
-                    radarCharts[`range_${radarId}`].appendData([{
-                        data: [errorData]
-                    }]);
-                }
-
-                if (radarCharts[`speed_${radarId}`]) {
-                    radarCharts[`speed_${radarId}`].appendData([{
-                        data: [errorData]
-                    }]);
-                }
-
-                if (radarCharts[`direction_${radarId}`]) {
-                    radarCharts[`direction_${radarId}`].appendData([{
-                        data: [errorData]
-                    }]);
-                }
+                // Add error message to serial display
+                updateSerialData(radarId, {
+                    timestamp: Math.floor(Date.now() / 1000),
+                    display_text: 'Error fetching data',
+                    connection_status: 'error'
+                });
             });
         {% endfor %}
     }
@@ -694,7 +1120,42 @@
         console.log('DOM Content Loaded - Initializing charts...');
         initRadarCharts();
         initSerialData();
-        // Update data immediately and then every second
+        
+        // Load stored settings for each radar
+        {% for radar in radars %}
+        const radarId = {{ radar.id }};
+        
+        // Load time range settings
+        const timeRangeSettings = getStoredTimeRange(radarId);
+        setTimeRange(radarId, timeRangeSettings.range);
+        updateTimeRangeUnit(radarId, timeRangeSettings.unit);
+        
+        // Load range limits
+        const rangeLimits = getStoredRangeLimits(radarId);
+        const rangeMinInput = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-min');
+        const rangeMaxInput = document.querySelector(`#rangeChart_${radarId}`).closest('.card-body').querySelector('.range-max');
+        rangeMinInput.value = rangeLimits.min;
+        rangeMaxInput.value = rangeLimits.max;
+        updateRangeLimits(radarId);
+        
+        // Load speed limits
+        const speedLimits = getStoredSpeedLimits(radarId);
+        const speedMinInput = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-min');
+        const speedMaxInput = document.querySelector(`#speedChart_${radarId}`).closest('.card-body').querySelector('.speed-max');
+        speedMinInput.value = speedLimits.min;
+        speedMaxInput.value = speedLimits.max;
+        updateSpeedLimits(radarId);
+        
+        // Load direction limits
+        const directionLimits = getStoredDirectionLimits(radarId);
+        const directionMinInput = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-min');
+        const directionMaxInput = document.querySelector(`#directionChart_${radarId}`).closest('.card-body').querySelector('.direction-max');
+        directionMinInput.value = directionLimits.min;
+        directionMaxInput.value = directionLimits.max;
+        updateDirectionLimits(radarId);
+        {% endfor %}
+        
+        // Update data immediately and then every 100ms
         updateRadarData();
         setInterval(updateRadarData, UPDATE_INTERVAL);
     });
@@ -848,96 +1309,103 @@
     $(document).ready(function() {
         // Initialize DataTables for each radar
         {% for radar in radars %}
-        const table_{{ radar.id }} = $('#radarDataTable_{{ radar.id }}').DataTable({
-            "pageLength": 5,
-            "lengthMenu": [[5, 10, 25, 50, -1], [5, 10, 25, 50, "All"]],
-            "order": [[2, 'desc']], // Sort by Saved At column by default
-            "columnDefs": [
-                { 
-                    "orderable": false, 
-                    "targets": [0, 6],
-                    "className": "text-center"
-                },
-                { "className": "text-center", "targets": [3, 4, 5] },
-                { "width": "5%", "targets": 0 },
-                { "width": "15%", "targets": 6 }
-            ],
-            "language": {
-                "search": "Search files:",
-                "lengthMenu": "Show _MENU_ files per page",
-                "info": "Showing _START_ to _END_ of _TOTAL_ files",
-                "infoEmpty": "No files available",
-                "infoFiltered": "(filtered from _MAX_ total files)",
-                "paginate": {
-                    "first": "«",
-                    "last": "»",
-                    "next": "›",
-                    "previous": "‹"
-                }
-            },
-            "pagingType": "full_numbers",
-            "drawCallback": function(settings) {
-                // Get the current page and page length
-                const api = this.api();
-                const pageInfo = api.page.info();
-                const startIndex = pageInfo.start;
-                
-                // Update row numbers
-                api.column(0, {search:'applied', order:'applied'}).nodes().each(function(cell, i) {
-                    cell.innerHTML = startIndex + i + 1;
-                });
-            },
-            "dom": "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
-                   "<'row'<'col-sm-12'tr>>" +
-                   "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
-            "responsive": true,
-            "processing": true,
-            "serverSide": false,
-            "ajax": {
-                "url": `/api/radar-files/{{ radar.id }}/`,
-                "dataSrc": "data"
-            },
-            "columns": [
-                { 
-                    "data": null,
-                    "defaultContent": "" // Empty content, will be filled by drawCallback
-                },
-                { "data": "filename" },
-                { "data": "timestamp" },
-                { "data": "record_count" },
-                { 
-                    "data": "file_size",
-                    "render": function(data) {
-                        return formatFileSize(data);
+        (function() {
+            const radarId = {{ radar.id }};
+            const table = $('#radarDataTable_' + radarId).DataTable({
+                "pageLength": 5,
+                "lengthMenu": [[5, 10, 25, 50, -1], [5, 10, 25, 50, "All"]],
+                "order": [[2, 'desc']], // Sort by Saved At column by default
+                "columnDefs": [
+                    { 
+                        "orderable": false, 
+                        "targets": [0, 6],
+                        "className": "text-center"
+                    },
+                    { "className": "text-center", "targets": [3, 4, 5] },
+                    { "width": "5%", "targets": 0 },
+                    { "width": "15%", "targets": 6 }
+                ],
+                "language": {
+                    "search": "Search files:",
+                    "lengthMenu": "Show _MENU_ files per page",
+                    "info": "Showing _START_ to _END_ of _TOTAL_ files",
+                    "infoEmpty": "No files available",
+                    "infoFiltered": "(filtered from _MAX_ total files)",
+                    "paginate": {
+                        "first": "«",
+                        "last": "»",
+                        "next": "›",
+                        "previous": "‹"
                     }
                 },
-                { 
-                    "data": "is_valid",
-                    "render": function(data) {
-                        return data ? 
-                            '<span class="badge bg-success">Valid</span>' : 
-                            '<span class="badge bg-danger">Invalid</span>';
-                    }
+                "pagingType": "full_numbers",
+                "drawCallback": function(settings) {
+                    // Get the current page and page length
+                    const api = this.api();
+                    const pageInfo = api.page.info();
+                    const startIndex = pageInfo.start;
+                    
+                    // Update row numbers
+                    api.column(0, {search:'applied', order:'applied'}).nodes().each(function(cell, i) {
+                        cell.innerHTML = startIndex + i + 1;
+                    });
                 },
-                {
-                    "data": "id",
-                    "render": function(data, type, row) {
-                        return `
-                            <div class="btn-group btn-group-sm">
-                                <a href="/radar-file/${data}/download/" class="btn btn-primary" title="Download">
-                                    <i class="fas fa-download"></i>
-                                </a>
-                                <button type="button" class="btn btn-danger" 
-                                        onclick="deleteRadarFile(${data}, '${row.filename}')"
-                                        title="Delete">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        `;
+                "dom": "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
+                       "<'row'<'col-sm-12'tr>>" +
+                       "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+                "responsive": true,
+                "processing": true,
+                "serverSide": false,
+                "ajax": {
+                    "url": `/api/radar-files/${radarId}/`,
+                    "dataSrc": "data"
+                },
+                "columns": [
+                    { 
+                        "data": null,
+                        "defaultContent": "" // Empty content, will be filled by drawCallback
+                    },
+                    { "data": "filename" },
+                    { "data": "timestamp" },
+                    { "data": "record_count" },
+                    { 
+                        "data": "file_size",
+                        "render": function(data) {
+                            return formatFileSize(data);
+                        }
+                    },
+                    { 
+                        "data": "is_valid",
+                        "render": function(data) {
+                            return data ? 
+                                '<span class="badge bg-success">Valid</span>' : 
+                                '<span class="badge bg-danger">Invalid</span>';
+                        }
+                    },
+                    {
+                        "data": "id",
+                        "render": function(data, type, row) {
+                            return `
+                                <div class="btn-group btn-group-sm">
+                                    <a href="/radar-file/${data}/download/" class="btn btn-primary" title="Download">
+                                        <i class="fas fa-download"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-danger" 
+                                            onclick="deleteRadarFile(${data}, '${row.filename}')"
+                                            title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
                     }
-                }
-            ]
-        });
+                ]
+            });
+
+            // Store the table reference in a global object
+            window.radarTables = window.radarTables || {};
+            window.radarTables[radarId] = table;
+        })();
         {% endfor %}
 
         // Function to format file size
@@ -951,9 +1419,11 @@
 
         // Function to refresh all radar data tables
         function refreshRadarTables() {
-            {% for radar in radars %}
-            table_{{ radar.id }}.ajax.reload(null, false);
-            {% endfor %}
+            if (window.radarTables) {
+                Object.values(window.radarTables).forEach(table => {
+                    table.ajax.reload(null, false);
+                });
+            }
         }
 
         // Refresh the tables every 30 seconds
@@ -1033,6 +1503,76 @@
     font-size: 0.875rem;
     width: 1rem;
     text-align: center;
+}
+
+/* Range slider styles */
+.range-controls {
+    padding: 0 10px;
+}
+
+.range-sliders {
+    position: relative;
+    height: 40px;
+}
+
+.form-range {
+    position: absolute;
+    width: 100%;
+    pointer-events: none;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 2px;
+    background: #dee2e6;
+    outline: none;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.form-range:hover {
+    opacity: 1;
+}
+
+.form-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    pointer-events: auto;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.form-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    pointer-events: auto;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.range-min {
+    top: 0;
+}
+
+.range-max {
+    top: 20px;
+}
+
+/* Active state for range thumbs */
+.form-range:active::-webkit-slider-thumb {
+    background: #0056b3;
+    transform: scale(1.1);
+}
+
+.form-range:active::-moz-range-thumb {
+    background: #0056b3;
+    transform: scale(1.1);
 }
 </style>
 {% endblock %} 

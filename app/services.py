@@ -32,6 +32,22 @@ class RadarDataService:
         self.stop_events = {}
         self.data_cache = {}  # Cache for storing radar data
         self.last_save_time = {}  # Track last save time for each radar
+        self.test_mode = False  # Flag for test mode
+        self.test_data_index = 0  # Index for cycling through test data
+        self.test_data = [
+            {'range': -33.2, 'speed': 2},
+            {'range': -33.2, 'speed': 0},
+            {'range': -33.2, 'speed': 0},
+            {'range': -33.2, 'speed': 0},
+            {'range': 15.8, 'speed': 2},
+            {'range': 15.3, 'speed': 11},
+            {'range': 15.4, 'speed': 0},
+            {'range': 16.4, 'speed': 6},
+            {'range': 16.6, 'speed': 0},
+            {'range': 16.6, 'speed': 0},
+            {'range': 16.6, 'speed': 0},
+            {'range': 16.6, 'speed': 0}
+        ]
         logger.info("RadarDataService initialized")
     
     def check_serial_ports(self):
@@ -39,8 +55,11 @@ class RadarDataService:
         import serial.tools.list_ports
         ports = serial.tools.list_ports.comports()
         port_info = []
+        logger.info("Checking available serial ports...")
+        
         for port in ports:
             try:
+                logger.debug(f"Attempting to open port {port.device}")
                 with serial.Serial(port.device, timeout=0.1) as ser:
                     port_info.append({
                         'device': port.device,
@@ -48,13 +67,17 @@ class RadarDataService:
                         'hwid': port.hwid,
                         'status': 'available'
                     })
-            except serial.SerialException:
+                    logger.info(f"Port {port.device} is available")
+            except serial.SerialException as e:
                 port_info.append({
                     'device': port.device,
                     'description': port.description,
                     'hwid': port.hwid,
                     'status': 'in_use'
                 })
+                logger.warning(f"Port {port.device} is in use or unavailable: {str(e)}")
+        
+        logger.info(f"Found {len(ports)} serial ports: {[p['device'] for p in port_info]}")
         return port_info
 
     def start_service(self):
@@ -63,22 +86,26 @@ class RadarDataService:
         RadarConfig = apps.get_model('app', 'RadarConfig')
         radars = RadarConfig.objects.filter(is_active=True)
         
+        logger.info(f"Found {len(radars)} active radars")
         for radar in radars:
+            logger.info(f"Starting radar {radar.id} ({radar.name}) on port {radar.port}")
             self.start_radar_stream(radar)
     
     def stop_service(self):
         """Stop the radar data service"""
         logger.info("Stopping radar data service")
         for radar_id in list(self.stop_events.keys()):
+            logger.info(f"Stopping radar {radar_id}")
             self.stop_radar_stream(radar_id)
     
     def start_radar_stream(self, radar):
         """Start streaming data for a specific radar"""
         radar_id = radar.id
         if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
-            logger.info(f"Radar {radar_id} stream already running")
+            logger.warning(f"Radar {radar_id} stream already running")
             return
             
+        logger.info(f"Initializing data structures for radar {radar_id}")
         self.data_queues[radar_id] = Queue()
         self.stop_events[radar_id] = threading.Event()
         self.data_cache[radar_id] = []  # Removed maxlen limit
@@ -91,31 +118,43 @@ class RadarDataService:
         )
         thread.start()
         self.radar_threads[radar_id] = thread
-        logger.info(f"Started streaming for radar {radar_id}")
+        logger.info(f"Started streaming thread for radar {radar_id}")
     
     def stop_radar_stream(self, radar_id):
         """Stop streaming data for a specific radar"""
         if radar_id in self.stop_events:
+            logger.info(f"Stopping radar {radar_id} stream")
             self.stop_events[radar_id].set()
+            
             if radar_id in self.radar_threads:
+                logger.debug(f"Waiting for radar {radar_id} thread to finish")
                 self.radar_threads[radar_id].join(timeout=5.0)
+            
             # Save any remaining data before stopping
             if radar_id in self.data_cache and self.data_cache[radar_id]:
+                logger.info(f"Saving remaining data for radar {radar_id}")
                 self._save_data_to_file(radar_id)
+            
+            # Clean up resources
+            logger.debug(f"Cleaning up resources for radar {radar_id}")
             del self.stop_events[radar_id]
             del self.radar_threads[radar_id]
             del self.data_queues[radar_id]
             del self.data_cache[radar_id]
             del self.last_save_time[radar_id]
-            logger.info(f"Stopped streaming for radar {radar_id}")
+            logger.info(f"Successfully stopped radar {radar_id} stream")
     
     def get_latest_data(self, radar_id):
         """Get the latest data for a specific radar"""
         if radar_id in self.data_queues:
             try:
-                return self.data_queues[radar_id].get_nowait()
+                data = self.data_queues[radar_id].get_nowait()
+                logger.debug(f"Retrieved latest data for radar {radar_id}")
+                return data
             except:
+                logger.debug(f"No new data available for radar {radar_id}")
                 return None
+        logger.warning(f"No data queue found for radar {radar_id}")
         return None
 
     def _save_data_to_file(self, radar_id):
@@ -169,9 +208,31 @@ class RadarDataService:
         except Exception as e:
             logger.error(f"Error saving data to file for radar {radar_id}: {str(e)}")
     
+    def set_test_mode(self, enabled):
+        """Enable or disable test mode"""
+        with self._lock:
+            self.test_mode = enabled
+            self.test_data_index = 0  # Reset test data index when toggling
+            logger.info(f"Test mode {'enabled' if enabled else 'disabled'}")
+            return self.test_mode
+
+    def get_test_mode(self):
+        """Get current test mode state"""
+        with self._lock:
+            return self.test_mode
+
+    def _get_test_data(self):
+        """Get next test data point"""
+        with self._lock:
+            if not self.test_data:
+                return {'range': 0, 'speed': 0}
+            
+            data = self.test_data[self.test_data_index]
+            self.test_data_index = (self.test_data_index + 1) % len(self.test_data)
+            return data
+
     def _stream_radar_data(self, radar, data_queue, stop_event):
         """Background thread function for streaming radar data"""
-        print(f"Starting data stream for radar {radar.id} on port {radar.port}")  # Debug print
         logger.info(f"Starting data stream for radar {radar.id} on port {radar.port}")
         
         # Log radar configuration
@@ -184,13 +245,23 @@ class RadarDataService:
             'update_interval': radar.update_interval,
             'file_save_interval': radar.file_save_interval
         }
-        print(f"Radar configuration: {config_info}")  # Debug print
-        logger.info(f"Radar configuration: {config_info}")
-        
-        while not stop_event.is_set():
+        logger.info(f"Radar {radar.id} configuration: {config_info}")
+
+        connection_attempts = 0
+        max_connection_attempts = 3
+        connection_retry_delay = 5  # seconds
+
+        while not stop_event.is_set() and connection_attempts < max_connection_attempts:
             try:
-                print(f"Attempting to connect to radar {radar.id} on port {radar.port}")  # Debug print
-                logger.info(f"Attempting to connect to radar {radar.id} on port {radar.port}")
+                logger.info(f"Attempting to connect to radar {radar.id} on {radar.port} (Attempt {connection_attempts + 1}/{max_connection_attempts})")
+                
+                # Create error message for serial terminal
+                error_message = {
+                    'timestamp': int(time.time()),
+                    'display_text': f"Connecting to radar on port {radar.port}...",
+                    'connection_status': 'connecting'
+                }
+                data_queue.put(error_message)
                 
                 with serial.Serial(
                     port=radar.port,
@@ -198,118 +269,104 @@ class RadarDataService:
                     bytesize=radar.data_bits,
                     parity=radar.parity,
                     stopbits=radar.stop_bits,
-                    timeout=0.1
+                    timeout=1
                 ) as ser:
-                    print(f"Successfully connected to radar {radar.id} on port {radar.port}")  # Debug print
-                    logger.info(f"Successfully connected to radar {radar.id} on port {radar.port}")
+                    logger.info(f"Successfully connected to radar {radar.id} on {radar.port}")
                     
-                    # Send connection status
-                    data_queue.put({
-                        'status': 'success',
-                        'message': f'Connected to {radar.port}',
-                        'connection_status': 'connected',
-                        'timestamp': time.time()
-                    })
+                    # Send connection success message
+                    success_message = {
+                        'timestamp': int(time.time()),
+                        'display_text': f"Connected to radar on port {radar.port}",
+                        'connection_status': 'connected'
+                    }
+                    data_queue.put(success_message)
                     
                     while not stop_event.is_set():
-                        try:
-                            # Debug print for in_waiting
-                            waiting = ser.in_waiting
-                            if waiting > 0:
-                                print(f"Data waiting: {waiting} bytes")  # Debug print
-                            
-                            if ser.in_waiting:
-                                try:
-                                    data = ser.readline().strip()
-                                    print(f"Raw data received: {data}")  # Debug print
-                                    logger.info(f"Raw data received: {data}")
-                                    
-                                    # Skip empty lines
-                                    if not data:
-                                        print("Empty line received, skipping")  # Debug print
-                                        continue
-                                    
-                                    # Parse the specific format b'*+/-000.0,000'
-                                    if data.startswith(b'*'):
-                                        try:
-                                            # Decode the data
-                                            data_str = data.decode('utf-8')
-                                            print(f"Processing data: {data_str}")  # Debug print
-                                            logger.info(f"Processing data: {data_str}")
-                                            
-                                            # Remove * and split by comma
-                                            measurement = data_str.lstrip('*')
-                                            range_value, speed_value = map(float, measurement.split(','))
-                                            print(f"Parsed values - Range: {range_value}, Speed: {speed_value}")  # Debug print
-                                            
-                                            data_dict = {
-                                                'status': 'success',
-                                                'range': range_value,
-                                                'speed': speed_value,
-                                                'timestamp': time.time(),
-                                                'connection_status': 'connected',
-                                                'raw_data': data_str,
-                                                'display_text': f'[CONNECTED] Range: {range_value:.1f}m, Speed: {speed_value:.0f}mm/s'
-                                            }
-                                            
-                                            # Add to cache and queue
-                                            self.data_cache[radar.id].append(data_dict)
-                                            data_queue.put(data_dict)
-                                            print(f"Data queued: {data_dict}")  # Debug print
-                                            logger.info(f"Data queued: {data_dict}")
-                                            
-                                            # Check if it's time to save data
-                                            current_time = time.time()
-                                            if (current_time - self.last_save_time[radar.id]) >= (radar.file_save_interval * 60):
-                                                print(f"Saving data to file for radar {radar.id}")  # Debug print
-                                                logger.info(f"Saving data to file for radar {radar.id}")
-                                                self._save_data_to_file(radar.id)
-                                                self.last_save_time[radar.id] = current_time
-                                                
-                                        except (UnicodeDecodeError, ValueError) as e:
-                                            print(f"Error processing data: {str(e)}")  # Debug print
-                                            logger.error(f"Error processing data: {str(e)}")
-                                            logger.error(f"Problematic data: {data}")
-                                            continue
-                                    else:
-                                        print(f"Received non-standard format: {data}")  # Debug print
-                                        logger.warning(f"Received non-standard format: {data}")
-                                        
-                                except Exception as e:
-                                    print(f"Error reading data: {str(e)}")  # Debug print
-                                    logger.error(f"Error reading data: {str(e)}")
-                                    data_queue.put({
-                                        'status': 'error',
-                                        'message': f'Error reading data: {str(e)}',
-                                        'connection_status': 'error',
-                                        'display_text': f'[ERROR] {str(e)}'
-                                    })
-                            else:
-                                time.sleep(radar.update_interval / 1000.0)  # Convert ms to seconds
-                                
-                        except Exception as e:
-                            print(f"Error in inner loop: {str(e)}")  # Debug print
-                            logger.error(f"Error in inner loop: {str(e)}")
-                            time.sleep(1)  # Wait before retrying
-                            
+                        if ser.in_waiting:
+                            try:
+                                data = ser.readline().strip()
+                                if data:
+                                    logger.debug(f"Received data from radar {radar.id}: {data}")
+                                    # Format the data for display
+                                    display_data = {
+                                        'timestamp': int(time.time()),
+                                        'raw_data': data.decode('utf-8', errors='replace'),
+                                        'display_text': f"Data: {data.decode('utf-8', errors='replace')}",
+                                        'connection_status': 'connected'
+                                    }
+                                    data_queue.put(display_data)
+                            except Exception as e:
+                                error_msg = f"Error reading data: {str(e)}"
+                                logger.error(f"Error reading from radar {radar.id}: {error_msg}")
+                                error_data = {
+                                    'timestamp': int(time.time()),
+                                    'display_text': error_msg,
+                                    'connection_status': 'error'
+                                }
+                                data_queue.put(error_data)
+                        time.sleep(radar.update_interval / 1000.0)  # Convert to seconds
+                    
+                    logger.info(f"Stop event received for radar {radar.id}")
+                    
             except serial.SerialException as e:
-                print(f"Serial port error: {str(e)}")  # Debug print
-                logger.error(f"Serial port error for radar {radar.id}: {str(e)}")
-                data_queue.put({
-                    'status': 'error',
-                    'message': f'Serial port error: {str(e)}',
-                    'connection_status': 'disconnected',
-                    'display_text': f'[DISCONNECTED] {str(e)}'
-                })
-                time.sleep(5)  # Wait before retrying connection
+                connection_attempts += 1
+                error_msg = f"Serial connection error: {str(e)}"
+                logger.error(f"Connection error for radar {radar.id}: {error_msg}")
                 
+                # Send error message to serial terminal
+                error_data = {
+                    'timestamp': int(time.time()),
+                    'display_text': error_msg,
+                    'connection_status': 'error'
+                }
+                data_queue.put(error_data)
+                
+                if connection_attempts < max_connection_attempts:
+                    retry_msg = f"Retrying connection in {connection_retry_delay} seconds... (Attempt {connection_attempts}/{max_connection_attempts})"
+                    logger.info(retry_msg)
+                    retry_data = {
+                        'timestamp': int(time.time()),
+                        'display_text': retry_msg,
+                        'connection_status': 'retrying'
+                    }
+                    data_queue.put(retry_data)
+                    time.sleep(connection_retry_delay)
+                else:
+                    final_error = f"Failed to connect after {max_connection_attempts} attempts"
+                    logger.error(final_error)
+                    final_error_data = {
+                        'timestamp': int(time.time()),
+                        'display_text': final_error,
+                        'connection_status': 'disconnected'
+                    }
+                    data_queue.put(final_error_data)
+                    break
+                    
             except Exception as e:
-                print(f"Unexpected error: {str(e)}")  # Debug print
-                logger.error(f"Unexpected error for radar {radar.id}: {str(e)}")
-                data_queue.put({
-                    'status': 'error',
-                    'message': f'Unexpected error: {str(e)}',
-                    'connection_status': 'error',
-                    'display_text': f'[ERROR] {str(e)}'
-                })
-                time.sleep(5)  # Wait before retrying
+                error_msg = f"Unexpected error: {str(e)}"
+                logger.error(f"Unexpected error in radar {radar.id} stream: {error_msg}")
+                error_data = {
+                    'timestamp': int(time.time()),
+                    'display_text': error_msg,
+                    'connection_status': 'error'
+                }
+                data_queue.put(error_data)
+                break
+                
+        if connection_attempts >= max_connection_attempts:
+            logger.error(f"Maximum connection attempts reached for radar {radar.id}")
+            final_error_data = {
+                'timestamp': int(time.time()),
+                'display_text': "Connection failed - maximum attempts reached",
+                'connection_status': 'disconnected'
+            }
+            data_queue.put(final_error_data)
+        
+        logger.info(f"Closing data stream for radar {radar.id}")
+        # Send final disconnect message
+        disconnect_data = {
+            'timestamp': int(time.time()),
+            'display_text': "Connection closed",
+            'connection_status': 'disconnected'
+        }
+        data_queue.put(disconnect_data)
