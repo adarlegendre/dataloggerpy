@@ -268,9 +268,6 @@
 <!-- Load jQuery first -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
-<!-- Load ApexCharts -->
-<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-
 <!-- Load DataTables and its dependencies -->
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.2.2/css/buttons.bootstrap5.min.css">
@@ -423,19 +420,27 @@
         const speedChartElement = document.querySelector(`#speedChart_${radarId}`);
         const directionChartElement = document.querySelector(`#directionChart_${radarId}`);
 
+        console.log('Initializing charts for radar', radarId);
+        console.log('Range chart element:', rangeChartElement);
+        console.log('Speed chart element:', speedChartElement);
+        console.log('Direction chart element:', directionChartElement);
+
         if (rangeChartElement) {
+            console.log('Creating range chart');
             const rangeChart = new ApexCharts(rangeChartElement, rangeOptions);
             rangeChart.render();
             radarCharts[`range_${radarId}`] = rangeChart;
         }
 
         if (speedChartElement) {
+            console.log('Creating speed chart');
             const speedChart = new ApexCharts(speedChartElement, speedOptions);
             speedChart.render();
             radarCharts[`speed_${radarId}`] = speedChart;
         }
 
         if (directionChartElement) {
+            console.log('Creating direction chart');
             const directionChart = new ApexCharts(directionChartElement, directionOptions);
             directionChart.render();
             radarCharts[`direction_${radarId}`] = directionChart;
@@ -447,6 +452,44 @@
             speed: [],
             direction: []
         };
+
+        // Initialize charts with multiple zero values to ensure visibility
+        const now = new Date();
+        const initialDataPoints = [];
+        
+        // Create 10 initial data points spanning the last minute
+        for (let i = 0; i < 10; i++) {
+            const time = new Date(now.getTime() - (60 - i * 6) * 1000);
+            initialDataPoints.push({
+                x: time,
+                y: 0
+            });
+        }
+
+        // Add initial data points to all charts
+        if (radarCharts[`range_${radarId}`]) {
+            console.log('Updating range chart with initial data');
+            radarCharts[`range_${radarId}`].updateSeries([{
+                name: 'Range',
+                data: initialDataPoints
+            }]);
+        }
+
+        if (radarCharts[`speed_${radarId}`]) {
+            console.log('Updating speed chart with initial data');
+            radarCharts[`speed_${radarId}`].updateSeries([{
+                name: 'Speed',
+                data: initialDataPoints
+            }]);
+        }
+
+        if (radarCharts[`direction_${radarId}`]) {
+            console.log('Updating direction chart with initial data');
+            radarCharts[`direction_${radarId}`].updateSeries([{
+                name: 'Direction',
+                data: initialDataPoints
+            }]);
+        }
         {% endfor %}
     }
 
@@ -524,11 +567,13 @@
         }
         
         line.appendChild(textSpan);
-        serialContent.appendChild(line);
+        
+        // Prepend the new line at the top of the content
+        serialContent.insertBefore(line, serialContent.firstChild);
         
         // Auto-scroll if enabled
         if (window.autoScrollStates[radarId]) {
-            serialContent.scrollTop = serialContent.scrollHeight;
+            serialContent.scrollTop = 0;  // Scroll to top since new data is at the top
         }
     }
 
@@ -567,40 +612,40 @@
                     updateSerialData({{ radar.id }}, data);
 
                     // Update charts if valid data is available
-                    if (data.range !== null && data.range !== undefined && !isNaN(data.range)) {
+                    if (data.range !== null && data.range !== undefined) {
                         const rangeChart = radarCharts[`range_${ {{ radar.id }} }`];
                         if (rangeChart) {
                             const timestamp = new Date(data.timestamp * 1000);
                             rangeChart.appendData([{
                                 data: [{
                                     x: timestamp,
-                                    y: data.range
+                                    y: parseFloat(data.range) || 0
                                 }]
                             }]);
                         }
                     }
 
-                    if (data.speed !== null && data.speed !== undefined && !isNaN(data.speed)) {
+                    if (data.speed !== null && data.speed !== undefined) {
                         const speedChart = radarCharts[`speed_${ {{ radar.id }} }`];
                         if (speedChart) {
                             const timestamp = new Date(data.timestamp * 1000);
                             speedChart.appendData([{
                                 data: [{
                                     x: timestamp,
-                                    y: data.speed
+                                    y: parseFloat(data.speed) || 0
                                 }]
                             }]);
                         }
                     }
 
-                    if (data.direction !== null && data.direction !== undefined && !isNaN(data.direction)) {
+                    if (data.direction !== null && data.direction !== undefined) {
                         const directionChart = radarCharts[`direction_${ {{ radar.id }} }`];
                         if (directionChart) {
                             const timestamp = new Date(data.timestamp * 1000);
                             directionChart.appendData([{
                                 data: [{
                                     x: timestamp,
-                                    y: data.direction
+                                    y: parseFloat(data.direction) || 0
                                 }]
                             }]);
                         }
@@ -615,13 +660,38 @@
                     statusBadge.className = 'badge bg-danger';
                     statusBadge.textContent = 'Error';
                 }
+
+                // Add zero value when there's an error to maintain graph visibility
+                const now = new Date();
+                const errorData = {
+                    x: now,
+                    y: 0
+                };
+
+                if (radarCharts[`range_${radarId}`]) {
+                    radarCharts[`range_${radarId}`].appendData([{
+                        data: [errorData]
+                    }]);
+                }
+
+                if (radarCharts[`speed_${radarId}`]) {
+                    radarCharts[`speed_${radarId}`].appendData([{
+                        data: [errorData]
+                    }]);
+                }
+
+                if (radarCharts[`direction_${radarId}`]) {
+                    radarCharts[`direction_${radarId}`].appendData([{
+                        data: [errorData]
+                    }]);
+                }
             });
         {% endfor %}
     }
 
     // Initialize charts when the page loads
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('Initializing charts...');
+        console.log('DOM Content Loaded - Initializing charts...');
         initRadarCharts();
         initSerialData();
         // Update data immediately and then every second
