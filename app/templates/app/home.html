@@ -999,7 +999,15 @@
             .then(data => {
                 console.log(`Raw API response for radar ${radarId}:`, data);
                 
-                if (data && data.status === 'success') {
+                // Check if we have actual data or just a status message
+                const hasData = data && data.status === 'success' && 
+                              !data.message && 
+                              (data.range !== undefined || data.speed !== undefined);
+                
+                // Check if we have a "No new data available" message
+                const noDataMessage = data.message === 'No new data available';
+                
+                if (hasData) {
                     const timestamp = new Date(data.timestamp * 1000);
                     const range = parseFloat(data.range) || 0;
                     const speed = parseFloat(data.speed) || 0;
@@ -1054,17 +1062,34 @@
                         directionChart.update('none');
                     }
                     
-                    // Update serial data display
-                    const displayText = data.display_text || 
-                        `Range: ${range.toFixed(1)}m, Speed: ${speed.toFixed(1)}mm/s`;
-                    
-                    // Update status badge based on connection status
+                    // Update status badge to show connected
                     const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
                     if (statusBadge) {
-                        if (data.connection_status === 'connected') {
-                            statusBadge.className = 'badge bg-success';
-                            statusBadge.textContent = 'Connected';
+                        statusBadge.className = 'badge bg-success';
+                        statusBadge.textContent = 'Connected';
+                    }
+                    
+                    // Update serial data display with the data
+                    updateSerialData(radarId, {
+                        ...data,
+                        connection_status: 'connected',
+                        display_text: `[CONNECTED] Range: ${range.toFixed(1)}m, Speed: ${speed.toFixed(1)}mm/s`
+                    });
+                } else {
+                    // No data available - update status accordingly
+                    const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
+                    if (statusBadge) {
+                        if (data.connection_status === 'error') {
+                            statusBadge.className = 'badge bg-danger';
+                            statusBadge.textContent = 'Error';
                         } else if (data.connection_status === 'disconnected') {
+                            statusBadge.className = 'badge bg-danger';
+                            statusBadge.textContent = 'Disconnected';
+                        } else if (data.connection_status === 'retrying') {
+                            statusBadge.className = 'badge bg-warning';
+                            statusBadge.textContent = 'Retrying...';
+                        } else if (noDataMessage) {
+                            // If we get "No new data available", treat it as disconnected
                             statusBadge.className = 'badge bg-danger';
                             statusBadge.textContent = 'Disconnected';
                         } else {
@@ -1073,27 +1098,11 @@
                         }
                     }
                     
+                    // Update serial data display with status message
                     updateSerialData(radarId, {
-                        timestamp: data.timestamp,
-                        range: range,
-                        speed: speed,
-                        display_text: displayText,
-                        connection_status: data.connection_status || 'disconnected'
-                    });
-                } else {
-                    console.log(`No valid data received for radar ${radarId}. Data:`, data);
-                    
-                    // Update status badge to show error
-                    const statusBadge = document.querySelector(`#radar_${radarId} .badge`);
-                    if (statusBadge) {
-                        statusBadge.className = 'badge bg-danger';
-                        statusBadge.textContent = 'Error';
-                    }
-                    
-                    updateSerialData(radarId, {
-                        timestamp: Math.floor(Date.now() / 1000),
-                        display_text: 'No data available',
-                        connection_status: 'disconnected'
+                        timestamp: data.timestamp || Math.floor(Date.now() / 1000),
+                        display_text: noDataMessage ? 'Connection lost - No data available' : (data.message || 'No data available'),
+                        connection_status: noDataMessage ? 'disconnected' : (data.connection_status || 'disconnected')
                     });
                 }
             })
@@ -1302,6 +1311,14 @@
         
         .serial-text[data-status="error"] {
             color: #ff9900 !important;  /* Orange for error */
+        }
+        
+        .serial-text[data-status="retrying"] {
+            color: #ffff00 !important;  /* Yellow for retrying */
+        }
+        
+        .serial-text[data-status="connecting"] {
+            color: #00ffff !important;  /* Cyan for connecting */
         }
     `;
     document.head.appendChild(style);

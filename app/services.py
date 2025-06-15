@@ -284,17 +284,55 @@ class RadarDataService:
                     while not stop_event.is_set():
                         if ser.in_waiting:
                             try:
+                                # Log waiting bytes
+                                logger.debug(f"Data waiting: {ser.in_waiting} bytes")
+                                
                                 data = ser.readline().strip()
                                 if data:
-                                    logger.debug(f"Received data from radar {radar.id}: {data}")
-                                    # Format the data for display
-                                    display_data = {
-                                        'timestamp': int(time.time()),
-                                        'raw_data': data.decode('utf-8', errors='replace'),
-                                        'display_text': f"Data: {data.decode('utf-8', errors='replace')}",
-                                        'connection_status': 'connected'
-                                    }
-                                    data_queue.put(display_data)
+                                    # Log raw data received
+                                    logger.debug(f"Raw data received: {data}")
+                                    
+                                    # Process the data
+                                    try:
+                                        # Decode the data
+                                        decoded_data = data.decode('utf-8', errors='replace')
+                                        logger.debug(f"Processing data: {decoded_data}")
+                                        
+                                        # Parse the data (assuming format *+XXX.X,YYY)
+                                        if decoded_data.startswith('*'):
+                                            # Extract range and speed
+                                            parts = decoded_data[1:].split(',')
+                                            if len(parts) == 2:
+                                                range_val = float(parts[0])
+                                                speed_val = float(parts[1])
+                                                logger.debug(f"Parsed values - Range: {range_val}, Speed: {speed_val}")
+                                                
+                                                # Format the data for display
+                                                display_data = {
+                                                    'status': 'success',
+                                                    'range': range_val,
+                                                    'speed': speed_val,
+                                                    'timestamp': time.time(),
+                                                    'connection_status': 'connected',
+                                                    'raw_data': decoded_data,
+                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s"
+                                                }
+                                                
+                                                # Log the queued data
+                                                logger.debug(f"Data queued: {display_data}")
+                                                data_queue.put(display_data)
+                                            else:
+                                                logger.warning(f"Invalid data format: {decoded_data}")
+                                        else:
+                                            logger.warning(f"Invalid data prefix: {decoded_data}")
+                                    except ValueError as e:
+                                        logger.error(f"Error parsing data: {str(e)}")
+                                        error_data = {
+                                            'timestamp': int(time.time()),
+                                            'display_text': f"Error parsing data: {str(e)}",
+                                            'connection_status': 'error'
+                                        }
+                                        data_queue.put(error_data)
                             except Exception as e:
                                 error_msg = f"Error reading data: {str(e)}"
                                 logger.error(f"Error reading from radar {radar.id}: {error_msg}")
