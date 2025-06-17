@@ -89,10 +89,14 @@ def home(request):
             ).order_by('-start_time')[:100]
             radar_detections[radar.id] = detections
         
+        # Get system info
+        system_info = get_system_info()
+        
         context = {
             'system_settings': system_settings,
             'radars': radars,
             'radar_detections': radar_detections,
+            'system_info': system_info,
         }
         return render(request, 'app/home.html', context)
     except Exception as e:
