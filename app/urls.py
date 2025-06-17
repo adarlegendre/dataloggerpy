@@ -28,5 +28,5 @@ urlpatterns = [
     path('api/radar-detections/<int:radar_id>/', views.radar_detections, name='radar_detections'),
     path('api/radar-detection/<int:detection_id>/', views.radar_detection_details, name='radar_detection_details'),
     path('api/test-anpr-connection/', views.test_anpr_connection, name='test_anpr_connection'),
-    path('api/radar-stats/', views.radar_stats_api, name='radar_stats_api'),
+    path('api/summary-stats/', views.summary_stats, name='summary_stats'),
 ] 

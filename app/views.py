@@ -4,7 +4,7 @@ from django.contrib.auth import logout
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm, UserForm, UserSearchForm, ANPRForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo, RadarObjectDetection, ANPRConfig
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo, RadarObjectDetection, ANPRConfig, SummaryStats
 from app.utils import get_system_info
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.contrib.auth.models import Permission
@@ -800,41 +800,21 @@ def create_notification_view(request):
     
     return render(request, 'notifications/create.html')
 
-@login_required
-def radar_stats_api(request):
-    """API endpoint to get radar statistics"""
+def summary_stats(request):
+    """API endpoint to get summary statistics for the dashboard."""
     try:
-        from django.db.models import Count, Avg, Max
-        from django.utils import timezone
-        from datetime import timedelta
-
-        # Get active radars
-        radars = RadarConfig.objects.filter(is_active=True)
-        stats = {}
-
-        for radar in radars:
-            # Get detections from the last 24 hours
-            recent_detections = RadarObjectDetection.objects.filter(
-                radar=radar,
-                start_time__gte=timezone.now() - timedelta(days=1)
-            )
-
-            # Calculate statistics
-            total_detections = recent_detections.count()
-            last_detection = recent_detections.order_by('-start_time').first()
-            
-            # Calculate averages
-            avg_range = recent_detections.aggregate(avg=Avg('avg_range'))['avg'] or 0
-            avg_speed = recent_detections.aggregate(avg=Avg('avg_speed'))['avg'] or 0
-
-            stats[radar.id] = {
-                'total_detections': total_detections,
-                'last_detection_time': last_detection.start_time.strftime('%Y-%m-%d %H:%M:%S') if last_detection else None,
-                'avg_range': avg_range,
-                'avg_speed': avg_speed
-            }
-
-        return JsonResponse(stats)
+        # Get or create latest stats
+        stats = SummaryStats.get_latest_stats()
+        if not stats:
+            stats = SummaryStats.update_stats()
+        
+        # Return the stats as JSON
+        return JsonResponse({
+            'total_objects': stats.total_objects,
+            'active_radars': stats.active_radars,
+            'last_detection': stats.last_detection.isoformat() if stats.last_detection else None
+        })
     except Exception as e:
-        logger.error(f"Error getting radar stats: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)

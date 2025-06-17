@@ -210,6 +210,20 @@ class RadarConfig(models.Model):
     def __str__(self):
         return f"{self.name} ({self.port})"
 
+    def save(self, *args, **kwargs):
+        # Check if is_active has changed
+        if self.pk:
+            old_instance = RadarConfig.objects.get(pk=self.pk)
+            is_active_changed = old_instance.is_active != self.is_active
+        else:
+            is_active_changed = True
+
+        super().save(*args, **kwargs)
+        
+        # Update summary stats if active status changed
+        if is_active_changed:
+            SummaryStats.update_stats()
+
 class NotificationSettings(models.Model):
     FREQUENCY_CHOICES = [
         ('hourly', 'Hourly'),
@@ -503,6 +517,14 @@ class RadarObjectDetection(models.Model):
     def __str__(self):
         return f"{self.radar.name} - Object {self.start_time} to {self.end_time}"
 
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        # Update summary stats when a new detection is added
+        if is_new:
+            SummaryStats.update_stats()
+
     @property
     def duration(self):
         """Calculate the duration of the detection in seconds"""
@@ -563,3 +585,47 @@ class EmailNotification(models.Model):
             start_time__gte=self.start_date,
             end_time__lte=self.end_date
         ).order_by('start_time')
+
+class SummaryStats(models.Model):
+    """Model to store summary statistics for the dashboard"""
+    total_objects = models.IntegerField(default=0, help_text="Total number of objects detected")
+    active_radars = models.IntegerField(default=0, help_text="Number of active radars")
+    last_detection = models.DateTimeField(null=True, blank=True, help_text="Time of the last detection")
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Summary Statistics'
+        verbose_name_plural = 'Summary Statistics'
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"Summary Stats at {self.timestamp}"
+
+    @classmethod
+    def get_latest_stats(cls):
+        """Get the most recent summary statistics."""
+        return cls.objects.order_by('-timestamp').first()
+
+    @classmethod
+    def update_stats(cls):
+        """Update summary statistics based on current data."""
+        from django.db.models import Count, Max
+        from django.utils import timezone
+
+        # Get total objects detected
+        total_objects = RadarObjectDetection.objects.count()
+
+        # Get number of active radars
+        active_radars = RadarConfig.objects.filter(is_active=True).count()
+
+        # Get time of last detection
+        last_detection = RadarObjectDetection.objects.aggregate(
+            last_detection=Max('end_time')
+        )['last_detection']
+
+        # Create new stats entry
+        return cls.objects.create(
+            total_objects=total_objects,
+            active_radars=active_radars,
+            last_detection=last_detection
+        )

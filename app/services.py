@@ -433,7 +433,7 @@ class RadarDataService:
                                         continue
                                         
                                     # Quick format check
-                                    if len(data) >= 8 and data.startswith(b'*'):
+                                    if len(data) >= 8 and (data.startswith(b'*') or data.startswith(b'*?')):
                                         # Decode the data
                                         decoded_data = data.decode('utf-8', errors='replace').strip("b'")
                                         
