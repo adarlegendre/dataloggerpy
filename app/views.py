@@ -86,7 +86,7 @@ def home(request):
         for radar in radars:
             detections = RadarObjectDetection.objects.filter(
                 radar=radar
-            ).order_by('-start_time')[:100]
+            ).order_by('-start_time')[:100]  # Order by start_time descending
             radar_detections[radar.id] = detections
         
         # Get system info
@@ -652,13 +652,12 @@ def radar_detections(request, radar_id):
     try:
         radar = get_object_or_404(RadarConfig, id=radar_id)
         page = int(request.GET.get('page', 1))
-        per_page = 10  # Number of detections per page
+        per_page = int(request.GET.get('per_page', 10))  # Default to 10 records per page
         
-        paginator, page_obj = RadarObjectDetection.get_paginated_detections(
-            radar_id=radar_id,
-            page=page,
-            per_page=per_page
-        )
+        # Get detections ordered by start_time descending
+        detections = RadarObjectDetection.objects.filter(radar_id=radar_id).order_by('-start_time')
+        paginator = Paginator(detections, per_page)
+        page_obj = paginator.get_page(page)
         
         data = {
             'detections': [{
