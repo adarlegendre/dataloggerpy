@@ -389,14 +389,12 @@ class RadarDataService:
                 with serial.Serial(
                     port=radar.port,
                     baudrate=radar.baud_rate,
-                    bytesize=radar.data_bits,
-                    parity=radar.parity,
-                    stopbits=radar.stop_bits,
-                    timeout=0.1,  # Short timeout for non-blocking reads
-                    write_timeout=1.0,  # Add write timeout
-                    inter_byte_timeout=0.1  # Add inter-byte timeout
+                    timeout=1.0  # Simplified timeout configuration
                 ) as ser:
                     logger.info(f"Successfully connected to radar {radar.id} on {radar.port}")
+                    
+                    # Give some time for the serial connection to initialize
+                    time.sleep(2)
                     
                     # Send connection success message
                     success_message = {
@@ -406,13 +404,15 @@ class RadarDataService:
                     }
                     data_queue.put(success_message)
                     
-                    last_read_time = time.time()
+                    # Initialize tracking variables
+                    consecutive_zeros = 0
+                    max_consecutive_zeros = 10  # Threshold for considering a detection complete
                     
                     while not stop_event.is_set():
                         try:
                             # Check if it's time to save data to file
                             current_time = time.time()
-                            if current_time - last_save_time >= radar.file_save_interval * 60:  # Convert minutes to seconds
+                            if current_time - last_save_time >= radar.file_save_interval * 60:
                                 logger.info(f"Saving data to file for radar {radar.id} after {radar.file_save_interval} minutes")
                                 self._save_data_to_file(radar.id)
                                 last_save_time = current_time
@@ -432,15 +432,18 @@ class RadarDataService:
                                     if not data or data == b'\r':
                                         continue
                                         
-                                    # Quick format check - data should start with *+ or *?
-                                    if data.startswith(b'*+') or data.startswith(b'*?'):
-                                        # Decode the data
-                                        decoded_data = data.decode('utf-8', errors='replace').strip("b'")
-                                        
-                                        # Split the data into range and speed
+                                    # Decode the data
+                                    decoded_data = data.decode('utf-8', errors='replace').strip("b'")
+                                    
+                                    # Process the data if it starts with *+, *-, or *?
+                                    if decoded_data.startswith(('*+', '*-', '*?')):
                                         try:
-                                            # Remove the prefix (*+ or *?) and split by comma
-                                            parts = decoded_data[2:].split(',')
+                                            # Get the prefix and remove it
+                                            prefix = decoded_data[:2]  # *+ or *- or *?
+                                            data_without_prefix = decoded_data[2:]
+                                            
+                                            # Split by comma
+                                            parts = data_without_prefix.split(',')
                                             if len(parts) == 2:
                                                 range_val = float(parts[0])
                                                 speed_val = float(parts[1])
@@ -465,38 +468,41 @@ class RadarDataService:
                                                 if radar.id in self.data_cache:
                                                     self.data_cache[radar.id].append(display_data)
                                                 
-                                                # Process object detection
-                                                if range_val != 0 or speed_val != 0:
+                                                # Handle zero and non-zero readings
+                                                if range_val == 0 and speed_val == 0:
+                                                    consecutive_zeros += 1
+                                                    # If we have enough consecutive zeros and we were tracking a detection
+                                                    if consecutive_zeros >= max_consecutive_zeros and current_detection:
+                                                        # Save the current detection if it has any non-zero values
+                                                        has_non_zero = any(
+                                                            float(p['raw_data'][2:].split(',')[0]) != 0 or 
+                                                            float(p['raw_data'][2:].split(',')[1]) != 0 
+                                                            for p in current_detection
+                                                        )
+                                                        if has_non_zero:
+                                                            # Save detection to database
+                                                            self._save_detection(radar, current_detection)
+                                                        current_detection = []
+                                                        last_was_zero = True
+                                                else:
+                                                    # Reset consecutive zeros counter
+                                                    consecutive_zeros = 0
+                                                    # Add to current detection
                                                     current_detection.append(display_data)
                                                     last_was_zero = False
-                                                elif current_detection and not last_was_zero:
-                                                    # Save the current detection if it has any non-zero values
-                                                    has_non_zero = any(
-                                                        float(p['raw_data'][2:].split(',')[0]) != 0 or 
-                                                        float(p['raw_data'][2:].split(',')[1]) != 0 
-                                                        for p in current_detection
-                                                    )
-                                                    if has_non_zero:
-                                                        # Save detection to database
-                                                        self._save_detection(radar, current_detection)
-                                                    current_detection = []
-                                                    last_was_zero = True
-                                        except ValueError:
-                                            logger.debug(f"Invalid numeric values in data: {decoded_data}")
-                                    else:
-                                        logger.debug(f"Skipping invalid data format: {data}")
+                                                    
+                                        except ValueError as e:
+                                            logger.debug(f"Invalid numeric values in data: {decoded_data}, error: {str(e)}")
+                                            continue
+                                        except Exception as e:
+                                            logger.error(f"Error processing data point: {str(e)}")
+                                            continue
                                 except Exception as e:
-                                    logger.error(f"Error processing data line: {str(e)}")
+                                    logger.error(f"Error reading data line: {str(e)}")
                                     continue
                             
-                            # Check if we need to wait before next read
-                            current_time = time.time()
-                            elapsed = current_time - last_read_time
-                            if elapsed < radar.update_interval / 1000.0:
-                                time.sleep(0.001)  # Short sleep to prevent CPU spinning
-                            else:
-                                last_read_time = current_time
-                                
+                            # Small sleep to prevent CPU spinning
+                            time.sleep(0.001)
                         except Exception as e:
                             error_msg = f"Error reading data: {str(e)}"
                             logger.error(f"Error reading from radar {radar.id}: {error_msg}")
