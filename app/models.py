@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractUser
 from django.core.paginator import Paginator
+import logging
 
 # Create your models here.
 
@@ -604,28 +605,46 @@ class SummaryStats(models.Model):
     @classmethod
     def get_latest_stats(cls):
         """Get the most recent summary statistics."""
-        return cls.objects.order_by('-timestamp').first()
+        try:
+            return cls.objects.order_by('-timestamp').first()
+        except Exception as e:
+            logger.error(f"Error getting latest stats: {str(e)}")
+            return None
 
     @classmethod
     def update_stats(cls):
         """Update summary statistics based on current data."""
         from django.db.models import Count, Max
         from django.utils import timezone
+        from django.db import transaction
 
-        # Get total objects detected
-        total_objects = RadarObjectDetection.objects.count()
+        logger = logging.getLogger(__name__)
 
-        # Get number of active radars
-        active_radars = RadarConfig.objects.filter(is_active=True).count()
+        try:
+            with transaction.atomic():
+                # Get total objects detected
+                total_objects = RadarObjectDetection.objects.count()
 
-        # Get time of last detection
-        last_detection = RadarObjectDetection.objects.aggregate(
-            last_detection=Max('end_time')
-        )['last_detection']
+                # Get number of active radars
+                active_radars = RadarConfig.objects.filter(is_active=True).count()
 
-        # Create new stats entry
-        return cls.objects.create(
-            total_objects=total_objects,
-            active_radars=active_radars,
-            last_detection=last_detection
-        )
+                # Get time of last detection
+                last_detection = RadarObjectDetection.objects.aggregate(
+                    last_detection=Max('end_time')
+                )['last_detection']
+
+                # Create new stats entry
+                stats = cls.objects.create(
+                    total_objects=total_objects,
+                    active_radars=active_radars,
+                    last_detection=last_detection
+                )
+
+                # Clean up old stats (keep only last 1000 entries)
+                cls.objects.order_by('-timestamp')[1000:].delete()
+
+                return stats
+        except Exception as e:
+            logger.error(f"Error updating summary stats: {str(e)}")
+            # Return the last valid stats if available
+            return cls.get_latest_stats()

@@ -1890,25 +1890,53 @@
     // Function to update summary cards
     function updateSummaryCards() {
         fetch('/api/summary-stats/')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
-                // Update total objects count
-                document.getElementById('totalObjectsCount').textContent = data.total_objects.toLocaleString();
+                // Validate data structure
+                if (!data || typeof data !== 'object') {
+                    throw new Error('Invalid data format received');
+                }
+
+                // Update total objects count with validation
+                const totalObjectsElement = document.getElementById('totalObjectsCount');
+                if (totalObjectsElement && typeof data.total_objects === 'number') {
+                    totalObjectsElement.textContent = data.total_objects.toLocaleString();
+                }
                 
-                // Update active radars count
-                document.getElementById('activeRadarsCount').textContent = data.active_radars;
+                // Update active radars count with validation
+                const activeRadarsElement = document.getElementById('activeRadarsCount');
+                if (activeRadarsElement && typeof data.active_radars === 'number') {
+                    activeRadarsElement.textContent = data.active_radars;
+                }
                 
-                // Update last detection time
+                // Update last detection time with validation
                 const lastDetectionTime = document.getElementById('lastDetectionTime');
-                if (data.last_detection) {
-                    const date = new Date(data.last_detection);
-                    lastDetectionTime.textContent = date.toLocaleTimeString();
-                } else {
-                    lastDetectionTime.textContent = '-';
+                if (lastDetectionTime) {
+                    if (data.last_detection) {
+                        try {
+                            const date = new Date(data.last_detection);
+                            if (!isNaN(date.getTime())) {
+                                lastDetectionTime.textContent = date.toLocaleTimeString();
+                            } else {
+                                lastDetectionTime.textContent = '-';
+                            }
+                        } catch (e) {
+                            console.error('Error parsing last detection time:', e);
+                            lastDetectionTime.textContent = '-';
+                        }
+                    } else {
+                        lastDetectionTime.textContent = '-';
+                    }
                 }
             })
             .catch(error => {
                 console.error('Error updating summary cards:', error);
+                // Don't update the UI on error to prevent showing invalid data
             });
     }
 

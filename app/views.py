@@ -800,6 +800,7 @@ def create_notification_view(request):
     
     return render(request, 'notifications/create.html')
 
+@require_http_methods(["GET"])
 def summary_stats(request):
     """API endpoint to get summary statistics for the dashboard."""
     try:
@@ -807,6 +808,10 @@ def summary_stats(request):
         stats = SummaryStats.get_latest_stats()
         if not stats:
             stats = SummaryStats.update_stats()
+            if not stats:
+                return JsonResponse({
+                    'error': 'Unable to get or create summary statistics'
+                }, status=500)
         
         # Return the stats as JSON
         return JsonResponse({
@@ -815,6 +820,7 @@ def summary_stats(request):
             'last_detection': stats.last_detection.isoformat() if stats.last_detection else None
         })
     except Exception as e:
+        logger.error(f"Error in summary_stats view: {str(e)}")
         return JsonResponse({
-            'error': str(e)
+            'error': 'Internal server error'
         }, status=500)
