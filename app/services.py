@@ -154,9 +154,13 @@ class RadarDataService:
         """Get the latest data for a specific radar"""
         with self._lock:
             if radar_id not in self.data_queues:
-                # Initialize data queue if it doesn't exist
-                self.data_queues[radar_id] = Queue()
-                logger.debug(f"Created new data queue for radar {radar_id}")
+                # Only create a new queue if the radar stream is active
+                if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
+                    self.data_queues[radar_id] = Queue()
+                    logger.debug(f"Created new data queue for radar {radar_id}")
+                else:
+                    logger.warning(f"No data queue found for radar {radar_id}")
+                    return None
             
             try:
                 data = self.data_queues[radar_id].get_nowait()
