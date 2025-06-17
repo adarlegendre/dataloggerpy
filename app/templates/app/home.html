@@ -139,6 +139,90 @@
             </div>
         </div>
 
+        <!-- Radar Summary Cards -->
+        <div class="col-12 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-radar me-2"></i>Active Radars
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for radar in radars %}
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">{{ radar.name }}</h6>
+                                    <span class="badge {% if radar.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                                        {% if radar.is_active %}Active{% else %}Inactive{% endif %}
+                                    </span>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Radar Summary Cards -->
+                                    <div class="row mb-3">
+                                        <div class="col-6 mb-2">
+                                            <div class="card bg-light">
+                                                <div class="card-body p-2">
+                                                    <small class="text-muted d-block">Total Detections</small>
+                                                    <h6 class="mb-0" id="radar-{{ radar.id }}-total-detections">0</h6>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <div class="card bg-light">
+                                                <div class="card-body p-2">
+                                                    <small class="text-muted d-block">Last Detection</small>
+                                                    <h6 class="mb-0" id="radar-{{ radar.id }}-last-detection">No detections</h6>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <div class="card bg-light">
+                                                <div class="card-body p-2">
+                                                    <small class="text-muted d-block">Avg Range</small>
+                                                    <h6 class="mb-0" id="radar-{{ radar.id }}-avg-range">0m</h6>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <div class="card bg-light">
+                                                <div class="card-body p-2">
+                                                    <small class="text-muted d-block">Avg Speed</small>
+                                                    <h6 class="mb-0" id="radar-{{ radar.id }}-avg-speed">0mm/s</h6>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <small class="text-muted">Port:</small>
+                                        <p class="mb-0">{{ radar.port }}</p>
+                                    </div>
+                                    <div class="mb-3">
+                                        <small class="text-muted">Update Interval:</small>
+                                        <p class="mb-0">{{ radar.update_interval }}ms</p>
+                                    </div>
+                                    <div class="mb-3">
+                                        <small class="text-muted">File Save Interval:</small>
+                                        <p class="mb-0">{{ radar.file_save_interval }} minutes</p>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <a href="{% url 'radar_data' radar.id %}" class="btn btn-sm btn-primary">View Data</a>
+                                        <a href="{% url 'radar_settings' radar.id %}" class="btn btn-sm btn-secondary">Settings</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="col-12">
+                            <p class="text-muted">No active radars found.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Radar Configurations and Data Files -->
         <div class="col-12">
             {% for radar in radars %}
@@ -1826,6 +1910,132 @@
     document.addEventListener('DOMContentLoaded', function() {
         startSystemInfoUpdates();
     });
+
+    // Active Radars Card
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Active Radars</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for radar in active_radars %}
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">{{ radar.name }}</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <div class="card-body">
+                            <!-- Radar Summary Cards -->
+                            <div class="row mb-3">
+                                <div class="col-6 col-md-3 mb-2">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <small class="text-muted d-block">Total Detections</small>
+                                            <h6 class="mb-0" id="radar-{{ radar.id }}-total-detections">{{ radar.total_detections }}</h6>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3 mb-2">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <small class="text-muted d-block">Last Detection</small>
+                                            <h6 class="mb-0" id="radar-{{ radar.id }}-last-detection">{{ radar.last_detection_time|default:"No detections" }}</h6>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3 mb-2">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <small class="text-muted d-block">Avg Range</small>
+                                            <h6 class="mb-0" id="radar-{{ radar.id }}-avg-range">{{ radar.avg_range|default:"0" }}m</h6>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3 mb-2">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <small class="text-muted d-block">Avg Speed</small>
+                                            <h6 class="mb-0" id="radar-{{ radar.id }}-avg-speed">{{ radar.avg_speed|default:"0" }}mm/s</h6>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <small class="text-muted">Port:</small>
+                                <p class="mb-0">{{ radar.port }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <small class="text-muted">Update Interval:</small>
+                                <p class="mb-0">{{ radar.update_interval }}ms</p>
+                            </div>
+                            <div class="mb-3">
+                                <small class="text-muted">File Save Interval:</small>
+                                <p class="mb-0">{{ radar.file_save_interval }} minutes</p>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <a href="{% url 'radar_data' radar.id %}" class="btn btn-sm btn-primary">View Data</a>
+                                <a href="{% url 'radar_settings' radar.id %}" class="btn btn-sm btn-secondary">Settings</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="col-12">
+                    <p class="text-muted">No active radars found.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    // Add this to your existing JavaScript
+    <script>
+    // ... existing JavaScript code ...
+
+    function updateRadarStats() {
+        fetch('/api/radar-stats/')
+            .then(response => response.json())
+            .then(data => {
+                Object.entries(data).forEach(([radarId, stats]) => {
+                    // Update total detections
+                    const totalDetections = document.getElementById(`radar-${radarId}-total-detections`);
+                    if (totalDetections) totalDetections.textContent = stats.total_detections;
+
+                    // Update last detection time
+                    const lastDetection = document.getElementById(`radar-${radarId}-last-detection`);
+                    if (lastDetection) lastDetection.textContent = stats.last_detection_time || 'No detections';
+
+                    // Update average range
+                    const avgRange = document.getElementById(`radar-${radarId}-avg-range`);
+                    if (avgRange) avgRange.textContent = `${stats.avg_range.toFixed(1)}m`;
+
+                    // Update average speed
+                    const avgSpeed = document.getElementById(`radar-${radarId}-avg-speed`);
+                    if (avgSpeed) avgSpeed.textContent = `${stats.avg_speed.toFixed(1)}mm/s`;
+                });
+            })
+            .catch(error => console.error('Error updating radar stats:', error));
+    }
+
+    // Update radar stats every minute along with system info
+    function startUpdates() {
+        // Update immediately
+        updateSystemInfo();
+        updateRadarStats();
+        
+        // Then update every minute
+        setInterval(() => {
+            updateSystemInfo();
+            updateRadarStats();
+        }, 60000);
+    }
+
+    // Start updates when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        startUpdates();
+    });
+    </script>
 </script>
 
 <style>

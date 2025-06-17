@@ -799,3 +799,42 @@ def create_notification_view(request):
             return redirect('create_notification')
     
     return render(request, 'notifications/create.html')
+
+@login_required
+def radar_stats_api(request):
+    """API endpoint to get radar statistics"""
+    try:
+        from django.db.models import Count, Avg, Max
+        from django.utils import timezone
+        from datetime import timedelta
+
+        # Get active radars
+        radars = RadarConfig.objects.filter(is_active=True)
+        stats = {}
+
+        for radar in radars:
+            # Get detections from the last 24 hours
+            recent_detections = RadarObjectDetection.objects.filter(
+                radar=radar,
+                start_time__gte=timezone.now() - timedelta(days=1)
+            )
+
+            # Calculate statistics
+            total_detections = recent_detections.count()
+            last_detection = recent_detections.order_by('-start_time').first()
+            
+            # Calculate averages
+            avg_range = recent_detections.aggregate(avg=Avg('avg_range'))['avg'] or 0
+            avg_speed = recent_detections.aggregate(avg=Avg('avg_speed'))['avg'] or 0
+
+            stats[radar.id] = {
+                'total_detections': total_detections,
+                'last_detection_time': last_detection.start_time.strftime('%Y-%m-%d %H:%M:%S') if last_detection else None,
+                'avg_range': avg_range,
+                'avg_speed': avg_speed
+            }
+
+        return JsonResponse(stats)
+    except Exception as e:
+        logger.error(f"Error getting radar stats: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
