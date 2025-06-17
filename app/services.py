@@ -49,8 +49,6 @@ class RadarDataService:
             {'range': 16.6, 'speed': 0},
             {'range': 16.6, 'speed': 0}
         ]
-        self.save_timer = None
-        self.save_interval = 300  # Save every 5 minutes
         logger.info("RadarDataService initialized")
     
     def check_serial_ports(self):
@@ -85,52 +83,43 @@ class RadarDataService:
 
     def start_service(self):
         """Start the radar data service"""
-        with self._lock:
-            if not self.radar_threads:
-                logger.info("Starting radar data service")
-                # Start all active radars
-                RadarConfig = apps.get_model('app', 'RadarConfig')
-                radars = RadarConfig.objects.filter(is_active=True)
-                for radar in radars:
-                    logger.info(f"Starting radar {radar.id} ({radar.name})")
-                    self.start_radar_stream(radar)
-                self._start_periodic_save()
+        logger.info("Starting radar data service")
+        RadarConfig = apps.get_model('app', 'RadarConfig')
+        radars = RadarConfig.objects.filter(is_active=True)
+        
+        logger.info(f"Found {len(radars)} active radars")
+        for radar in radars:
+            logger.info(f"Starting radar {radar.id} ({radar.name}) on port {radar.port}")
+            self.start_radar_stream(radar)
     
     def stop_service(self):
         """Stop the radar data service"""
-        with self._lock:
-            if self.radar_threads:
-                logger.info("Stopping radar data service")
-                for radar_id in list(self.radar_threads.keys()):
-                    logger.info(f"Stopping radar {radar_id}")
-                    self.stop_radar_stream(radar_id)
-                if self.save_timer:
-                    self.save_timer.cancel()
-                    self.save_timer = None
+        logger.info("Stopping radar data service")
+        for radar_id in list(self.stop_events.keys()):
+            logger.info(f"Stopping radar {radar_id}")
+            self.stop_radar_stream(radar_id)
     
     def start_radar_stream(self, radar):
         """Start streaming data for a specific radar"""
         radar_id = radar.id
-        with self._lock:
-            if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
-                logger.warning(f"Radar {radar_id} stream already running")
-                return
-                
-            logger.info(f"Initializing data structures for radar {radar_id}")
-            # Initialize or reinitialize data structures
-            self.data_queues[radar_id] = Queue()
-            self.stop_events[radar_id] = threading.Event()
-            self.data_cache[radar_id] = []  # Removed maxlen limit
-            self.last_save_time[radar_id] = time.time()
+        if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
+            logger.warning(f"Radar {radar_id} stream already running")
+            return
             
-            thread = threading.Thread(
-                target=self._stream_radar_data,
-                args=(radar, self.data_queues[radar_id], self.stop_events[radar_id]),
-                daemon=True
-            )
-            thread.start()
-            self.radar_threads[radar_id] = thread
-            logger.info(f"Started streaming thread for radar {radar_id}")
+        logger.info(f"Initializing data structures for radar {radar_id}")
+        self.data_queues[radar_id] = Queue()
+        self.stop_events[radar_id] = threading.Event()
+        self.data_cache[radar_id] = []  # Removed maxlen limit
+        self.last_save_time[radar_id] = time.time()
+        
+        thread = threading.Thread(
+            target=self._stream_radar_data,
+            args=(radar, self.data_queues[radar_id], self.stop_events[radar_id]),
+            daemon=True
+        )
+        thread.start()
+        self.radar_threads[radar_id] = thread
+        logger.info(f"Started streaming thread for radar {radar_id}")
     
     def stop_radar_stream(self, radar_id):
         """Stop streaming data for a specific radar"""
@@ -158,16 +147,7 @@ class RadarDataService:
     
     def get_latest_data(self, radar_id):
         """Get the latest data for a specific radar"""
-        with self._lock:
-            if radar_id not in self.data_queues:
-                # Only create a new queue if the radar stream is active
-                if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
-                    self.data_queues[radar_id] = Queue()
-                    logger.debug(f"Created new data queue for radar {radar_id}")
-                else:
-                    logger.warning(f"No data queue found for radar {radar_id}")
-                    return None
-            
+        if radar_id in self.data_queues:
             try:
                 data = self.data_queues[radar_id].get_nowait()
                 logger.debug(f"Retrieved latest data for radar {radar_id}")
@@ -175,6 +155,8 @@ class RadarDataService:
             except:
                 logger.debug(f"No new data available for radar {radar_id}")
                 return None
+        logger.warning(f"No data queue found for radar {radar_id}")
+        return None
 
     def _save_data_to_file(self, radar_id):
         """Save cached data to file"""
@@ -195,11 +177,13 @@ class RadarDataService:
             # Create directory if it doesn't exist
             save_dir = os.path.join(radar.data_storage_path)
             os.makedirs(save_dir, exist_ok=True)
+            logger.debug(f"Ensuring save directory exists: {save_dir}")
             
             # Generate filename with timestamp
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"radar_{radar.name}_{timestamp}.json"
             filepath = os.path.join(save_dir, filename)
+            logger.debug(f"Preparing to save data to file: {filepath}")
             
             # Process and save data in a single pass
             object_detections = []
@@ -209,10 +193,11 @@ class RadarDataService:
             total_readings = 0
             
             # Open file for writing
+            logger.debug(f"Opening file for writing: {filepath}")
             with open(filepath, 'w') as f:
                 f.write('[\n')  # Start JSON array
                 
-                for data_point in data_to_process:
+                for i, data_point in enumerate(data_to_process):
                     try:
                         if data_point['raw_data'].startswith(('*+', '*-', '*?')):
                             parts = data_point['raw_data'][1:].split(',')
@@ -230,17 +215,19 @@ class RadarDataService:
                                     if self._process_and_save_detection(current_detection, f, detection_count + 1, radar):
                                         detection_count += 1
                                         total_readings += len(current_detection)
+                                        logger.debug(f"Processed detection #{detection_count} with {len(current_detection)} readings")
                                     current_detection = []
                                     last_was_zero = True
+                                
+                                # Process the last detection if this is the last data point
+                                if i == len(data_to_process) - 1 and current_detection and not last_was_zero:
+                                    if self._process_and_save_detection(current_detection, f, detection_count + 1, radar):
+                                        detection_count += 1
+                                        total_readings += len(current_detection)
+                                        logger.debug(f"Processed final detection #{detection_count} with {len(current_detection)} readings")
                     except (ValueError, IndexError) as e:
                         logger.warning(f"Error processing data point: {str(e)}")
                         continue
-                
-                # Process the last detection if it exists
-                if current_detection and not last_was_zero:
-                    if self._process_and_save_detection(current_detection, f, detection_count + 1, radar):
-                        detection_count += 1
-                        total_readings += len(current_detection)
                 
                 f.write('\n]')  # End JSON array
             
@@ -248,20 +235,23 @@ class RadarDataService:
             if detection_count > 0:
                 # Get file size
                 file_size = os.path.getsize(filepath)
+                logger.debug(f"File size: {file_size} bytes")
                 
                 # Create RadarDataFile record
-                RadarDataFile.objects.create(
+                data_file = RadarDataFile.objects.create(
                     radar=radar,
                     filename=filename,
                     file_path=filepath,
                     record_count=total_readings,
                     file_size=file_size
                 )
+                logger.debug(f"Created RadarDataFile record with ID: {data_file.id}")
                 
                 logger.info(f"Saved {detection_count} object detections ({total_readings} total readings) to {filepath}")
                 
                 # Clear the cache only after successful save
                 self.data_cache[radar_id].clear()
+                logger.debug(f"Cleared data cache for radar {radar_id}")
             else:
                 logger.warning(f"No valid detections found to save for radar {radar_id}")
             
@@ -653,28 +643,3 @@ class RadarDataService:
             
         except Exception as e:
             logger.error(f"Error saving object detection for radar {radar.id}: {str(e)}")
-
-    def _start_periodic_save(self):
-        """Start periodic save timer"""
-        if self.save_timer is None:
-            self.save_timer = threading.Timer(self.save_interval, self._periodic_save)
-            self.save_timer.daemon = True
-            self.save_timer.start()
-            
-    def _periodic_save(self):
-        """Periodically save data for all active radars"""
-        try:
-            for radar_id in list(self.data_cache.keys()):
-                if self.data_cache[radar_id]:
-                    # Get the radar's save interval
-                    radar = apps.get_model('app', 'RadarConfig').objects.get(id=radar_id)
-                    # Convert minutes to seconds
-                    self.save_interval = radar.file_save_interval * 60
-                    self._save_data_to_file(radar_id)
-        except Exception as e:
-            logger.error(f"Error in periodic save: {str(e)}")
-        finally:
-            # Restart the timer with the new interval
-            self.save_timer = threading.Timer(self.save_interval, self._periodic_save)
-            self.save_timer.daemon = True
-            self.save_timer.start()
