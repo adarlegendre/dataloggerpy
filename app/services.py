@@ -432,59 +432,55 @@ class RadarDataService:
                                     if not data or data == b'\r':
                                         continue
                                         
-                                    # Quick format check
-                                    if len(data) >= 8 and (data.startswith(b'*') or data.startswith(b'*?')):
+                                    # Quick format check - data should start with *+ or *?
+                                    if data.startswith(b'*+') or data.startswith(b'*?'):
                                         # Decode the data
                                         decoded_data = data.decode('utf-8', errors='replace').strip("b'")
                                         
-                                        # Remove question mark after asterisk if present
-                                        if decoded_data.startswith('*?') and len(decoded_data) >= 9:
-                                            decoded_data = decoded_data[0] + decoded_data[2:]
-                                        
-                                        # Extract range and speed
-                                        range_str = decoded_data[1:7]  # Get the range part
-                                        speed_str = decoded_data[8:11]  # Get the speed part
-                                        
+                                        # Split the data into range and speed
                                         try:
-                                            range_val = float(range_str)
-                                            speed_val = float(speed_str)
-                                            
-                                            # Update last valid data time
-                                            last_valid_data_time = time.time()
-                                            
-                                            # Format the data for display
-                                            display_data = {
-                                                'status': 'success',
-                                                'range': range_val,
-                                                'speed': speed_val,
-                                                'timestamp': time.time(),
-                                                'connection_status': 'connected',
-                                                'raw_data': decoded_data,
-                                                'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s"
-                                            }
-                                            
-                                            data_queue.put(display_data)
-                                            
-                                            # Add to data cache for periodic file saving
-                                            if radar.id in self.data_cache:
-                                                self.data_cache[radar.id].append(display_data)
-                                            
-                                            # Process object detection
-                                            if range_val != 0 or speed_val != 0:
-                                                current_detection.append(display_data)
-                                                last_was_zero = False
-                                            elif current_detection and not last_was_zero:
-                                                # Save the current detection if it has any non-zero values
-                                                has_non_zero = any(
-                                                    float(p['raw_data'][1:].split(',')[0]) != 0 or 
-                                                    float(p['raw_data'][1:].split(',')[1]) != 0 
-                                                    for p in current_detection
-                                                )
-                                                if has_non_zero:
-                                                    # Save detection to database
-                                                    self._save_detection(radar, current_detection)
-                                                current_detection = []
-                                                last_was_zero = True
+                                            # Remove the prefix (*+ or *?) and split by comma
+                                            parts = decoded_data[2:].split(',')
+                                            if len(parts) == 2:
+                                                range_val = float(parts[0])
+                                                speed_val = float(parts[1])
+                                                
+                                                # Update last valid data time
+                                                last_valid_data_time = time.time()
+                                                
+                                                # Format the data for display
+                                                display_data = {
+                                                    'status': 'success',
+                                                    'range': range_val,
+                                                    'speed': speed_val,
+                                                    'timestamp': time.time(),
+                                                    'connection_status': 'connected',
+                                                    'raw_data': decoded_data,
+                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s"
+                                                }
+                                                
+                                                data_queue.put(display_data)
+                                                
+                                                # Add to data cache for periodic file saving
+                                                if radar.id in self.data_cache:
+                                                    self.data_cache[radar.id].append(display_data)
+                                                
+                                                # Process object detection
+                                                if range_val != 0 or speed_val != 0:
+                                                    current_detection.append(display_data)
+                                                    last_was_zero = False
+                                                elif current_detection and not last_was_zero:
+                                                    # Save the current detection if it has any non-zero values
+                                                    has_non_zero = any(
+                                                        float(p['raw_data'][2:].split(',')[0]) != 0 or 
+                                                        float(p['raw_data'][2:].split(',')[1]) != 0 
+                                                        for p in current_detection
+                                                    )
+                                                    if has_non_zero:
+                                                        # Save detection to database
+                                                        self._save_detection(radar, current_detection)
+                                                    current_detection = []
+                                                    last_was_zero = True
                                         except ValueError:
                                             logger.debug(f"Invalid numeric values in data: {decoded_data}")
                                     else:
