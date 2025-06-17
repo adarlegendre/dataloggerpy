@@ -564,11 +564,14 @@ def radar_data_view(request, radar_id):
     radar = get_object_or_404(RadarConfig, id=radar_id)
     
     # Get all data files for this radar
-    data_files = RadarDataFile.objects.filter(radar=radar).order_by('-created_at')
+    data_files = RadarDataFile.objects.filter(radar=radar).order_by('-timestamp')
+    
+    # Get pagination parameters
+    per_page = int(request.GET.get('per_page', 10))  # Default to 10 files per page
+    page_number = request.GET.get('page', 1)
     
     # Paginate the data files
-    paginator = Paginator(data_files, 10)  # Show 10 files per page
-    page_number = request.GET.get('page')
+    paginator = Paginator(data_files, per_page)
     page_obj = paginator.get_page(page_number)
     
     context = {

@@ -318,6 +318,7 @@
                             <div class="d-flex align-items-center">
                                 <div class="me-2">
                                     <select class="form-select form-select-sm" id="recordsPerPage_{{ radar.id }}" onchange="changeRecordsPerPage({{ radar.id }})">
+                                        <option value="5">5 per page</option>
                                         <option value="10">10 per page</option>
                                         <option value="25">25 per page</option>
                                         <option value="50">50 per page</option>
@@ -329,86 +330,76 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-striped table-hover mb-0" id="detectionsTable_{{ radar.id }}">
-                                    <thead>
-                                        <tr>
-                                            <th>Time</th>
-                                            <th>Duration</th>
-                                            <th>Range (m)</th>
-                                            <th>Speed (mm/s)</th>
-                                            <th>ANPR</th>
-                                            <th>Plate</th>
-                                            <th>#</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for detection in radar_detections|get_item:radar.id %}
-                                        <tr>
-                                            <td>{{ detection.start_time|date:"H:i:s" }}</td>
-                                            <td>{{ detection.duration|floatformat:1 }}s</td>
-                                            <td>
-                                                <small>
-                                                    <span class="text-muted">Min:</span> {{ detection.min_range|floatformat:1 }}<br>
-                                                    <span class="text-muted">Max:</span> {{ detection.max_range|floatformat:1 }}<br>
-                                                    <span class="text-muted">Avg:</span> {{ detection.avg_range|floatformat:1 }}
-                                                </small>
-                                            </td>
-                                            <td>
-                                                <small>
-                                                    <span class="text-muted">Min:</span> {{ detection.min_speed|floatformat:1 }}<br>
-                                                    <span class="text-muted">Max:</span> {{ detection.max_speed|floatformat:1 }}<br>
-                                                    <span class="text-muted">Avg:</span> {{ detection.avg_speed|floatformat:1 }}
-                                                </small>
-                                            </td>
-                                            <td>
-                                                {% if detection.anpr_detected %}
-                                                    <span class="badge bg-success">Yes</span>
-                                                {% else %}
-                                                    <span class="badge bg-secondary">No</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                {% if detection.license_plate %}
-                                                    <span class="text-primary">{{ detection.license_plate }}</span>
-                                                {% else %}
-                                                    <span class="text-muted">-</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>{{ detection.detection_count }}</td>
-                                            <td>
-                                                <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails({{ detection.id }})">
-                                                    <i class="fas fa-info-circle"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                        {% empty %}
-                                        <tr>
-                                            <td colspan="8" class="text-center">No object detections found</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0" id="detectionsTable_{{ radar.id }}">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Duration</th>
+                                        <th>Range (m)</th>
+                                        <th>Speed (mm/s)</th>
+                                        <th>ANPR</th>
+                                        <th>License</th>
+                                        <th>Count</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for detection in radar_detections|get_item:radar.id %}
+                                    <tr>
+                                        <td>{{ detection.start_time|date:"H:i:s" }}</td>
+                                        <td>{{ detection.duration|floatformat:1 }}s</td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {{ detection.min_range|floatformat:1 }} - {{ detection.max_range|floatformat:1 }} (avg: {{ detection.avg_range|floatformat:1 }})
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {{ detection.min_speed|floatformat:1 }} - {{ detection.max_speed|floatformat:1 }} (avg: {{ detection.avg_speed|floatformat:1 }})
+                                            </small>
+                                        </td>
+                                        <td>
+                                            {% if detection.anpr_detected %}
+                                            <span class="badge bg-success">Yes</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">No</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if detection.license_plate %}
+                                            <span class="text-primary">{{ detection.license_plate }}</span>
+                                            {% else %}
+                                            <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ detection.detection_count }}</td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails({{ detection.id }})">
+                                                <i class="fas fa-info-circle"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Pagination Controls -->
+                        <div class="d-flex justify-content-between align-items-center p-2 border-top">
+                            <div>
+                                <span class="text-muted" id="detectionCount_{{ radar.id }}">Showing 0 detections</span>
                             </div>
-                            <!-- Pagination Controls -->
-                            <div class="d-flex justify-content-between align-items-center p-2 border-top">
-                                <div>
-                                    <span class="text-muted" id="detectionCount_{{ radar.id }}">Showing 0 detections</span>
-                                </div>
-                                <nav aria-label="Detection pagination">
-                                    <ul class="pagination pagination-sm mb-0" id="detectionPagination_{{ radar.id }}">
-                                        <li class="page-item disabled">
-                                            <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
-                                        </li>
-                                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                                        <li class="page-item disabled">
-                                            <a class="page-link" href="#">Next</a>
-                                        </li>
-                                    </ul>
-                                </nav>
-                            </div>
+                            <nav aria-label="Detection pagination">
+                                <ul class="pagination pagination-sm mb-0" id="detectionPagination_{{ radar.id }}">
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
+                                    </li>
+                                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
                         </div>
                     </div>
 
@@ -1570,22 +1561,12 @@
     let detectionUpdateIntervals = {};
 
     function startDetectionUpdates(radarId) {
-        // Clear any existing interval
-        if (detectionUpdateIntervals[radarId]) {
-            clearInterval(detectionUpdateIntervals[radarId]);
+        if (!detectionUpdateIntervals[radarId]) {
+            refreshDetections(radarId); // Initial refresh
+            detectionUpdateIntervals[radarId] = setInterval(() => {
+                refreshDetections(radarId);
+            }, 300000); // 5 minutes
         }
-        
-        // Get current page and records per page
-        const currentPage = getCurrentPage(radarId);
-        const recordsPerPage = document.getElementById(`recordsPerPage_${radarId}`).value;
-        
-        // Update immediately
-        refreshDetections(radarId, currentPage, recordsPerPage);
-        
-        // Set up periodic updates
-        detectionUpdateIntervals[radarId] = setInterval(() => {
-            refreshDetections(radarId, currentPage, recordsPerPage);
-        }, 5000); // Update every 5 seconds
     }
 
     function stopDetectionUpdates(radarId) {
@@ -1624,17 +1605,13 @@
                         <td>${new Date(detection.start_time).toLocaleTimeString()}</td>
                         <td>${detection.duration.toFixed(1)}s</td>
                         <td>
-                            <small>
-                                <span class="text-muted">Min:</span> ${detection.min_range.toFixed(1)}<br>
-                                <span class="text-muted">Max:</span> ${detection.max_range.toFixed(1)}<br>
-                                <span class="text-muted">Avg:</span> ${detection.avg_range.toFixed(1)}
+                            <small class="text-muted">
+                                ${detection.min_range.toFixed(1)} - ${detection.max_range.toFixed(1)} (avg: ${detection.avg_range.toFixed(1)})
                             </small>
                         </td>
                         <td>
-                            <small>
-                                <span class="text-muted">Min:</span> ${detection.min_speed.toFixed(1)}<br>
-                                <span class="text-muted">Max:</span> ${detection.max_speed.toFixed(1)}<br>
-                                <span class="text-muted">Avg:</span> ${detection.avg_speed.toFixed(1)}
+                            <small class="text-muted">
+                                ${detection.min_speed.toFixed(1)} - ${detection.max_speed.toFixed(1)} (avg: ${detection.avg_speed.toFixed(1)})
                             </small>
                         </td>
                         <td>
@@ -1797,6 +1774,57 @@
         {% for radar in radars %}
             stopDetectionUpdates({{ radar.id }});
         {% endfor %}
+    });
+
+    function updateSystemInfo() {
+        fetch('/api/system-info/')
+            .then(response => response.json())
+            .then(data => {
+                // Update disk usage
+                const diskProgress = document.querySelector('#system-info-content .col-md-3:nth-child(1) .progress-bar');
+                const diskText = document.querySelector('#system-info-content .col-md-3:nth-child(1) small');
+                diskProgress.style.width = `${data.disk_usage.percent}%`;
+                diskProgress.setAttribute('aria-valuenow', data.disk_usage.percent);
+                diskText.textContent = `${data.disk_usage.used}GB / ${data.disk_usage.total}GB`;
+
+                // Update RAM usage
+                const ramProgress = document.querySelector('#system-info-content .col-md-3:nth-child(2) .progress-bar');
+                const ramText = document.querySelector('#system-info-content .col-md-3:nth-child(2) small');
+                ramProgress.style.width = `${data.ram_usage.percent}%`;
+                ramProgress.setAttribute('aria-valuenow', data.ram_usage.percent);
+                ramText.textContent = `${data.ram_usage.used}GB / ${data.ram_usage.total}GB`;
+
+                // Update CPU temperature
+                const cpuTemp = document.querySelector('#system-info-content .col-md-3:nth-child(3) p');
+                cpuTemp.textContent = `${data.cpu_temperature}°C`;
+
+                // Update uptime
+                const uptime = document.querySelector('#system-info-content .col-md-3:nth-child(4) p');
+                uptime.textContent = data.uptime;
+
+                // Update last update time
+                const lastUpdate = document.getElementById('system-info-last-update');
+                lastUpdate.textContent = 'Last updated: Just now';
+            })
+            .catch(error => {
+                console.error('Error updating system info:', error);
+                const lastUpdate = document.getElementById('system-info-last-update');
+                lastUpdate.textContent = 'Last update failed';
+            });
+    }
+
+    // Start periodic updates
+    function startSystemInfoUpdates() {
+        // Update immediately
+        updateSystemInfo();
+        
+        // Then update every minute
+        setInterval(updateSystemInfo, 60000);
+    }
+
+    // Start updates when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        startSystemInfoUpdates();
     });
 </script>
 
