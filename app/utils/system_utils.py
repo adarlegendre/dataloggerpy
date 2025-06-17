@@ -2,9 +2,9 @@ import os
 import psutil
 import subprocess
 from datetime import datetime, timedelta
-from .models import SystemMetrics
 from django.utils import timezone
 import logging
+from ..models import SystemMetrics
 
 logger = logging.getLogger(__name__)
 

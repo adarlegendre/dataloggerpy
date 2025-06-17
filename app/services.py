@@ -162,7 +162,54 @@ class RadarDataService:
         try:
             RadarConfig = apps.get_model('app', 'RadarConfig')
             RadarDataFile = apps.get_model('app', 'RadarDataFile')
+            RadarObjectDetection = apps.get_model('app', 'RadarObjectDetection')
             radar = RadarConfig.objects.get(id=radar_id)
+            
+            # Group consecutive non-zero readings as object detections
+            object_detections = []
+            current_detection = []
+            
+            for data_point in self.data_cache[radar_id]:
+                try:
+                    # Parse the raw data (format: *+XXX.X,YYY)
+                    if data_point['raw_data'].startswith('*'):
+                        parts = data_point['raw_data'][1:].split(',')
+                        if len(parts) == 2:
+                            range_val = float(parts[0])
+                            speed_val = float(parts[1])
+                            
+                            # If we have a non-zero reading
+                            if range_val != 0 or speed_val != 0:
+                                current_detection.append(data_point)
+                            # If we have a zero reading and we were tracking a detection
+                            elif current_detection:
+                                # Save the current detection if it has any non-zero values
+                                has_non_zero = any(
+                                    float(p['raw_data'][1:].split(',')[0]) != 0 or 
+                                    float(p['raw_data'][1:].split(',')[1]) != 0 
+                                    for p in current_detection
+                                )
+                                if has_non_zero:
+                                    object_detections.append(current_detection)
+                                current_detection = []
+                except (ValueError, IndexError):
+                    continue
+            
+            # Don't forget to add the last detection if it exists
+            if current_detection:
+                has_non_zero = any(
+                    float(p['raw_data'][1:].split(',')[0]) != 0 or 
+                    float(p['raw_data'][1:].split(',')[1]) != 0 
+                    for p in current_detection
+                )
+                if has_non_zero:
+                    object_detections.append(current_detection)
+            
+            # Only proceed with saving if we have object detections
+            if not object_detections:
+                logger.info(f"No object detections found in data for radar {radar_id}, skipping save")
+                self.data_cache[radar_id].clear()
+                return
             
             # Create directory if it doesn't exist
             save_dir = os.path.join(radar.data_storage_path)
@@ -173,24 +220,59 @@ class RadarDataService:
             filename = f"radar_{radar.name}_{timestamp}.json"
             filepath = os.path.join(save_dir, filename)
             
-            # Extract only timestamp and raw data from the data
-            simplified_data = []
-            for data_point in self.data_cache[radar_id]:
-                # Convert timestamp to datetime string
-                dt = datetime.fromtimestamp(data_point['timestamp'])
-                formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Format: YYYY-MM-DD HH:MM:SS.mmm
-                simplified_data.append({
-                    'timestamp': formatted_time,
-                    'raw_data': data_point['raw_data']
-                })
+            # Format the detections for saving and save to database
+            formatted_detections = []
+            for detection in object_detections:
+                detection_data = []
+                ranges = []
+                speeds = []
+                
+                for data_point in detection:
+                    # Convert timestamp to datetime string
+                    dt = datetime.fromtimestamp(data_point['timestamp'])
+                    formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Format: YYYY-MM-DD HH:MM:SS.mmm
+                    
+                    # Parse range and speed
+                    parts = data_point['raw_data'][1:].split(',')
+                    range_val = float(parts[0])
+                    speed_val = float(parts[1])
+                    
+                    ranges.append(range_val)
+                    speeds.append(speed_val)
+                    
+                    detection_data.append({
+                        'timestamp': formatted_time,
+                        'raw_data': data_point['raw_data']
+                    })
+                
+                # Calculate statistics for the detection
+                start_time = datetime.fromtimestamp(detection[0]['timestamp'])
+                end_time = datetime.fromtimestamp(detection[-1]['timestamp'])
+                
+                # Save to database
+                RadarObjectDetection.objects.create(
+                    radar=radar,
+                    start_time=start_time,
+                    end_time=end_time,
+                    min_range=min(ranges),
+                    max_range=max(ranges),
+                    avg_range=sum(ranges) / len(ranges),
+                    min_speed=min(speeds),
+                    max_speed=max(speeds),
+                    avg_speed=sum(speeds) / len(speeds),
+                    detection_count=len(detection),
+                    raw_data=detection_data
+                )
+                
+                formatted_detections.append(detection_data)
             
-            # Save simplified data to file
+            # Save formatted detections to file
             with open(filepath, 'w') as f:
-                json.dump(simplified_data, f, indent=2)
+                json.dump(formatted_detections, f, indent=2)
             
             # Get file size
             file_size = os.path.getsize(filepath)
-            record_count = len(simplified_data)
+            record_count = sum(len(detection) for detection in formatted_detections)
             
             # Create RadarDataFile record
             RadarDataFile.objects.create(
@@ -201,7 +283,7 @@ class RadarDataService:
                 file_size=file_size
             )
             
-            logger.info(f"Saved {record_count} readings to {filepath}")
+            logger.info(f"Saved {len(formatted_detections)} object detections ({record_count} total readings) to {filepath}")
             # Clear the cache after saving
             self.data_cache[radar_id].clear()
             
@@ -269,7 +351,7 @@ class RadarDataService:
                     bytesize=radar.data_bits,
                     parity=radar.parity,
                     stopbits=radar.stop_bits,
-                    timeout=1
+                    timeout=0.1  # Short timeout for non-blocking reads
                 ) as ser:
                     logger.info(f"Successfully connected to radar {radar.id} on {radar.port}")
                     
@@ -281,31 +363,32 @@ class RadarDataService:
                     }
                     data_queue.put(success_message)
                     
+                    last_read_time = time.time()
+                    
                     while not stop_event.is_set():
-                        if ser.in_waiting:
-                            try:
-                                # Log waiting bytes
-                                logger.debug(f"Data waiting: {ser.in_waiting} bytes")
-                                
-                                data = ser.readline().strip()
+                        try:
+                            # Read all available lines
+                            while ser.in_waiting:
+                                data = ser.readline()
                                 if data:
                                     # Log raw data received
                                     logger.debug(f"Raw data received: {data}")
                                     
                                     # Process the data
                                     try:
-                                        # Decode the data
-                                        decoded_data = data.decode('utf-8', errors='replace')
+                                        # Decode the data and remove b' prefix if present
+                                        decoded_data = data.decode('utf-8', errors='replace').strip("b'")
                                         logger.debug(f"Processing data: {decoded_data}")
                                         
-                                        # Parse the data (assuming format *+XXX.X,YYY)
-                                        if decoded_data.startswith('*'):
-                                            # Extract range and speed
-                                            parts = decoded_data[1:].split(',')
-                                            if len(parts) == 2:
-                                                range_val = float(parts[0])
-                                                speed_val = float(parts[1])
-                                                logger.debug(f"Parsed values - Range: {range_val}, Speed: {speed_val}")
+                                        # Quick validation of data format
+                                        if len(decoded_data) >= 8 and decoded_data.startswith('*'):
+                                            # Extract range and speed using string slicing for efficiency
+                                            range_str = decoded_data[1:7]  # Get the range part
+                                            speed_str = decoded_data[8:11]  # Get the speed part
+                                            
+                                            try:
+                                                range_val = float(range_str)
+                                                speed_val = float(speed_str)
                                                 
                                                 # Format the data for display
                                                 display_data = {
@@ -321,28 +404,37 @@ class RadarDataService:
                                                 # Log the queued data
                                                 logger.debug(f"Data queued: {display_data}")
                                                 data_queue.put(display_data)
-                                            else:
-                                                logger.warning(f"Invalid data format: {decoded_data}")
+                                            except ValueError:
+                                                logger.warning(f"Invalid numeric values in data: {decoded_data}")
                                         else:
-                                            logger.warning(f"Invalid data prefix: {decoded_data}")
-                                    except ValueError as e:
-                                        logger.error(f"Error parsing data: {str(e)}")
+                                            logger.warning(f"Invalid data format: {decoded_data}")
+                                    except Exception as e:
+                                        logger.error(f"Error processing data: {str(e)}")
                                         error_data = {
                                             'timestamp': int(time.time()),
-                                            'display_text': f"Error parsing data: {str(e)}",
+                                            'display_text': f"Error processing data: {str(e)}",
                                             'connection_status': 'error'
                                         }
                                         data_queue.put(error_data)
-                            except Exception as e:
-                                error_msg = f"Error reading data: {str(e)}"
-                                logger.error(f"Error reading from radar {radar.id}: {error_msg}")
-                                error_data = {
-                                    'timestamp': int(time.time()),
-                                    'display_text': error_msg,
-                                    'connection_status': 'error'
-                                }
-                                data_queue.put(error_data)
-                        time.sleep(radar.update_interval / 1000.0)  # Convert to seconds
+                            
+                            # Check if we need to wait before next read
+                            current_time = time.time()
+                            elapsed = current_time - last_read_time
+                            if elapsed < radar.update_interval / 1000.0:
+                                time.sleep(0.001)  # Short sleep to prevent CPU spinning
+                            else:
+                                last_read_time = current_time
+                                
+                        except Exception as e:
+                            error_msg = f"Error reading data: {str(e)}"
+                            logger.error(f"Error reading from radar {radar.id}: {error_msg}")
+                            error_data = {
+                                'timestamp': int(time.time()),
+                                'display_text': error_msg,
+                                'connection_status': 'error'
+                            }
+                            data_queue.put(error_data)
+                            break  # Break on error to allow reconnection
                     
                     logger.info(f"Stop event received for radar {radar.id}")
                     

@@ -1,5 +1,8 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load app_filters %}
+
+{% block title %}Home{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -304,6 +307,120 @@
                         <div id="serialDataCollapse_{{ radar.id }}" class="card-body p-0">
                             <div id="serialData_{{ radar.id }}" class="serial-terminal">
                                 <div class="serial-content"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Serial Terminal -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Serial Terminal</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="serialTerminal_{{ radar.id }}" class="serial-terminal" style="height: 200px; overflow-y: auto; background-color: #1e1e1e; color: #00ff00; font-family: monospace; padding: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Object Detections Table -->
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Recent Object Detections</h5>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshDetections({{ radar.id }})">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover" id="detectionsTable_{{ radar.id }}">
+                                    <thead>
+                                        <tr>
+                                            <th>Start Time</th>
+                                            <th>Duration</th>
+                                            <th>Range (m)</th>
+                                            <th>Speed (mm/s)</th>
+                                            <th>ANPR</th>
+                                            <th>Number Plate</th>
+                                            <th>Readings</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for detection in radar_detections|get_item:radar.id %}
+                                        <tr>
+                                            <td>{{ detection.start_time|date:"Y-m-d H:i:s" }}</td>
+                                            <td>{{ detection.duration|floatformat:2 }}s</td>
+                                            <td>
+                                                <span class="text-muted">Min:</span> {{ detection.min_range|floatformat:1 }}<br>
+                                                <span class="text-muted">Max:</span> {{ detection.max_range|floatformat:1 }}<br>
+                                                <span class="text-muted">Avg:</span> {{ detection.avg_range|floatformat:1 }}
+                                            </td>
+                                            <td>
+                                                <span class="text-muted">Min:</span> {{ detection.min_speed|floatformat:1 }}<br>
+                                                <span class="text-muted">Max:</span> {{ detection.max_speed|floatformat:1 }}<br>
+                                                <span class="text-muted">Avg:</span> {{ detection.avg_speed|floatformat:1 }}
+                                            </td>
+                                            <td>
+                                                {% if detection.anpr_detected %}
+                                                    <span class="badge bg-success">Detected</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Not Detected</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if detection.license_plate %}
+                                                    <span class="text-primary">{{ detection.license_plate }}</span>
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ detection.detection_count }}</td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails({{ detection.id }})">
+                                                    <i class="fas fa-info-circle"></i> Details
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="8" class="text-center">No object detections found</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Pagination Controls -->
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <div>
+                                    <span class="text-muted" id="detectionCount_{{ radar.id }}">Showing 0 detections</span>
+                                </div>
+                                <nav aria-label="Detection pagination">
+                                    <ul class="pagination mb-0" id="detectionPagination_{{ radar.id }}">
+                                        <li class="page-item disabled">
+                                            <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
+                                        </li>
+                                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                        <li class="page-item disabled">
+                                            <a class="page-link" href="#">Next</a>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detection Details Modal -->
+                    <div class="modal fade" id="detectionModal_{{ radar.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Object Detection Details</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div id="detectionDetails_{{ radar.id }}"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1446,6 +1563,183 @@
         // Refresh the tables every 30 seconds
         setInterval(refreshRadarTables, 30000);
     });
+
+    // Function to refresh detections table
+    function refreshDetections(radarId, page = 1) {
+        fetch(`/api/radar-detections/${radarId}/?page=${page}`)
+            .then(response => response.json())
+            .then(data => {
+                const tbody = document.querySelector(`#detectionsTable_${radarId} tbody`);
+                tbody.innerHTML = '';
+                
+                if (data.detections.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center">No object detections found</td></tr>';
+                    return;
+                }
+                
+                data.detections.forEach(detection => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${new Date(detection.start_time).toLocaleString()}</td>
+                        <td>${detection.duration.toFixed(2)}s</td>
+                        <td>
+                            <span class="text-muted">Min:</span> ${detection.min_range.toFixed(1)}<br>
+                            <span class="text-muted">Max:</span> ${detection.max_range.toFixed(1)}<br>
+                            <span class="text-muted">Avg:</span> ${detection.avg_range.toFixed(1)}
+                        </td>
+                        <td>
+                            <span class="text-muted">Min:</span> ${detection.min_speed.toFixed(1)}<br>
+                            <span class="text-muted">Max:</span> ${detection.max_speed.toFixed(1)}<br>
+                            <span class="text-muted">Avg:</span> ${detection.avg_speed.toFixed(1)}
+                        </td>
+                        <td>
+                            ${detection.anpr_detected ? 
+                                `<span class="badge bg-success">Detected</span>` :
+                                `<span class="badge bg-secondary">Not Detected</span>`
+                            }
+                        </td>
+                        <td>
+                            ${detection.license_plate ? 
+                                `<span class="text-primary">${detection.license_plate}</span>` :
+                                `<span class="text-muted">-</span>`
+                            }
+                        </td>
+                        <td>${detection.detection_count}</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails(${detection.id})">
+                                <i class="fas fa-info-circle"></i> Details
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                // Update pagination controls
+                updatePagination(radarId, data.pagination);
+                
+                // Update detection count
+                document.querySelector(`#detectionCount_${radarId}`).textContent = 
+                    `Showing ${data.detections.length} detections`;
+            })
+            .catch(error => {
+                console.error('Error refreshing detections:', error);
+                alert('Error refreshing detections table');
+            });
+    }
+
+    // Function to update pagination controls
+    function updatePagination(radarId, pagination) {
+        const paginationElement = document.querySelector(`#detectionPagination_${radarId}`);
+        let paginationHtml = '';
+        
+        // Previous button
+        paginationHtml += `
+            <li class="page-item ${pagination.current_page === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="refreshDetections(${radarId}, ${pagination.previous_page || 1})" 
+                   ${pagination.current_page === 1 ? 'tabindex="-1" aria-disabled="true"' : ''}>Previous</a>
+            </li>
+        `;
+        
+        // Page numbers
+        for (let i = 1; i <= pagination.total_pages; i++) {
+            paginationHtml += `
+                <li class="page-item ${i === pagination.current_page ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="refreshDetections(${radarId}, ${i})">${i}</a>
+                </li>
+            `;
+        }
+        
+        // Next button
+        paginationHtml += `
+            <li class="page-item ${pagination.current_page === pagination.total_pages ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="refreshDetections(${radarId}, ${pagination.next_page || pagination.current_page})"
+                   ${pagination.current_page === pagination.total_pages ? 'tabindex="-1" aria-disabled="true"' : ''}>Next</a>
+            </li>
+        `;
+        
+        paginationElement.innerHTML = paginationHtml;
+    }
+
+    // Function to show detection details
+    function showDetectionDetails(detectionId) {
+        fetch(`/api/radar-detection/${detectionId}/`)
+            .then(response => response.json())
+            .then(data => {
+                const detailsDiv = document.querySelector(`#detectionDetails_${data.radar_id}`);
+                detailsDiv.innerHTML = `
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Start Time:</th>
+                                <td>${new Date(data.start_time).toLocaleString()}</td>
+                                <th>End Time:</th>
+                                <td>${new Date(data.end_time).toLocaleString()}</td>
+                            </tr>
+                            <tr>
+                                <th>Duration:</th>
+                                <td>${data.duration.toFixed(2)}s</td>
+                                <th>Readings:</th>
+                                <td>${data.detection_count}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <h6 class="mt-3">Range Statistics</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Minimum:</th>
+                                <td>${data.min_range.toFixed(1)}m</td>
+                                <th>Maximum:</th>
+                                <td>${data.max_range.toFixed(1)}m</td>
+                                <th>Average:</th>
+                                <td>${data.avg_range.toFixed(1)}m</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <h6 class="mt-3">Speed Statistics</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Minimum:</th>
+                                <td>${data.min_speed.toFixed(1)}mm/s</td>
+                                <th>Maximum:</th>
+                                <td>${data.max_speed.toFixed(1)}mm/s</td>
+                                <th>Average:</th>
+                                <td>${data.avg_speed.toFixed(1)}mm/s</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <h6 class="mt-3">Raw Data</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Range (m)</th>
+                                    <th>Speed (mm/s)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.raw_data.map(reading => `
+                                    <tr>
+                                        <td>${new Date(reading.timestamp).toLocaleString()}</td>
+                                        <td>${parseFloat(reading.raw_data.slice(1).split(',')[0]).toFixed(1)}</td>
+                                        <td>${parseFloat(reading.raw_data.slice(1).split(',')[1]).toFixed(1)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                const modal = new bootstrap.Modal(document.querySelector(`#detectionModal_${data.radar_id}`));
+                modal.show();
+            })
+            .catch(error => {
+                console.error('Error fetching detection details:', error);
+                alert('Error loading detection details');
+            });
+    }
 </script>
 
 <style>

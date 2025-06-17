@@ -4,6 +4,7 @@ import re
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractUser
+from django.core.paginator import Paginator
 
 # Create your models here.
 
@@ -286,13 +287,80 @@ class NotificationSettings(models.Model):
                         raise ValidationError(f"Invalid email address in CC list: {email}")
 
     def __str__(self):
-        return f"Notification Settings for {self.primary_email}"
+        return f"Notification Settings - {self.primary_email}"
 
     def get_cc_emails_list(self):
         """Returns a list of CC email addresses"""
         if not self.cc_emails:
             return []
         return [email.strip() for email in self.cc_emails.split(',') if email.strip()]
+
+class ANPRConfig(models.Model):
+    radar = models.ForeignKey(
+        RadarConfig,
+        on_delete=models.CASCADE,
+        related_name='anpr_configs',
+        null=True,
+        blank=True,
+        help_text="Associated radar for this ANPR configuration"
+    )
+    ip_address = models.GenericIPAddressField(
+        default='192.168.1.200',
+        help_text="IP address of the ANPR server"
+    )
+    port = models.IntegerField(
+        default=8080,
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        help_text="Port number for ANPR server communication"
+    )
+    polling_interval = models.IntegerField(
+        default=1000,
+        validators=[MinValueValidator(100), MaxValueValidator(5000)],
+        help_text="Interval between ANPR readings in milliseconds"
+    )
+    timeout = models.IntegerField(
+        default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(30)],
+        help_text="Connection timeout in seconds"
+    )
+    endpoint = models.CharField(
+        max_length=255,
+        default='/api/plate',
+        help_text="API endpoint for ANPR data"
+    )
+    api_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="API key for authentication (if required)"
+    )
+    enable_continuous_reading = models.BooleanField(
+        default=True,
+        help_text="Enable continuous reading mode"
+    )
+    enable_logging = models.BooleanField(
+        default=True,
+        help_text="Enable ANPR logging"
+    )
+    log_path = models.CharField(
+        max_length=255,
+        default='logs/anpr',
+        help_text="Path where ANPR logs will be stored"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'ANPR Configuration'
+        verbose_name_plural = 'ANPR Configurations'
+
+    def __str__(self):
+        return f"ANPR Config - {self.ip_address}:{self.port}"
+
+    def clean(self):
+        if self.polling_interval < 100:
+            raise ValidationError({'polling_interval': 'Polling interval cannot be less than 100ms'})
+        if self.polling_interval > 5000:
+            raise ValidationError({'polling_interval': 'Polling interval cannot be more than 5000ms'})
 
 class SystemMetrics(models.Model):
     """Model to store historical system metrics."""
@@ -404,3 +472,94 @@ class SystemInfo(models.Model):
 
     def __str__(self):
         return f"System Info at {self.timestamp}"
+
+class RadarObjectDetection(models.Model):
+    """Model to store radar object detections"""
+    radar = models.ForeignKey(RadarConfig, on_delete=models.CASCADE, related_name='object_detections')
+    start_time = models.DateTimeField(help_text="When the object was first detected")
+    end_time = models.DateTimeField(help_text="When the object was last detected")
+    min_range = models.FloatField(help_text="Minimum range during detection (meters)")
+    max_range = models.FloatField(help_text="Maximum range during detection (meters)")
+    avg_range = models.FloatField(help_text="Average range during detection (meters)")
+    min_speed = models.FloatField(help_text="Minimum speed during detection (mm/s)")
+    max_speed = models.FloatField(help_text="Maximum speed during detection (mm/s)")
+    avg_speed = models.FloatField(help_text="Average speed during detection (mm/s)")
+    detection_count = models.IntegerField(help_text="Number of readings in this detection")
+    raw_data = models.JSONField(help_text="All raw readings for this detection")
+    anpr_detected = models.BooleanField(default=False, help_text="Whether a license plate was detected")
+    license_plate = models.CharField(max_length=20, null=True, blank=True, help_text="Detected license plate number")
+    email_sent = models.BooleanField(default=False, help_text="Whether notification email has been sent")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Radar Object Detection'
+        verbose_name_plural = 'Radar Object Detections'
+        ordering = ['-start_time']
+        indexes = [
+            models.Index(fields=['radar', 'start_time']),
+            models.Index(fields=['radar', 'end_time']),
+        ]
+
+    def __str__(self):
+        return f"{self.radar.name} - Object {self.start_time} to {self.end_time}"
+
+    @property
+    def duration(self):
+        """Calculate the duration of the detection in seconds"""
+        return (self.end_time - self.start_time).total_seconds()
+
+    @classmethod
+    def get_paginated_detections(cls, radar_id, page=1, per_page=10):
+        """
+        Get paginated detections for a specific radar.
+        
+        Args:
+            radar_id (int): The ID of the radar
+            page (int): The page number (1-based)
+            per_page (int): Number of items per page
+            
+        Returns:
+            tuple: (paginator, page_obj) where:
+                - paginator is a Django Paginator object
+                - page_obj is the current page of detections
+        """
+        detections = cls.objects.filter(radar_id=radar_id).order_by('-start_time')
+        paginator = Paginator(detections, per_page)
+        page_obj = paginator.get_page(page)
+        
+        return paginator, page_obj
+
+class EmailNotification(models.Model):
+    """Model to track email notifications for radar detections"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('failed', 'Failed'),
+    ]
+
+    notification_settings = models.ForeignKey(NotificationSettings, on_delete=models.CASCADE)
+    start_date = models.DateTimeField(help_text="Start date of the detection period")
+    end_date = models.DateTimeField(help_text="End date of the detection period")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    error_message = models.TextField(blank=True, null=True, help_text="Error message if sending failed")
+    sent_at = models.DateTimeField(null=True, blank=True, help_text="When the email was sent")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Email Notification'
+        verbose_name_plural = 'Email Notifications'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at'], name='email_notif_status_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"Notification {self.id} - {self.status} ({self.start_date} to {self.end_date})"
+
+    def get_detections(self):
+        """Get all detections for this notification period"""
+        return RadarObjectDetection.objects.filter(
+            start_time__gte=self.start_date,
+            end_time__lte=self.end_date
+        ).order_by('start_time')

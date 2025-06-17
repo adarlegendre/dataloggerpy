@@ -3,15 +3,15 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth import logout
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
-from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm, UserForm, UserSearchForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo
-from .utils import get_system_info
-from django.views.decorators.http import require_GET, require_POST
+from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm, UserForm, UserSearchForm, ANPRForm
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo, RadarObjectDetection, ANPRConfig
+from app.utils import get_system_info
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.contrib.auth.models import Permission
 import serial
 import time
 import json
-from django.db.models import Q
+from django.db.models import Q, Max, Min, Avg, Count
 from functools import wraps
 from .services import RadarDataService
 import logging
@@ -20,6 +20,8 @@ import threading
 from datetime import datetime, timedelta
 from collections import deque
 from django.core.paginator import Paginator
+from django.utils import timezone
+from app.utils.notification_utils import create_notification, create_notification_for_today
 
 logger = logging.getLogger(__name__)
 
@@ -71,18 +73,32 @@ def superuser_required(view_func):
 
 @login_required
 def home(request):
-    """Home view showing system status and radar configurations."""
-    # Get system information
-    system_info = get_system_info()
-    
-    # Get all radar configurations with their data files
-    radars = RadarConfig.objects.all().order_by('name').prefetch_related('data_files')
-    
-    context = {
-        'radars': radars,
-        'system_info': system_info,
-    }
-    return render(request, 'app/home.html', context)
+    """Home page view"""
+    try:
+        # Get system settings
+        system_settings = SystemSettings.get_settings()
+        
+        # Get active radars
+        radars = RadarConfig.objects.filter(is_active=True)
+        
+        # Get latest object detections for each radar (last 100 detections)
+        radar_detections = {}
+        for radar in radars:
+            detections = RadarObjectDetection.objects.filter(
+                radar=radar
+            ).order_by('-start_time')[:100]
+            radar_detections[radar.id] = detections
+        
+        context = {
+            'system_settings': system_settings,
+            'radars': radars,
+            'radar_detections': radar_detections,
+        }
+        return render(request, 'app/home.html', context)
+    except Exception as e:
+        logger.error(f"Error in home view: {str(e)}")
+        messages.error(request, f"Error loading home page: {str(e)}")
+        return redirect('login')
 
 def logout_view(request):
     logout(request)
@@ -125,12 +141,28 @@ def config(request):
         }
     )
 
+    # Get or create ANPR settings
+    anpr_settings, created = ANPRConfig.objects.get_or_create(
+        pk=1,
+        defaults={
+            'ip_address': '192.168.1.200',
+            'port': 8080,
+            'polling_interval': 1000,
+            'timeout': 5,
+            'endpoint': '/api/plate',
+            'enable_continuous_reading': True,
+            'enable_logging': True,
+            'log_path': 'logs/anpr'
+        }
+    )
+
     # Initialize forms
     tcp_form = TCPIPForm(instance=TCPIPConfig.objects.first())
     time_form = TimeForm(instance=TimeConfig.objects.first())
     ftp_form = FTPForm(instance=FTPConfig.objects.first())
     radar_form = RadarForm()
     notification_form = NotificationForm(instance=notification_settings)
+    anpr_form = ANPRForm(instance=anpr_settings)
 
     if request.method == 'POST':
         form_type = request.POST.get('form_type')
@@ -168,7 +200,13 @@ def config(request):
                 return redirect('config')
             radar_form = RadarForm(request.POST)
             if radar_form.is_valid():
-                radar_form.save()
+                radar = radar_form.save()
+                # Handle ANPR configuration
+                anpr_config = radar_form.cleaned_data.get('anpr_config')
+                if anpr_config:
+                    # Detach this ANPR config from any previous radar
+                    anpr_config.radar = radar
+                    anpr_config.save()
                 messages.success(request, 'Radar configuration added successfully.')
                 return redirect('config')
         elif form_type == 'notification':
@@ -180,6 +218,15 @@ def config(request):
                 notification_form.save()
                 messages.success(request, 'Notification settings updated successfully.')
                 return redirect('config')
+        elif form_type == 'anpr':
+            if not request.user.is_superuser and not request.user.has_perm('app.change_anprconfig'):
+                messages.error(request, 'You do not have permission to modify ANPR settings.')
+                return redirect('config')
+            anpr_form = ANPRForm(request.POST, instance=anpr_settings)
+            if anpr_form.is_valid():
+                anpr_form.save()
+                messages.success(request, 'ANPR settings updated successfully.')
+                return redirect('config')
 
     context = {
         'tcp_form': tcp_form,
@@ -187,6 +234,7 @@ def config(request):
         'ftp_form': ftp_form,
         'radar_form': radar_form,
         'notification_form': notification_form,
+        'anpr_form': anpr_form,
         'radar_configs': RadarConfig.objects.all().order_by('-created_at'),
     }
     
@@ -199,7 +247,14 @@ def edit_radar(request, radar_id):
     if request.method == 'POST':
         form = RadarForm(request.POST, instance=radar)
         if form.is_valid():
-            form.save()
+            radar = form.save()
+            # Handle ANPR configuration
+            anpr_config = form.cleaned_data.get('anpr_config')
+            # Detach any ANPRConfig currently attached to this radar
+            ANPRConfig.objects.filter(radar=radar).exclude(pk=anpr_config.pk if anpr_config else None).update(radar=None)
+            if anpr_config:
+                anpr_config.radar = radar
+                anpr_config.save()
             messages.success(request, 'Radar configuration updated successfully.')
             return redirect('config')
     else:
@@ -586,3 +641,155 @@ def test_mode_status(request):
             'status': 'error',
             'message': f'Error: {str(e)}'
         }, status=500)
+
+@require_http_methods(["GET"])
+def radar_detections(request, radar_id):
+    """API endpoint to get recent object detections for a radar."""
+    try:
+        radar = get_object_or_404(RadarConfig, id=radar_id)
+        page = int(request.GET.get('page', 1))
+        per_page = 10  # Number of detections per page
+        
+        paginator, page_obj = RadarObjectDetection.get_paginated_detections(
+            radar_id=radar_id,
+            page=page,
+            per_page=per_page
+        )
+        
+        data = {
+            'detections': [{
+                'id': d.id,
+                'start_time': d.start_time.isoformat(),
+                'end_time': d.end_time.isoformat(),
+                'duration': d.duration,
+                'detection_count': d.detection_count,
+                'min_range': d.min_range,
+                'max_range': d.max_range,
+                'avg_range': d.avg_range,
+                'min_speed': d.min_speed,
+                'max_speed': d.max_speed,
+                'avg_speed': d.avg_speed,
+                'anpr_detected': d.anpr_detected,
+                'license_plate': d.license_plate,
+            } for d in page_obj],
+            'pagination': {
+                'total_pages': paginator.num_pages,
+                'current_page': page_obj.number,
+                'has_next': page_obj.has_next(),
+                'has_previous': page_obj.has_previous(),
+                'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
+                'previous_page': page_obj.previous_page_number() if page_obj.has_previous() else None,
+            }
+        }
+        return JsonResponse(data)
+    except Exception as e:
+        logger.error(f"Error fetching radar detections: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@require_http_methods(["GET"])
+def radar_detection_details(request, detection_id):
+    """API endpoint to get detailed information about a specific object detection."""
+    try:
+        detection = get_object_or_404(RadarObjectDetection, id=detection_id)
+        
+        # Get the raw data readings for this detection
+        raw_data = []
+        for reading in detection.raw_data:
+            raw_data.append({
+                'timestamp': reading['timestamp'],
+                'raw_data': reading['raw_data']
+            })
+        
+        data = {
+            'id': detection.id,
+            'radar_id': detection.radar.id,
+            'start_time': detection.start_time.isoformat(),
+            'end_time': detection.end_time.isoformat(),
+            'duration': detection.duration,
+            'detection_count': detection.detection_count,
+            'min_range': detection.min_range,
+            'max_range': detection.max_range,
+            'avg_range': detection.avg_range,
+            'min_speed': detection.min_speed,
+            'max_speed': detection.max_speed,
+            'avg_speed': detection.avg_speed,
+            'raw_data': raw_data
+        }
+        return JsonResponse(data)
+    except Exception as e:
+        logger.error(f"Error fetching detection details: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@require_POST
+def test_anpr_connection(request):
+    """Test the connection to the ANPR server"""
+    try:
+        data = json.loads(request.body)
+        ip_address = data.get('ip_address')
+        port = data.get('port')
+        endpoint = data.get('endpoint')
+        api_key = data.get('api_key')
+
+        # Construct the URL
+        url = f"http://{ip_address}:{port}{endpoint}"
+        
+        # Make the request
+        import requests
+        headers = {}
+        if api_key:
+            headers['X-API-Key'] = api_key
+        
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        
+        # Parse the response
+        result = response.json()
+        
+        return JsonResponse({
+            'success': True,
+            'plate_number': result.get('plate_number'),
+            'confidence': result.get('confidence'),
+            'message': 'Successfully connected to ANPR server'
+        })
+    except requests.exceptions.RequestException as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Failed to connect to ANPR server: {str(e)}'
+        }, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'message': 'Invalid response from ANPR server'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error testing ANPR connection: {str(e)}'
+        }, status=500)
+
+@login_required
+def create_notification_view(request):
+    if request.method == 'POST':
+        try:
+            # Get date range from form
+            start_date = request.POST.get('start_date')
+            end_date = request.POST.get('end_date')
+            
+            if start_date and end_date:
+                # Convert string dates to datetime objects
+                start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                notification = create_notification(start_datetime, end_datetime)
+            else:
+                # Create notification for today
+                notification = create_notification_for_today()
+            
+            messages.success(request, f'Notification created successfully! ID: {notification.id}')
+            return redirect('notification_list')  # Redirect to a list view
+            
+        except Exception as e:
+            messages.error(request, f'Error creating notification: {str(e)}')
+            return redirect('create_notification')
+    
+    return render(request, 'notifications/create.html')

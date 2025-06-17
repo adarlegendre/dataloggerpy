@@ -1,6 +1,8 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, ANPRConfig
+import ipaddress
+from django.db.models import Q
 
 COLOR_PRESETS = {
     'navy': {
@@ -105,6 +107,14 @@ class FTPForm(forms.ModelForm):
         }
 
 class RadarForm(forms.ModelForm):
+    anpr_config = forms.ModelChoiceField(
+        queryset=ANPRConfig.objects.filter(radar__isnull=True),
+        required=False,
+        empty_label="No ANPR",
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        help_text="Select ANPR configuration for this radar"
+    )
+
     class Meta:
         model = RadarConfig
         fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 
@@ -134,6 +144,19 @@ class RadarForm(forms.ModelForm):
             }),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            # Include the current ANPR config in the queryset
+            self.fields['anpr_config'].queryset = ANPRConfig.objects.filter(
+                Q(radar__isnull=True) | Q(radar=self.instance)
+            )
+            # Set the initial value
+            try:
+                self.fields['anpr_config'].initial = self.instance.anpr_configs.first()
+            except:
+                pass
 
     def clean(self):
         cleaned_data = super().clean()
@@ -248,8 +271,10 @@ class NotificationForm(forms.ModelForm):
                         hour, minute = map(int, t.split(':'))
                         if not (0 <= hour < 24 and 0 <= minute < 60):
                             raise ValueError
-                    except Exception:
-                        raise forms.ValidationError(f"Invalid time format: {t}. Use HH:MM.")
+                    except ValueError:
+                        raise forms.ValidationError(
+                            "Invalid time format. Please use HH:MM format (e.g., 08:00, 14:30)"
+                        )
         return times
 
     def clean_days_of_week(self):
@@ -261,6 +286,89 @@ class NotificationForm(forms.ModelForm):
         # If instance exists, populate days_of_week as a list
         if self.instance and self.instance.days_of_week:
             self.initial['days_of_week'] = [d.strip() for d in self.instance.days_of_week.split(',') if d.strip()]
+
+class ANPRForm(forms.ModelForm):
+    class Meta:
+        model = ANPRConfig
+        fields = [
+            'ip_address',
+            'port',
+            'polling_interval',
+            'timeout',
+            'endpoint',
+            'api_key',
+            'enable_continuous_reading',
+            'enable_logging',
+            'log_path'
+        ]
+        widgets = {
+            'ip_address': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g., 192.168.1.200'
+            }),
+            'port': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '1',
+                'max': '65535'
+            }),
+            'polling_interval': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '100',
+                'max': '5000',
+                'step': '100'
+            }),
+            'timeout': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '1',
+                'max': '30'
+            }),
+            'endpoint': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g., /api/plate'
+            }),
+            'api_key': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Enter API key if required'
+            }),
+            'enable_continuous_reading': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
+            'enable_logging': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
+            'log_path': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g., logs/anpr'
+            })
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        ip_address = cleaned_data.get('ip_address')
+        port = cleaned_data.get('port')
+        polling_interval = cleaned_data.get('polling_interval')
+        timeout = cleaned_data.get('timeout')
+
+        # Validate IP address format
+        if ip_address:
+            try:
+                ipaddress.ip_address(ip_address)
+            except ValueError:
+                self.add_error('ip_address', 'Invalid IP address format')
+
+        # Validate port range
+        if port and (port < 1 or port > 65535):
+            self.add_error('port', 'Port must be between 1 and 65535')
+
+        # Validate polling interval
+        if polling_interval and (polling_interval < 100 or polling_interval > 5000):
+            self.add_error('polling_interval', 'Polling interval must be between 100ms and 5000ms')
+
+        # Validate timeout
+        if timeout and (timeout < 1 or timeout > 30):
+            self.add_error('timeout', 'Timeout must be between 1 and 30 seconds')
+
+        return cleaned_data
 
 class UserForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput(), required=False)

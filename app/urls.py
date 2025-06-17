@@ -25,4 +25,7 @@ urlpatterns = [
     path('api/toggle-test-mode/', views.toggle_test_mode, name='toggle_test_mode'),
     path('api/test-mode/', views.toggle_test_mode, name='toggle_test_mode'),
     path('api/test-mode-status/', views.test_mode_status, name='test_mode_status'),
+    path('api/radar-detections/<int:radar_id>/', views.radar_detections, name='radar_detections'),
+    path('api/radar-detection/<int:detection_id>/', views.radar_detection_details, name='radar_detection_details'),
+    path('api/test-anpr-connection/', views.test_anpr_connection, name='test_anpr_connection'),
 ] 
