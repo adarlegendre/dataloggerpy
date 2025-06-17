@@ -168,6 +168,7 @@ class RadarDataService:
             # Group consecutive non-zero readings as object detections
             object_detections = []
             current_detection = []
+            last_was_zero = True  # Track if the last reading was zero
             
             for data_point in self.data_cache[radar_id]:
                 try:
@@ -181,8 +182,9 @@ class RadarDataService:
                             # If we have a non-zero reading
                             if range_val != 0 or speed_val != 0:
                                 current_detection.append(data_point)
+                                last_was_zero = False
                             # If we have a zero reading and we were tracking a detection
-                            elif current_detection:
+                            elif current_detection and not last_was_zero:
                                 # Save the current detection if it has any non-zero values
                                 has_non_zero = any(
                                     float(p['raw_data'][1:].split(',')[0]) != 0 or 
@@ -192,11 +194,12 @@ class RadarDataService:
                                 if has_non_zero:
                                     object_detections.append(current_detection)
                                 current_detection = []
+                                last_was_zero = True
                 except (ValueError, IndexError):
                     continue
             
-            # Don't forget to add the last detection if it exists
-            if current_detection:
+            # Don't forget to add the last detection if it exists and wasn't followed by a zero
+            if current_detection and not last_was_zero:
                 has_non_zero = any(
                     float(p['raw_data'][1:].split(',')[0]) != 0 or 
                     float(p['raw_data'][1:].split(',')[1]) != 0 
@@ -379,6 +382,10 @@ class RadarDataService:
                                         # Decode the data and remove b' prefix if present
                                         decoded_data = data.decode('utf-8', errors='replace').strip("b'")
                                         logger.debug(f"Processing data: {decoded_data}")
+                                        
+                                        # Remove question mark after asterisk if present
+                                        if decoded_data.startswith('*?') and len(decoded_data) >= 9:
+                                            decoded_data = decoded_data[0] + decoded_data[2:]
                                         
                                         # Quick validation of data format
                                         if len(decoded_data) >= 8 and decoded_data.startswith('*'):

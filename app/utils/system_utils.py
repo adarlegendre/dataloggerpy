@@ -1,6 +1,7 @@
 import os
 import psutil
 import subprocess
+import platform
 from datetime import datetime, timedelta
 from django.utils import timezone
 import logging
@@ -14,6 +15,31 @@ def round_to_nearest_30_minutes(td):
     minutes = total_seconds // 60
     rounded_minutes = round(minutes / 30) * 30
     return timedelta(minutes=rounded_minutes)
+
+def get_cpu_temperature():
+    """Get CPU temperature based on the operating system."""
+    try:
+        if platform.system() == 'Linux':
+            # Try Raspberry Pi first
+            try:
+                temp = subprocess.check_output(['vcgencmd', 'measure_temp']).decode()
+                return float(temp.replace('temp=', '').replace("'C", ''))
+            except:
+                # Try reading from thermal zone
+                try:
+                    with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                        temp = float(f.read()) / 1000.0
+                        return temp
+                except:
+                    pass
+        elif platform.system() == 'Windows':
+            # Windows doesn't have a direct way to get CPU temperature
+            # You might need to use a third-party tool or WMI
+            return None
+        return None
+    except Exception as e:
+        logger.warning(f"Could not get CPU temperature: {str(e)}")
+        return None
 
 def get_system_info():
     """Get system information including disk, RAM, and temperature."""
@@ -32,13 +58,8 @@ def get_system_info():
         ram_free = memory.available / (1024 * 1024 * 1024)
         ram_percent = memory.percent
 
-        # Get CPU temperature for Raspberry Pi
-        try:
-            temp = subprocess.check_output(['vcgencmd', 'measure_temp']).decode()
-            cpu_temp = float(temp.replace('temp=', '').replace("'C", ''))
-        except Exception as e:
-            logger.warning(f"Could not get CPU temperature: {str(e)}")
-            cpu_temp = None
+        # Get CPU temperature
+        cpu_temp = get_cpu_temperature()
 
         # Get system uptime and round to nearest 30 minutes
         uptime = datetime.fromtimestamp(psutil.boot_time())
