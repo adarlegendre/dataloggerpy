@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from collections import deque
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -601,7 +602,8 @@ class RadarDataService:
                 speeds.append(speed_val)
                 
                 # Convert timestamp to datetime string
-                dt = timezone.make_aware(datetime.fromtimestamp(data_point['timestamp']))
+                dt = datetime.fromtimestamp(data_point['timestamp'])
+                dt = timezone.make_aware(dt)
                 formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                 
                 formatted_data.append({
@@ -610,8 +612,10 @@ class RadarDataService:
                 })
             
             # Create detection record
-            start_time = timezone.make_aware(datetime.fromtimestamp(detection_data[0]['timestamp']))
-            end_time = timezone.make_aware(datetime.fromtimestamp(detection_data[-1]['timestamp']))
+            start_time = datetime.fromtimestamp(detection_data[0]['timestamp'])
+            start_time = timezone.make_aware(start_time)
+            end_time = datetime.fromtimestamp(detection_data[-1]['timestamp'])
+            end_time = timezone.make_aware(end_time)
             
             RadarObjectDetection.objects.create(
                 radar=radar,
