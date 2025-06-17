@@ -105,24 +105,26 @@ class RadarDataService:
     def start_radar_stream(self, radar):
         """Start streaming data for a specific radar"""
         radar_id = radar.id
-        if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
-            logger.warning(f"Radar {radar_id} stream already running")
-            return
+        with self._lock:
+            if radar_id in self.radar_threads and self.radar_threads[radar_id].is_alive():
+                logger.warning(f"Radar {radar_id} stream already running")
+                return
+                
+            logger.info(f"Initializing data structures for radar {radar_id}")
+            # Initialize or reinitialize data structures
+            self.data_queues[radar_id] = Queue()
+            self.stop_events[radar_id] = threading.Event()
+            self.data_cache[radar_id] = []  # Removed maxlen limit
+            self.last_save_time[radar_id] = time.time()
             
-        logger.info(f"Initializing data structures for radar {radar_id}")
-        self.data_queues[radar_id] = Queue()
-        self.stop_events[radar_id] = threading.Event()
-        self.data_cache[radar_id] = []  # Removed maxlen limit
-        self.last_save_time[radar_id] = time.time()
-        
-        thread = threading.Thread(
-            target=self._stream_radar_data,
-            args=(radar, self.data_queues[radar_id], self.stop_events[radar_id]),
-            daemon=True
-        )
-        thread.start()
-        self.radar_threads[radar_id] = thread
-        logger.info(f"Started streaming thread for radar {radar_id}")
+            thread = threading.Thread(
+                target=self._stream_radar_data,
+                args=(radar, self.data_queues[radar_id], self.stop_events[radar_id]),
+                daemon=True
+            )
+            thread.start()
+            self.radar_threads[radar_id] = thread
+            logger.info(f"Started streaming thread for radar {radar_id}")
     
     def stop_radar_stream(self, radar_id):
         """Stop streaming data for a specific radar"""
