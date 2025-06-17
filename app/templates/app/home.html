@@ -1315,13 +1315,20 @@
         // Initialize detections table
         $(`#detectionsTable_${radarId}`).DataTable({
             order: [[0, 'desc']], // Sort by start time descending
-            pageLength: 10,
-            lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            pageLength: 5,
+            lengthMenu: [[5, 10, 25, 50, 100], [5, 10, 25, 50, 100]],
             autoWidth: false,
             responsive: true,
             language: {
-                search: "Filter detections:"
-            }
+                search: "Filter detections:",
+                lengthMenu: "Show _MENU_ detections per page",
+                info: "Showing _START_ to _END_ of _TOTAL_ detections",
+                infoEmpty: "No detections available",
+                infoFiltered: "(filtered from _MAX_ total detections)"
+            },
+            dom: "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
+                 "<'row'<'col-sm-12'tr>>" +
+                 "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>"
         });
         
         // Initialize data files table
@@ -1577,7 +1584,13 @@
                 "serverSide": false,
                 "ajax": {
                     "url": `/api/radar-files/${radarId}/`,
-                    "dataSrc": "data"
+                    "dataSrc": function(json) {
+                        if (json.status === 'success' && Array.isArray(json.data)) {
+                            return json.data;
+                        }
+                        console.error('Invalid API response format:', json);
+                        return [];
+                    }
                 },
                 "columns": [
                     { 
