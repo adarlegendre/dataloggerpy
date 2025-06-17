@@ -49,6 +49,8 @@ class RadarDataService:
             {'range': 16.6, 'speed': 0},
             {'range': 16.6, 'speed': 0}
         ]
+        self.save_timer = None
+        self.save_interval = 300  # Save every 5 minutes
         logger.info("RadarDataService initialized")
     
     def check_serial_ports(self):
@@ -83,21 +85,22 @@ class RadarDataService:
 
     def start_service(self):
         """Start the radar data service"""
-        logger.info("Starting radar data service")
-        RadarConfig = apps.get_model('app', 'RadarConfig')
-        radars = RadarConfig.objects.filter(is_active=True)
-        
-        logger.info(f"Found {len(radars)} active radars")
-        for radar in radars:
-            logger.info(f"Starting radar {radar.id} ({radar.name}) on port {radar.port}")
-            self.start_radar_stream(radar)
+        with self._lock:
+            if not self.radar_threads:
+                logger.info("Starting radar data service")
+                self._start_periodic_save()
     
     def stop_service(self):
         """Stop the radar data service"""
-        logger.info("Stopping radar data service")
-        for radar_id in list(self.stop_events.keys()):
-            logger.info(f"Stopping radar {radar_id}")
-            self.stop_radar_stream(radar_id)
+        with self._lock:
+            if self.radar_threads:
+                logger.info("Stopping radar data service")
+                for radar_id in list(self.radar_threads.keys()):
+                    logger.info(f"Stopping radar {radar_id}")
+                    self.stop_radar_stream(radar_id)
+                if self.save_timer:
+                    self.save_timer.cancel()
+                    self.save_timer = None
     
     def start_radar_stream(self, radar):
         """Start streaming data for a specific radar"""
@@ -635,3 +638,28 @@ class RadarDataService:
             
         except Exception as e:
             logger.error(f"Error saving object detection for radar {radar.id}: {str(e)}")
+
+    def _start_periodic_save(self):
+        """Start periodic save timer"""
+        if self.save_timer is None:
+            self.save_timer = threading.Timer(self.save_interval, self._periodic_save)
+            self.save_timer.daemon = True
+            self.save_timer.start()
+            
+    def _periodic_save(self):
+        """Periodically save data for all active radars"""
+        try:
+            for radar_id in list(self.data_cache.keys()):
+                if self.data_cache[radar_id]:
+                    # Get the radar's save interval
+                    radar = apps.get_model('app', 'RadarConfig').objects.get(id=radar_id)
+                    # Convert minutes to seconds
+                    self.save_interval = radar.file_save_interval * 60
+                    self._save_data_to_file(radar_id)
+        except Exception as e:
+            logger.error(f"Error in periodic save: {str(e)}")
+        finally:
+            # Restart the timer with the new interval
+            self.save_timer = threading.Timer(self.save_interval, self._periodic_save)
+            self.save_timer.daemon = True
+            self.save_timer.start()
