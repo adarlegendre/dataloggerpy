@@ -88,6 +88,12 @@ class RadarDataService:
         with self._lock:
             if not self.radar_threads:
                 logger.info("Starting radar data service")
+                # Start all active radars
+                RadarConfig = apps.get_model('app', 'RadarConfig')
+                radars = RadarConfig.objects.filter(is_active=True)
+                for radar in radars:
+                    logger.info(f"Starting radar {radar.id} ({radar.name})")
+                    self.start_radar_stream(radar)
                 self._start_periodic_save()
     
     def stop_service(self):
