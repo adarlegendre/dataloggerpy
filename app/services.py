@@ -162,7 +162,7 @@ class RadarDataService:
         try:
             RadarConfig = apps.get_model('app', 'RadarConfig')
             RadarDataFile = apps.get_model('app', 'RadarDataFile')
-            RadarObjectDetection = apps.get_model('app', 'RadarDataFile')
+            RadarObjectDetection = apps.get_model('app', 'RadarObjectDetection')
             radar = RadarConfig.objects.get(id=radar_id)
             
             # Create a copy of the cache to work with
@@ -195,7 +195,7 @@ class RadarDataService:
                 
                 for data_point in data_to_process:
                     try:
-                        if data_point['raw_data'].startswith('*'):
+                        if data_point['raw_data'].startswith(('*+', '*-', '*?')):
                             parts = data_point['raw_data'][1:].split(',')
                             if len(parts) == 2:
                                 range_val = float(parts[0])
@@ -225,7 +225,7 @@ class RadarDataService:
                 
                 f.write('\n]')  # End JSON array
             
-            # Only create database records if we have detections
+            # Only clear the cache if we successfully saved all data
             if detection_count > 0:
                 # Get file size
                 file_size = os.path.getsize(filepath)
@@ -240,9 +240,11 @@ class RadarDataService:
                 )
                 
                 logger.info(f"Saved {detection_count} object detections ({total_readings} total readings) to {filepath}")
-            
-            # Clear the cache after successful save
-            self.data_cache[radar_id].clear()
+                
+                # Clear the cache only after successful save
+                self.data_cache[radar_id].clear()
+            else:
+                logger.warning(f"No valid detections found to save for radar {radar_id}")
             
         except Exception as e:
             logger.error(f"Error saving data to file for radar {radar_id}: {str(e)}")

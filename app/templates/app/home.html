@@ -1259,8 +1259,8 @@
                     // Update serial data display with status message
                     updateSerialData(radarId, {
                         timestamp: data.timestamp || Math.floor(Date.now() / 1000),
-                        display_text: noDataMessage ? 'Connection lost - No data available' : (data.message || 'No data available'),
-                        connection_status: noDataMessage ? 'disconnected' : (data.connection_status || 'disconnected')
+                        display_text: data.message || 'No data available',
+                        connection_status: data.connection_status || 'disconnected'
                     });
                 }
             })
