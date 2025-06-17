@@ -152,7 +152,12 @@ class RadarDataService:
     
     def get_latest_data(self, radar_id):
         """Get the latest data for a specific radar"""
-        if radar_id in self.data_queues:
+        with self._lock:
+            if radar_id not in self.data_queues:
+                # Initialize data queue if it doesn't exist
+                self.data_queues[radar_id] = Queue()
+                logger.debug(f"Created new data queue for radar {radar_id}")
+            
             try:
                 data = self.data_queues[radar_id].get_nowait()
                 logger.debug(f"Retrieved latest data for radar {radar_id}")
@@ -160,8 +165,6 @@ class RadarDataService:
             except:
                 logger.debug(f"No new data available for radar {radar_id}")
                 return None
-        logger.warning(f"No data queue found for radar {radar_id}")
-        return None
 
     def _save_data_to_file(self, radar_id):
         """Save cached data to file"""
