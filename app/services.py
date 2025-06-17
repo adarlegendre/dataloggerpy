@@ -425,8 +425,12 @@ class RadarDataService:
                             current_time = time.time()
                             if current_time - last_save_time >= radar.file_save_interval * 60:
                                 logger.info(f"Saving data to file for radar {radar.id} after {radar.file_save_interval} minutes")
-                                self._save_data_to_file(radar.id)
-                                last_save_time = current_time
+                                if radar.id in self.data_cache and self.data_cache[radar.id]:
+                                    self._save_data_to_file(radar.id)
+                                    last_save_time = current_time
+                                    logger.info(f"Successfully saved data file for radar {radar.id}")
+                                else:
+                                    logger.info(f"No data to save for radar {radar.id}")
                             
                             # Check for data timeout
                             if current_time - last_valid_data_time > data_timeout:

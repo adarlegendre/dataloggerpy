@@ -641,7 +641,10 @@ class SummaryStats(models.Model):
                 )
 
                 # Clean up old stats (keep only last 1000 entries)
-                cls.objects.order_by('-timestamp')[1000:].delete()
+                # Get IDs of records to keep
+                keep_ids = cls.objects.order_by('-timestamp')[:1000].values_list('id', flat=True)
+                # Delete all records except those we want to keep
+                cls.objects.exclude(id__in=keep_ids).delete()
 
                 return stats
         except Exception as e:
