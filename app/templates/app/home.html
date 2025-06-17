@@ -376,15 +376,6 @@
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0">Recent Object Detections</h5>
                             <div class="d-flex align-items-center">
-                                <div class="me-2">
-                                    <select class="form-select form-select-sm" id="recordsPerPage_{{ radar.id }}" onchange="changeRecordsPerPage({{ radar.id }})">
-                                        <option value="5">5 per page</option>
-                                        <option value="10">10 per page</option>
-                                        <option value="25">25 per page</option>
-                                        <option value="50">50 per page</option>
-                                        <option value="100">100 per page</option>
-                                    </select>
-                                </div>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshDetections({{ radar.id }})">
                                     <i class="fas fa-sync-alt"></i> Refresh
                                 </button>
@@ -444,22 +435,11 @@
                                 </tbody>
                             </table>
                         </div>
-                        <!-- Pagination Controls -->
+                        <!-- Detection count -->
                         <div class="d-flex justify-content-between align-items-center p-2 border-top">
                             <div>
                                 <span class="text-muted" id="detectionCount_{{ radar.id }}">Showing 0 detections</span>
                             </div>
-                            <nav aria-label="Detection pagination">
-                                <ul class="pagination pagination-sm mb-0" id="detectionPagination_{{ radar.id }}">
-                                    <li class="page-item disabled">
-                                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
-                                    </li>
-                                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                                    <li class="page-item disabled">
-                                        <a class="page-link" href="#">Next</a>
-                                    </li>
-                                </ul>
-                            </nav>
                         </div>
                     </div>
 
@@ -1331,18 +1311,6 @@
                  "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>"
         });
         
-        // Initialize data files table
-        $(`#radarDataTable_${radarId}`).DataTable({
-            order: [[2, 'desc']], // Sort by saved time descending
-            pageLength: 10,
-            lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
-            autoWidth: false,
-            responsive: true,
-            language: {
-                search: "Filter files:"
-            }
-        });
-        
         // Load time range settings
         const timeRangeSettings = getStoredTimeRange(radarId);
         setTimeRange(radarId, timeRangeSettings.range);
@@ -1886,35 +1854,70 @@
             .then(response => response.json())
             .then(data => {
                 // Update disk usage
-                const diskProgress = document.querySelector('#system-info-content .col-md-3:nth-child(1) .progress-bar');
-                const diskText = document.querySelector('#system-info-content .col-md-3:nth-child(1) small');
-                diskProgress.style.width = `${data.disk_usage.percent}%`;
-                diskProgress.setAttribute('aria-valuenow', data.disk_usage.percent);
-                diskText.textContent = `${data.disk_usage.used}GB / ${data.disk_usage.total}GB`;
+                const diskProgress = document.querySelector('.disk-progress');
+                const diskUsed = document.querySelector('.disk-used');
+                const diskTotal = document.querySelector('.disk-total');
+                const diskFree = document.querySelector('.disk-free');
+                if (diskProgress) {
+                    diskProgress.style.width = `${data.disk.percent}%`;
+                    diskProgress.setAttribute('aria-valuenow', data.disk.percent);
+                    diskProgress.textContent = `${data.disk.percent}%`;
+                }
+                if (diskUsed) diskUsed.textContent = `${data.disk.used} GB`;
+                if (diskTotal) diskTotal.textContent = `${data.disk.total} GB`;
+                if (diskFree) diskFree.textContent = `${data.disk.free} GB`;
 
                 // Update RAM usage
-                const ramProgress = document.querySelector('#system-info-content .col-md-3:nth-child(2) .progress-bar');
-                const ramText = document.querySelector('#system-info-content .col-md-3:nth-child(2) small');
-                ramProgress.style.width = `${data.ram_usage.percent}%`;
-                ramProgress.setAttribute('aria-valuenow', data.ram_usage.percent);
-                ramText.textContent = `${data.ram_usage.used}GB / ${data.ram_usage.total}GB`;
+                const ramProgress = document.querySelector('.ram-progress');
+                const ramUsed = document.querySelector('.ram-used');
+                const ramTotal = document.querySelector('.ram-total');
+                const ramFree = document.querySelector('.ram-free');
+                if (ramProgress) {
+                    ramProgress.style.width = `${data.ram.percent}%`;
+                    ramProgress.setAttribute('aria-valuenow', data.ram.percent);
+                    ramProgress.textContent = `${data.ram.percent}%`;
+                }
+                if (ramUsed) ramUsed.textContent = `${data.ram.used} GB`;
+                if (ramTotal) ramTotal.textContent = `${data.ram.total} GB`;
+                if (ramFree) ramFree.textContent = `${data.ram.free} GB`;
 
                 // Update CPU temperature
-                const cpuTemp = document.querySelector('#system-info-content .col-md-3:nth-child(3) p');
-                cpuTemp.textContent = `${data.cpu_temperature}°C`;
+                const cpuTemp = document.querySelector('.cpu-temp');
+                if (cpuTemp) {
+                    cpuTemp.textContent = `${data.cpu_temp}°C`;
+                    // Update color based on temperature
+                    if (data.cpu_temp > 80) {
+                        cpuTemp.className = 'cpu-temp text-danger';
+                    } else if (data.cpu_temp > 70) {
+                        cpuTemp.className = 'cpu-temp text-warning';
+                    } else {
+                        cpuTemp.className = 'cpu-temp text-success';
+                    }
+                }
 
                 // Update uptime
-                const uptime = document.querySelector('#system-info-content .col-md-3:nth-child(4) p');
-                uptime.textContent = data.uptime;
+                const uptime = document.querySelector('.uptime');
+                if (uptime) uptime.textContent = data.uptime;
 
-                // Update last update time
-                const lastUpdate = document.getElementById('system-info-last-update');
-                lastUpdate.textContent = 'Last updated: Just now';
+                // Update averages if available
+                if (data.history) {
+                    const diskAvg = document.querySelector('.disk-avg');
+                    const ramAvg = document.querySelector('.ram-avg');
+                    const cpuAvg = document.querySelector('.cpu-avg');
+                    
+                    if (diskAvg && data.history.disk_avg) {
+                        diskAvg.textContent = `24h Avg: ${data.history.disk_avg}%`;
+                    }
+                    if (ramAvg && data.history.ram_avg) {
+                        ramAvg.textContent = `24h Avg: ${data.history.ram_avg}%`;
+                    }
+                    if (cpuAvg && data.history.cpu_avg) {
+                        cpuAvg.textContent = `24h Avg: ${data.history.cpu_avg}°C`;
+                    }
+                }
             })
             .catch(error => {
                 console.error('Error updating system info:', error);
-                const lastUpdate = document.getElementById('system-info-last-update');
-                lastUpdate.textContent = 'Last update failed';
             });
     }
 
