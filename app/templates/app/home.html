@@ -15,7 +15,7 @@
                     <div class="card h-100">
                         <div class="card-body">
                             <h5 class="card-title">
-                                <i class="fas fa-hdd me-2"></i>Disk Usage
+                                <i class="fas fa-hdd me-2"></i><span data-translate="disk_usage">Disk Usage</span>
                             </h5>
                             {% if system_info.disk %}
                             <div class="progress mb-3" style="height: 20px;">
@@ -59,7 +59,7 @@
                     <div class="card h-100">
                         <div class="card-body">
                             <h5 class="card-title">
-                                <i class="fas fa-memory me-2"></i>RAM Usage
+                                <i class="fas fa-memory me-2"></i><span data-translate="ram_usage">RAM Usage</span>
                             </h5>
                             {% if system_info.ram %}
                             <div class="progress mb-3" style="height: 20px;">
@@ -103,7 +103,7 @@
                     <div class="card h-100">
                         <div class="card-body">
                             <h5 class="card-title">
-                                <i class="fas fa-thermometer-half me-2"></i>CPU Temperature
+                                <i class="fas fa-thermometer-half me-2"></i><span data-translate="cpu_temperature">CPU Temperature</span>
                             </h5>
                             {% if system_info.cpu_temp is not None %}
                             <div class="text-center">
@@ -128,7 +128,7 @@
                     <div class="card h-100">
                         <div class="card-body">
                             <h5 class="card-title">
-                                <i class="fas fa-clock me-2"></i>System Uptime
+                                <i class="fas fa-clock me-2"></i><span data-translate="system_uptime">System Uptime</span>
                             </h5>
                             <div class="text-center">
                                 <h2 class="display-6 uptime">{{ system_info.uptime }}</h2>
@@ -150,7 +150,7 @@
                         <div class="card-body py-2">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="card-title text-muted mb-1">Total Objects</h6>
+                                    <h6 class="card-title text-muted mb-1" data-translate="total_objects">Total Objects</h6>
                                     <h4 class="mb-0" id="totalObjectsCount">0</h4>
                                 </div>
                                 <div class="bg-primary bg-opacity-10 p-2 rounded">
@@ -167,7 +167,7 @@
                         <div class="card-body py-2">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="card-title text-muted mb-1">Active Radars</h6>
+                                    <h6 class="card-title text-muted mb-1" data-translate="active_radars">Active Radars</h6>
                                     <h4 class="mb-0" id="activeRadarsCount">0</h4>
                                 </div>
                                 <div class="bg-success bg-opacity-10 p-2 rounded">
@@ -184,7 +184,7 @@
                         <div class="card-body py-2">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="card-title text-muted mb-1">Last Detection</h6>
+                                    <h6 class="card-title text-muted mb-1" data-translate="last_detection">Last Detection</h6>
                                     <h4 class="mb-0" id="lastDetectionTime">-</h4>
                                 </div>
                                 <div class="bg-warning bg-opacity-10 p-2 rounded">

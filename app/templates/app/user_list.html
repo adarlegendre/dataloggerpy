@@ -7,10 +7,12 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">User Management</h3>
+                    <h3 class="card-title">
+                        <i class="fas fa-users me-2"></i><span data-translate="user_management">User Management</span>
+                    </h3>
                     <div class="card-tools">
                         <a href="{% url 'user_create' %}" class="btn btn-primary">
-                            <i class="fas fa-plus"></i> Add New User
+                            <i class="fas fa-plus me-1"></i><span data-translate="add_user">Add User</span>
                         </a>
                     </div>
                 </div>
@@ -45,13 +47,15 @@
                                 <table class="table table-bordered table-striped">
                                     <thead>
                                         <tr>
-                                            <th>Username</th>
-                                            <th>Email</th>
-                                            <th>Full Name</th>
-                                            <th>Role</th>
-                                            <th>Department</th>
-                                            <th>Status</th>
-                                            <th>Actions</th>
+                                            <th data-translate="username">Username</th>
+                                            <th data-translate="email">Email</th>
+                                            <th data-translate="first_name">First Name</th>
+                                            <th data-translate="last_name">Last Name</th>
+                                            <th data-translate="is_superuser">Superuser</th>
+                                            <th data-translate="is_active">Active</th>
+                                            <th data-translate="last_login">Last Login</th>
+                                            <th data-translate="date_joined">Date Joined</th>
+                                            <th data-translate="actions">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -59,28 +63,38 @@
                                         <tr>
                                             <td>{{ user.username }}</td>
                                             <td>{{ user.email }}</td>
-                                            <td>{{ user.get_full_name }}</td>
-                                            <td>{{ user.get_role_display }}</td>
-                                            <td>{{ user.department|default:"-" }}</td>
+                                            <td>{{ user.first_name|default:"-" }}</td>
+                                            <td>{{ user.last_name|default:"-" }}</td>
                                             <td>
-                                                {% if user.is_active %}
-                                                <span class="badge badge-success">Active</span>
+                                                {% if user.is_superuser %}
+                                                    <span class="badge bg-danger" data-translate="yes">Yes</span>
                                                 {% else %}
-                                                <span class="badge badge-danger">Inactive</span>
+                                                    <span class="badge bg-secondary" data-translate="no">No</span>
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <a href="{% url 'user_edit' user.id %}" class="btn btn-sm btn-info">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                <a href="{% url 'user_delete' user.id %}" class="btn btn-sm btn-danger">
-                                                    <i class="fas fa-trash"></i>
-                                                </a>
+                                                {% if user.is_active %}
+                                                    <span class="badge bg-success" data-translate="active">Active</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning" data-translate="inactive">Inactive</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ user.last_login|default:"Never" }}</td>
+                                            <td>{{ user.date_joined|date:"M d, Y" }}</td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <a href="{% url 'user_edit' user.id %}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                                        <i class="fas fa-edit"></i>
+                                                    </a>
+                                                    <a href="{% url 'user_delete' user.id %}" class="btn btn-sm btn-outline-danger" title="Delete">
+                                                        <i class="fas fa-trash"></i>
+                                                    </a>
+                                                </div>
                                             </td>
                                         </tr>
                                         {% empty %}
                                         <tr>
-                                            <td colspan="7" class="text-center">No users found.</td>
+                                            <td colspan="9" class="text-center" data-translate="no_users_found">No users found.</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
