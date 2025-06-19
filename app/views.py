@@ -649,21 +649,29 @@ def test_mode_status(request):
             'message': f'Error: {str(e)}'
         }, status=500)
 
+@login_required
 @require_http_methods(["GET"])
 def radar_detections(request, radar_id):
     """API endpoint to get recent object detections for a radar."""
     try:
         radar = get_object_or_404(RadarConfig, id=radar_id)
-        page = int(request.GET.get('page', 1))
-        per_page = int(request.GET.get('per_page', 10))  # Default to 10 records per page
+        
+        # Get DataTables parameters
+        start = int(request.GET.get('start', 0))
+        length = int(request.GET.get('length', 10))
         
         # Get detections ordered by start_time descending
         detections = RadarObjectDetection.objects.filter(radar_id=radar_id).order_by('-start_time')
-        paginator = Paginator(detections, per_page)
-        page_obj = paginator.get_page(page)
+        total_records = detections.count()
+        
+        # Apply pagination
+        detections = detections[start:start + length]
         
         data = {
-            'detections': [{
+            'draw': int(request.GET.get('draw', 1)),  # Required by DataTables
+            'recordsTotal': total_records,  # Total records before filtering
+            'recordsFiltered': total_records,  # Total records after filtering
+            'data': [{
                 'id': d.id,
                 'start_time': d.start_time.isoformat(),
                 'end_time': d.end_time.isoformat(),
@@ -678,15 +686,7 @@ def radar_detections(request, radar_id):
                 'anpr_detected': d.anpr_detected,
                 'license_plate': d.license_plate,
                 'direction_name': d.direction_name,
-            } for d in page_obj],
-            'pagination': {
-                'total_pages': paginator.num_pages,
-                'current_page': page_obj.number,
-                'has_next': page_obj.has_next(),
-                'has_previous': page_obj.has_previous(),
-                'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
-                'previous_page': page_obj.previous_page_number() if page_obj.has_previous() else None,
-            }
+            } for d in detections]
         }
         return JsonResponse(data)
     except Exception as e:

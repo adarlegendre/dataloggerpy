@@ -1292,6 +1292,14 @@
         initRadarCharts();
         initSerialData();
         
+        // Set up CSRF token for AJAX requests
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        $.ajaxSetup({
+            headers: {
+                'X-CSRFToken': csrfToken
+            }
+        });
+        
         // Initialize DataTables for each radar
         {% for radar in radars %}
         const radarId = {{ radar.id }};
@@ -1315,12 +1323,9 @@
                  "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
             ajax: {
                 url: `/api/radar-detections/${radarId}/`,
-                dataSrc: 'detections',
-                data: function(d) {
-                    // Add pagination parameters
-                    d.page = (d.start / d.length) + 1;
-                    d.per_page = d.length;
-                    return d;
+                type: 'GET',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
                 }
             },
             columns: [
