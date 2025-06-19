@@ -412,7 +412,7 @@
                                             </small>
                                         </td>
                                         <td>
-                                            <span class="text-info">${{ detection.direction !== undefined && detection.direction !== null ? detection.direction : '-' }}</span>
+                                            <span class="text-info">{{ detection.direction_name|default:"-" }}</span>
                                         </td>
                                         <td>
                                             {% if detection.anpr_detected %}
@@ -1692,7 +1692,7 @@
                             </small>
                         </td>
                         <td>
-                            <span class="text-info">${{ detection.direction !== undefined && detection.direction !== null ? detection.direction : '-' }}</span>
+                            <span class="text-info">{{ detection.direction_name|default:"-" }}</span>
                         </td>
                         <td>
                             {% if detection.anpr_detected %}
