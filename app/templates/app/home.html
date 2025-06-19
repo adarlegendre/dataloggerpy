@@ -1692,25 +1692,17 @@
                             </small>
                         </td>
                         <td>
-                            <span class="text-info">{{ detection.direction_name|default:"-" }}</span>
+                            <span class="text-info">${detection.direction_name ? detection.direction_name : '-'}</span>
                         </td>
                         <td>
-                            {% if detection.anpr_detected %}
-                            <span class="badge bg-success">Yes</span>
-                            {% else %}
-                            <span class="badge bg-secondary">No</span>
-                            {% endif %}
+                            ${detection.anpr_detected ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}
                         </td>
                         <td>
-                            {% if detection.license_plate %}
-                            <span class="text-primary">{{ detection.license_plate }}</span>
-                            {% else %}
-                            <span class="text-muted">-</span>
-                            {% endif %}
+                            ${detection.license_plate ? `<span class="text-primary">${detection.license_plate}</span>` : '<span class="text-muted">-</span>'}
                         </td>
-                        <td>{{ detection.detection_count }}</td>
+                        <td>${detection.detection_count}</td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails({{ detection.id }})">
+                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails(${detection.id})">
                                 <i class="fas fa-info-circle"></i>
                             </button>
                         </td>
