@@ -1297,7 +1297,7 @@
         const radarId = {{ radar.id }};
         
         // Initialize detections table
-        $(`#detectionsTable_${radarId}`).DataTable({
+        const table = $(`#detectionsTable_${radarId}`).DataTable({
             order: [[0, 'desc']], // Sort by start time descending
             pageLength: 5,
             lengthMenu: [[5, 10, 25, 50, 100], [5, 10, 25, 50, 100]],
@@ -1312,8 +1312,88 @@
             },
             dom: "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
                  "<'row'<'col-sm-12'tr>>" +
-                 "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>"
+                 "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+            ajax: {
+                url: `/api/radar-detections/${radarId}/`,
+                dataSrc: 'detections',
+                data: function(d) {
+                    // Add pagination parameters
+                    d.page = (d.start / d.length) + 1;
+                    d.per_page = d.length;
+                    return d;
+                }
+            },
+            columns: [
+                { 
+                    data: 'start_time',
+                    render: function(data) {
+                        return new Date(data).toLocaleTimeString();
+                    }
+                },
+                { 
+                    data: 'duration',
+                    render: function(data) {
+                        return data.toFixed(1) + 's';
+                    }
+                },
+                { 
+                    data: null,
+                    render: function(data) {
+                        return `<small class="text-muted">
+                            ${data.min_range.toFixed(1)} - ${data.max_range.toFixed(1)} (avg: ${data.avg_range.toFixed(1)})
+                        </small>`;
+                    }
+                },
+                { 
+                    data: null,
+                    render: function(data) {
+                        return `<small class="text-muted">
+                            ${data.min_speed.toFixed(1)} - ${data.max_speed.toFixed(1)} (avg: ${data.avg_speed.toFixed(1)})
+                        </small>`;
+                    }
+                },
+                { 
+                    data: 'direction_name',
+                    render: function(data) {
+                        return `<span class="text-info">${data ? data : '-'}</span>`;
+                    }
+                },
+                { 
+                    data: 'anpr_detected',
+                    render: function(data) {
+                        return data ? 
+                            '<span class="badge bg-success">Yes</span>' : 
+                            '<span class="badge bg-secondary">No</span>';
+                    }
+                },
+                { 
+                    data: 'license_plate',
+                    render: function(data) {
+                        return data ? 
+                            `<span class="text-primary">${data}</span>` : 
+                            '<span class="text-muted">-</span>';
+                    }
+                },
+                { data: 'detection_count' },
+                { 
+                    data: 'id',
+                    render: function(data) {
+                        return `<button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails(${data})">
+                            <i class="fas fa-info-circle"></i>
+                        </button>`;
+                    }
+                }
+            ]
         });
+
+        // Store the table reference in a global object
+        window.radarTables = window.radarTables || {};
+        window.radarTables[radarId] = table;
+
+        // Refresh the table every 5 seconds
+        setInterval(() => {
+            table.ajax.reload(null, false); // false = keep current page
+        }, 5000);
         
         // Load time range settings
         const timeRangeSettings = getStoredTimeRange(radarId);
@@ -1634,125 +1714,10 @@
         setInterval(refreshRadarTables, 5000);
     });
 
-    // Add these functions for the detections table
-    let detectionUpdateIntervals = {};
-
-    function startDetectionUpdates(radarId) {
-        if (!detectionUpdateIntervals[radarId]) {
-            refreshDetections(radarId); // Initial refresh
-            detectionUpdateIntervals[radarId] = setInterval(() => {
-                refreshDetections(radarId);
-            }, 5000); // 5 seconds
-        }
-    }
-
-    function stopDetectionUpdates(radarId) {
-        if (detectionUpdateIntervals[radarId]) {
-            clearInterval(detectionUpdateIntervals[radarId]);
-            delete detectionUpdateIntervals[radarId];
-        }
-    }
-
-    function changeRecordsPerPage(radarId) {
-        const recordsPerPage = document.getElementById(`recordsPerPage_${radarId}`).value;
-        refreshDetections(radarId, 1, recordsPerPage); // Reset to first page
-    }
-
-    function getCurrentPage(radarId) {
-        const activePage = document.querySelector(`#detectionPagination_${radarId} .active`);
-        return activePage ? parseInt(activePage.textContent) : 1;
-    }
-
-    // Function to refresh detections table
-    function refreshDetections(radarId, page = 1, perPage = 10) {
-        fetch(`/api/radar-detections/${radarId}/?page=${page}&per_page=${perPage}`)
-            .then(response => response.json())
-            .then(data => {
-                const tbody = document.querySelector(`#detectionsTable_${radarId} tbody`);
-                tbody.innerHTML = '';
-                
-                if (data.detections.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center">No object detections found</td></tr>';
-                    return;
-                }
-                
-                data.detections.forEach(detection => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${new Date(detection.start_time).toLocaleTimeString()}</td>
-                        <td>${detection.duration.toFixed(1)}s</td>
-                        <td>
-                            <small class="text-muted">
-                                ${detection.min_range.toFixed(1)} - ${detection.max_range.toFixed(1)} (avg: ${detection.avg_range.toFixed(1)})
-                            </small>
-                        </td>
-                        <td>
-                            <small class="text-muted">
-                                ${detection.min_speed.toFixed(1)} - ${detection.max_speed.toFixed(1)} (avg: ${detection.avg_speed.toFixed(1)})
-                            </small>
-                        </td>
-                        <td>
-                            <span class="text-info">${detection.direction_name ? detection.direction_name : '-'}</span>
-                        </td>
-                        <td>
-                            ${detection.anpr_detected ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}
-                        </td>
-                        <td>
-                            ${detection.license_plate ? `<span class="text-primary">${detection.license_plate}</span>` : '<span class="text-muted">-</span>'}
-                        </td>
-                        <td>${detection.detection_count}</td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails(${detection.id})">
-                                <i class="fas fa-info-circle"></i>
-                            </button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-
-                // Update pagination controls
-                updatePagination(radarId, data.pagination);
-                
-                // Update detection count
-                document.querySelector(`#detectionCount_${radarId}`).textContent = 
-                    `Showing ${data.detections.length} detections`;
-            })
-            .catch(error => {
-                console.error('Error refreshing detections:', error);
-            });
-    }
-
-    // Function to update pagination controls
-    function updatePagination(radarId, pagination) {
-        const paginationElement = document.querySelector(`#detectionPagination_${radarId}`);
-        let paginationHtml = '';
-        
-        // Previous button
-        paginationHtml += `
-            <li class="page-item ${pagination.current_page === 1 ? 'disabled' : ''}">
-                <a class="page-link" href="#" onclick="refreshDetections(${radarId}, ${pagination.previous_page || 1})" 
-                   ${pagination.current_page === 1 ? 'tabindex="-1" aria-disabled="true"' : ''}>Previous</a>
-            </li>
-        `;
-        
-        // Page numbers
-        for (let i = 1; i <= pagination.total_pages; i++) {
-            paginationHtml += `
-                <li class="page-item ${i === pagination.current_page ? 'active' : ''}">
-                    <a class="page-link" href="#" onclick="refreshDetections(${radarId}, ${i})">${i}</a>
-                </li>
-            `;
-        }
-        
-        // Next button
-        paginationHtml += `
-            <li class="page-item ${pagination.current_page === pagination.total_pages ? 'disabled' : ''}">
-                <a class="page-link" href="#" onclick="refreshDetections(${radarId}, ${pagination.next_page || pagination.current_page})"
-                   ${pagination.current_page === pagination.total_pages ? 'tabindex="-1" aria-disabled="true"' : ''}>Next</a>
-            </li>
-        `;
-        
-        paginationElement.innerHTML = paginationHtml;
+    // Function to refresh a specific radar's detections table
+    function refreshDetections(radarId) {
+        const table = $(`#detectionsTable_${radarId}`).DataTable();
+        table.ajax.reload(null, false); // false = keep current page
     }
 
     // Function to show detection details
@@ -1778,7 +1743,7 @@
                             </tr>
                             <tr>
                                 <th>Direction:</th>
-                                <td colspan="3">${data.direction !== undefined && data.direction !== null ? data.direction : '-'}</td>
+                                <td colspan="3">${data.direction_name !== undefined && data.direction_name !== null ? data.direction_name : '-'}</td>
                             </tr>
                         </table>
                     </div>
@@ -1786,73 +1751,27 @@
                     <div class="table-responsive">
                         <table class="table table-sm">
                             <tr>
-                                <th>Minimum:</th>
-                                <td>${data.min_range.toFixed(1)}m</td>
-                                <th>Maximum:</th>
-                                <td>${data.max_range.toFixed(1)}m</td>
-                                <th>Average:</th>
-                                <td>${data.avg_range.toFixed(1)}m</td>
+                                <th>Range (m):</th>
+                                <td>Min: ${data.min_range.toFixed(1)}, Max: ${data.max_range.toFixed(1)}, Avg: ${data.avg_range.toFixed(1)}</td>
                             </tr>
-                        </table>
-                    </div>
-                    <h6 class="mt-3">Speed Statistics</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm">
                             <tr>
-                                <th>Minimum:</th>
-                                <td>${data.min_speed.toFixed(1)}mm/s</td>
-                                <th>Maximum:</th>
-                                <td>${data.max_speed.toFixed(1)}mm/s</td>
-                                <th>Average:</th>
-                                <td>${data.avg_speed.toFixed(1)}mm/s</td>
+                                <th>Speed (mm/s):</th>
+                                <td>Min: ${data.min_speed.toFixed(1)}, Max: ${data.max_speed.toFixed(1)}, Avg: ${data.avg_speed.toFixed(1)}</td>
                             </tr>
-                        </table>
-                    </div>
-                    <h6 class="mt-3">Raw Data</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Range (m)</th>
-                                    <th>Speed (mm/s)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${data.raw_data.map(reading => `
-                                    <tr>
-                                        <td>${new Date(reading.timestamp).toLocaleString()}</td>
-                                        <td>${parseFloat(reading.raw_data.slice(1).split(',')[0]).toFixed(1)}</td>
-                                        <td>${parseFloat(reading.raw_data.slice(1).split(',')[1]).toFixed(1)}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
                         </table>
                     </div>
                 `;
                 
+                // Show the modal
                 const modal = new bootstrap.Modal(document.querySelector(`#detectionModal_${data.radar_id}`));
                 modal.show();
             })
             .catch(error => {
                 console.error('Error fetching detection details:', error);
-                alert('Error loading detection details');
             });
     }
 
-    // Initialize detection updates for each radar when the page loads
-    document.addEventListener('DOMContentLoaded', function() {
-        {% for radar in radars %}
-            startDetectionUpdates({{ radar.id }});
-        {% endfor %}
-    });
-
-    // Clean up intervals when leaving the page
-    window.addEventListener('beforeunload', function() {
-        {% for radar in radars %}
-            stopDetectionUpdates({{ radar.id }});
-        {% endfor %}
-    });
+    // No need for manual updates since we're using DataTables' built-in refresh
 
     function updateSystemInfo() {
         fetch('/api/system-info/')

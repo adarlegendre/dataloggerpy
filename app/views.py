@@ -677,7 +677,7 @@ def radar_detections(request, radar_id):
                 'avg_speed': d.avg_speed,
                 'anpr_detected': d.anpr_detected,
                 'license_plate': d.license_plate,
-                'direction': getattr(d, 'direction', None),
+                'direction_name': d.direction_name,
             } for d in page_obj],
             'pagination': {
                 'total_pages': paginator.num_pages,
