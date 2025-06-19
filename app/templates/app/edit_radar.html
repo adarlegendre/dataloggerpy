@@ -72,6 +72,28 @@
                                 {% endif %}
                             </div>
                             <div class="col-md-4">
+                                <label for="id_direction_positive_name" class="form-label">Positive Direction Name</label>
+                                {{ form.direction_positive_name }}
+                                <div class="form-text">E.g. Towards Village</div>
+                                {% if form.direction_positive_name.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.direction_positive_name.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="id_direction_negative_name" class="form-label">Negative Direction Name</label>
+                                {{ form.direction_negative_name }}
+                                <div class="form-text">E.g. Towards Town</div>
+                                {% if form.direction_negative_name.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.direction_negative_name.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-4">
                                 <label for="id_update_interval" class="form-label">Update Interval (ms)</label>
                                 {{ form.update_interval }}
                                 <div class="form-text">Update interval in milliseconds (50-1000ms)</div>

@@ -191,8 +191,23 @@ class RadarConfig(models.Model):
         help_text="Path to store radar data files"
     )
     is_active = models.BooleanField(default=True)
+    direction_positive_name = models.CharField(
+        max_length=100,
+        default='Towards Village',
+        help_text="Name for the positive direction"
+    )
+    direction_negative_name = models.CharField(
+        max_length=100,
+        default='Towards Town',
+        help_text="Name for the negative direction"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def direction_name(self):
+        # Default to positive direction name for display
+        return self.direction_positive_name
 
     class Meta:
         verbose_name = 'Radar Configuration'
@@ -505,6 +520,7 @@ class RadarObjectDetection(models.Model):
     license_plate = models.CharField(max_length=20, null=True, blank=True, help_text="Detected license plate number")
     email_sent = models.BooleanField(default=False, help_text="Whether notification email has been sent")
     created_at = models.DateTimeField(auto_now_add=True)
+    direction_name = models.CharField(max_length=100, null=True, blank=True, help_text="Direction name for this detection")
 
     class Meta:
         verbose_name = 'Radar Object Detection'

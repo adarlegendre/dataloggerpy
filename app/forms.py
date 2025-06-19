@@ -118,7 +118,7 @@ class RadarForm(forms.ModelForm):
     class Meta:
         model = RadarConfig
         fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 
-                 'update_interval', 'file_save_interval', 'data_storage_path', 'is_active']
+                 'update_interval', 'file_save_interval', 'data_storage_path', 'is_active', 'direction_positive_name', 'direction_negative_name']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'port': forms.TextInput(attrs={'class': 'form-control'}),
@@ -143,6 +143,8 @@ class RadarForm(forms.ModelForm):
                 'placeholder': 'Enter path for data storage'
             }),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'direction_positive_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g. Towards Village"}),
+            'direction_negative_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g. Towards Town"}),
         }
 
     def __init__(self, *args, **kwargs):

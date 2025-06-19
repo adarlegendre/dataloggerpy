@@ -389,6 +389,7 @@
                                         <th>Duration</th>
                                         <th>Range (m)</th>
                                         <th>Speed (mm/s)</th>
+                                        <th>Direction</th>
                                         <th>ANPR</th>
                                         <th>License</th>
                                         <th>Count</th>
@@ -409,6 +410,9 @@
                                             <small class="text-muted">
                                                 {{ detection.min_speed|floatformat:1 }} - {{ detection.max_speed|floatformat:1 }} (avg: {{ detection.avg_speed|floatformat:1 }})
                                             </small>
+                                        </td>
+                                        <td>
+                                            <span class="text-info">{{ detection.direction_name }}</span>
                                         </td>
                                         <td>
                                             {% if detection.anpr_detected %}
@@ -1688,20 +1692,25 @@
                             </small>
                         </td>
                         <td>
-                            ${detection.anpr_detected ? 
-                                `<span class="badge bg-success">Yes</span>` :
-                                `<span class="badge bg-secondary">No</span>`
-                            }
+                            <span class="text-info">{{ detection.direction_name }}</span>
                         </td>
                         <td>
-                            ${detection.license_plate ? 
-                                `<span class="text-primary">${detection.license_plate}</span>` :
-                                `<span class="text-muted">-</span>`
-                            }
+                            {% if detection.anpr_detected %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary">No</span>
+                            {% endif %}
                         </td>
-                        <td>${detection.detection_count}</td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails(${detection.id})">
+                            {% if detection.license_plate %}
+                            <span class="text-primary">{{ detection.license_plate }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ detection.detection_count }}</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-info" onclick="showDetectionDetails({{ detection.id }})">
                                 <i class="fas fa-info-circle"></i>
                             </button>
                         </td>

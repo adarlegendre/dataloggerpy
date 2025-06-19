@@ -315,11 +315,20 @@ class RadarDataService:
             file_handle.write(f'    {{"comment": "Object Detection #{detection_number} - Start Time: {start_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}"}},\n')
             
             # Process each reading
+            direction_counts = {'positive': 0, 'negative': 0}
             for i, data_point in enumerate(detection):
                 # Parse range and speed
                 parts = data_point['raw_data'][1:].split(',')
                 range_val = float(parts[0])
                 speed_val = float(parts[1])
+                
+                # Determine direction name
+                if range_val < 0:
+                    direction_name = radar.direction_negative_name
+                    direction_counts['negative'] += 1
+                else:
+                    direction_name = radar.direction_positive_name
+                    direction_counts['positive'] += 1
                 
                 ranges.append(range_val)
                 speeds.append(speed_val)
@@ -331,11 +340,12 @@ class RadarDataService:
                 # Write to file
                 if i > 0:
                     file_handle.write(',\n')
-                file_handle.write(f'    {{"timestamp": "{formatted_time}", "raw_data": "{data_point["raw_data"]}"}}')
+                file_handle.write(f'    {{"timestamp": "{formatted_time}", "raw_data": "{data_point["raw_data"]}", "direction_name": "{direction_name}"}}')
                 
                 formatted_data.append({
                     'timestamp': formatted_time,
-                    'raw_data': data_point['raw_data']
+                    'raw_data': data_point['raw_data'],
+                    'direction_name': direction_name
                 })
             
             # Calculate statistics
@@ -354,6 +364,12 @@ class RadarDataService:
             file_handle.write(f'Speed: {min_speed:.1f}-{max_speed:.1f}mm/s (avg: {avg_speed:.1f}mm/s)"}}\n')
             file_handle.write('  ]')
             
+            # Determine majority direction for the detection
+            if direction_counts['negative'] > direction_counts['positive']:
+                detection_direction_name = radar.direction_negative_name
+            else:
+                detection_direction_name = radar.direction_positive_name
+            
             # Save to database
             RadarObjectDetection.objects.create(
                 radar=radar,
@@ -366,7 +382,8 @@ class RadarDataService:
                 max_speed=max_speed,
                 avg_speed=avg_speed,
                 detection_count=len(detection),
-                raw_data=formatted_data
+                raw_data=formatted_data,
+                direction_name=detection_direction_name
             )
             
             return True
@@ -501,6 +518,12 @@ class RadarDataService:
                                                 range_val = float(parts[0])
                                                 speed_val = float(parts[1])
                                                 
+                                                # Determine direction name
+                                                if range_val < 0:
+                                                    direction_name = radar.direction_negative_name
+                                                else:
+                                                    direction_name = radar.direction_positive_name
+
                                                 # Update last valid data time
                                                 last_valid_data_time = time.time()
                                                 
@@ -512,7 +535,8 @@ class RadarDataService:
                                                     'timestamp': time.time(),
                                                     'connection_status': 'connected',
                                                     'raw_data': decoded_data,
-                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s"
+                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s",
+                                                    'direction_name': direction_name
                                                 }
                                                 
                                                 data_queue.put(display_data)
@@ -642,11 +666,20 @@ class RadarDataService:
             speeds = []
             formatted_data = []
             
+            direction_counts = {'positive': 0, 'negative': 0}
             for data_point in detection_data:
                 # Parse range and speed
                 parts = data_point['raw_data'][1:].split(',')
                 range_val = float(parts[0])
                 speed_val = float(parts[1])
+                
+                # Determine direction name
+                if range_val < 0:
+                    direction_name = radar.direction_negative_name
+                    direction_counts['negative'] += 1
+                else:
+                    direction_name = radar.direction_positive_name
+                    direction_counts['positive'] += 1
                 
                 ranges.append(range_val)
                 speeds.append(speed_val)
@@ -658,7 +691,8 @@ class RadarDataService:
                 
                 formatted_data.append({
                     'timestamp': formatted_time,
-                    'raw_data': data_point['raw_data']
+                    'raw_data': data_point['raw_data'],
+                    'direction_name': direction_name
                 })
             
             # Create detection record
@@ -666,6 +700,12 @@ class RadarDataService:
             start_time = timezone.make_aware(start_time)
             end_time = datetime.fromtimestamp(detection_data[-1]['timestamp'])
             end_time = timezone.make_aware(end_time)
+            
+            # Determine majority direction for the detection
+            if direction_counts['negative'] > direction_counts['positive']:
+                detection_direction_name = radar.direction_negative_name
+            else:
+                detection_direction_name = radar.direction_positive_name
             
             RadarObjectDetection.objects.create(
                 radar=radar,
@@ -678,7 +718,8 @@ class RadarDataService:
                 max_speed=max(speeds),
                 avg_speed=sum(speeds) / len(speeds),
                 detection_count=len(detection_data),
-                raw_data=formatted_data
+                raw_data=formatted_data,
+                direction_name=detection_direction_name
             )
             
             logger.info(f"Saved object detection for radar {radar.id} with {len(detection_data)} readings")

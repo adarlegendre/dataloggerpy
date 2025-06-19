@@ -352,13 +352,17 @@
                         </div>
                         <div class="row g-3 mt-2">
                             <div class="col-md-4">
-                                <div class="form-check">
-                                    {{ radar_form.is_active }}
-                                    <label class="form-check-label" for="radar-is_active" data-translate="active">
-                                        Active
-                                    </label>
-                                </div>
+                                <label for="radar-direction_positive_name" class="form-label">Positive Direction Name</label>
+                                {{ radar_form.direction_positive_name }}
+                                <div class="form-text">E.g. Towards Village</div>
                             </div>
+                            <div class="col-md-4">
+                                <label for="radar-direction_negative_name" class="form-label">Negative Direction Name</label>
+                                {{ radar_form.direction_negative_name }}
+                                <div class="form-text">E.g. Towards Town</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
                             <div class="col-md-8">
                                 <label for="radar-anpr_config" class="form-label" data-translate="anpr_configuration">ANPR Configuration</label>
                                 {{ radar_form.anpr_config }}
@@ -395,6 +399,8 @@
                                     <th data-translate="update_interval">Update Interval</th>
                                     <th data-translate="file_save_interval">File Save Interval</th>
                                     <th data-translate="data_path">Data Path</th>
+                                    <th>+ Name</th>
+                                    <th>- Name</th>
                                     <th data-translate="anpr">ANPR</th>
                                     <th data-translate="status">Status</th>
                                     <th data-translate="last_updated">Last Updated</th>
@@ -414,6 +420,8 @@
                                         <td>{{ radar.update_interval }} ms</td>
                                         <td>{{ radar.file_save_interval }} min</td>
                                         <td>{{ radar.data_storage_path }}</td>
+                                        <td>{{ radar.direction_positive_name }}</td>
+                                        <td>{{ radar.direction_negative_name }}</td>
                                         <td>
                                             {% with anpr=radar.anpr_configs.first %}
                                             {% if anpr %}
