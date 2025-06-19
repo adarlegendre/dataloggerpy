@@ -677,6 +677,7 @@ def radar_detections(request, radar_id):
                 'avg_speed': d.avg_speed,
                 'anpr_detected': d.anpr_detected,
                 'license_plate': d.license_plate,
+                'direction': getattr(d, 'direction', None),
             } for d in page_obj],
             'pagination': {
                 'total_pages': paginator.num_pages,
@@ -719,7 +720,8 @@ def radar_detection_details(request, detection_id):
             'min_speed': detection.min_speed,
             'max_speed': detection.max_speed,
             'avg_speed': detection.avg_speed,
-            'raw_data': raw_data
+            'raw_data': raw_data,
+            'direction': getattr(detection, 'direction', None),
         }
         return JsonResponse(data)
     except Exception as e:

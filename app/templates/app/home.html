@@ -412,7 +412,7 @@
                                             </small>
                                         </td>
                                         <td>
-                                            <span class="text-info">{{ detection.direction_name }}</span>
+                                            <span class="text-info">${{ detection.direction !== undefined && detection.direction !== null ? detection.direction : '-' }}</span>
                                         </td>
                                         <td>
                                             {% if detection.anpr_detected %}
@@ -1642,7 +1642,7 @@
             refreshDetections(radarId); // Initial refresh
             detectionUpdateIntervals[radarId] = setInterval(() => {
                 refreshDetections(radarId);
-            }, 300000); // 5 minutes
+            }, 5000); // 5 seconds
         }
     }
 
@@ -1692,7 +1692,7 @@
                             </small>
                         </td>
                         <td>
-                            <span class="text-info">{{ detection.direction_name }}</span>
+                            <span class="text-info">${{ detection.direction !== undefined && detection.direction !== null ? detection.direction : '-' }}</span>
                         </td>
                         <td>
                             {% if detection.anpr_detected %}
@@ -1783,6 +1783,10 @@
                                 <td>${data.duration.toFixed(2)}s</td>
                                 <th>Readings:</th>
                                 <td>${data.detection_count}</td>
+                            </tr>
+                            <tr>
+                                <th>Direction:</th>
+                                <td colspan="3">${data.direction !== undefined && data.direction !== null ? data.direction : '-'}</td>
                             </tr>
                         </table>
                     </div>

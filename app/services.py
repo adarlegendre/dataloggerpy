@@ -506,27 +506,28 @@ class RadarDataService:
                                     decoded_data = data.decode('utf-8', errors='replace').strip("b'")
                                     
                                     # Process the data if it starts with *+, *-, or *?
-                                    if decoded_data.startswith(('*+', '*-', '*?')):
+                                    if decoded_data.startswith(("*+", "*-", "*?")):
                                         try:
                                             # Get the prefix and remove it
                                             prefix = decoded_data[:2]  # *+ or *- or *?
                                             data_without_prefix = decoded_data[2:]
-                                            
                                             # Split by comma
                                             parts = data_without_prefix.split(',')
                                             if len(parts) == 2:
                                                 range_val = float(parts[0])
                                                 speed_val = float(parts[1])
-                                                
-                                                # Determine direction name
-                                                if range_val < 0:
-                                                    direction_name = radar.direction_negative_name
-                                                else:
+
+                                                # Determine direction name based on prefix
+                                                if prefix == '*+':
                                                     direction_name = radar.direction_positive_name
+                                                elif prefix == '*-':
+                                                    direction_name = radar.direction_negative_name
+                                                else:  # '*?'
+                                                    direction_name = 'Unknown'
 
                                                 # Update last valid data time
                                                 last_valid_data_time = time.time()
-                                                
+
                                                 # Format the data for display
                                                 display_data = {
                                                     'status': 'success',
@@ -536,15 +537,16 @@ class RadarDataService:
                                                     'connection_status': 'connected',
                                                     'raw_data': decoded_data,
                                                     'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s",
-                                                    'direction_name': direction_name
+                                                    'direction_name': direction_name,  # Save direction name directly
+                                                    'direction_prefix': prefix         # Save prefix for reference
                                                 }
-                                                
+
                                                 data_queue.put(display_data)
-                                                
+
                                                 # Add to data cache for periodic file saving
                                                 if radar.id in self.data_cache:
                                                     self.data_cache[radar.id].append(display_data)
-                                                
+
                                                 # Handle zero and non-zero readings
                                                 if range_val == 0 and speed_val == 0:
                                                     consecutive_zeros += 1
