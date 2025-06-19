@@ -1,9 +1,9 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, time
 from django.conf import settings
 from django.core.mail import EmailMessage
-from ..models import EmailNotification, RadarObjectDetection, NotificationSettings
+from ..models import EmailNotification, RadarObjectDetection, NotificationSettings, RadarDataFile
 
 def generate_json_report(detections):
     """Generate a JSON report from radar detections"""
@@ -117,8 +117,6 @@ def create_notification_for_today():
     Returns:
         EmailNotification: The created notification instance
     """
-    from datetime import datetime, time
-    
     today = datetime.now().date()
     start_date = datetime.combine(today, time.min)
     end_date = datetime.combine(today, time.max)
@@ -136,9 +134,74 @@ def create_notification_for_date_range(start_date, end_date):
     Returns:
         EmailNotification: The created notification instance
     """
-    from datetime import datetime, time
-    
     start_datetime = datetime.combine(start_date, time.min)
     end_datetime = datetime.combine(end_date, time.max)
     
-    return create_notification(start_datetime, end_datetime) 
+    return create_notification(start_datetime, end_datetime)
+
+def send_json_files(json_file_paths, subject=None, body=None, notification_settings=None):
+    """
+    Send JSON files via email.
+    
+    Args:
+        json_file_paths (list): List of paths to JSON files to send
+        subject (str, optional): Email subject. Defaults to "JSON Data Files"
+        body (str, optional): Email body text. Defaults to a generic message
+        notification_settings (NotificationSettings, optional): Notification settings to use.
+            If not provided, will use the first available settings.
+    
+    Returns:
+        bool: True if email was sent successfully, False otherwise
+    """
+    try:
+        if notification_settings is None:
+            notification_settings = NotificationSettings.objects.first()
+            if not notification_settings:
+                raise ValueError("No notification settings found. Please configure notification settings first.")
+        
+        # Set default subject and body if not provided
+        if subject is None:
+            subject = "JSON Data Files"
+        if body is None:
+            body = "Please find attached the JSON data files."
+        
+        # Create email message
+        email = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=notification_settings.smtp_username,
+            to=[notification_settings.primary_email],
+            cc=notification_settings.get_cc_emails_list(),
+        )
+        
+        # Get RadarDataFile objects for the files
+        data_files = []
+        
+        # Attach JSON files and collect RadarDataFile objects
+        for file_path in json_file_paths:
+            try:
+                with open(file_path, 'r') as f:
+                    json_content = f.read()
+                    filename = os.path.basename(file_path)
+                    email.attach(filename, json_content, 'application/json')
+                    
+                    # Find the corresponding RadarDataFile object
+                    data_file = RadarDataFile.objects.filter(file_path=file_path).first()
+                    if data_file:
+                        data_files.append(data_file)
+            except Exception as e:
+                raise ValueError(f"Error reading JSON file {file_path}: {str(e)}")
+        
+        # Send email
+        email.send()
+        
+        # Mark files as sent
+        for data_file in data_files:
+            data_file.email_sent = True
+            data_file.save()
+            
+        return True
+        
+    except Exception as e:
+        print(f"Error sending JSON files via email: {str(e)}")
+        return False 

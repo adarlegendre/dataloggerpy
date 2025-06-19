@@ -5,7 +5,11 @@ import platform
 from datetime import datetime, timedelta
 from django.utils import timezone
 import logging
-from ..models import SystemMetrics
+from ..models import SystemMetrics, NotificationSettings
+from pathlib import Path
+from crontab import CronTab
+import threading
+import time as pytime
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +132,164 @@ def get_system_info():
     except Exception as e:
         logger.error(f"Error in get_system_info: {str(e)}")
         raise  # Re-raise the exception to be handled by the view 
+
+def get_cron_schedule(settings):
+    """
+    Generate cron schedule based on notification settings.
+    
+    Args:
+        settings: NotificationSettings instance
+    
+    Returns:
+        list: List of tuples (cron_schedule, description)
+    """
+    schedules = []
+    
+    # Parse notification times
+    times = ['00:00']  # Default time if none specified
+    if settings.notification_times:
+        times = [t.strip() for t in settings.notification_times.split(',') if t.strip()]
+    
+    # Parse days of week
+    days = []
+    if settings.days_of_week:
+        days = [d.strip() for d in settings.days_of_week.split(',') if d.strip()]
+        # Convert day names to cron numbers (0=Sunday, 1=Monday, etc)
+        day_map = {
+            'Monday': '1', 'Tuesday': '2', 'Wednesday': '3', 'Thursday': '4',
+            'Friday': '5', 'Saturday': '6', 'Sunday': '0'
+        }
+        days = [day_map[d] for d in days if d in day_map]
+    
+    # Generate schedules based on frequency
+    for time in times:
+        hour, minute = time.split(':')
+        
+        if settings.frequency == 'hourly':
+            schedules.append((f'{minute} * * * *', f'Hourly at minute {minute}'))
+            
+        elif settings.frequency == 'daily':
+            if days:
+                # Specific days at specific times
+                days_str = ','.join(days)
+                schedules.append((f'{minute} {hour} * * {days_str}', 
+                                f'Daily at {time} on specified days'))
+            else:
+                # Every day at specific times
+                schedules.append((f'{minute} {hour} * * *', 
+                                f'Daily at {time}'))
+                
+        elif settings.frequency == 'weekly':
+            # Default to Monday if no days specified
+            week_days = days if days else ['1']
+            for day in week_days:
+                schedules.append((f'{minute} {hour} * * {day}', 
+                                f'Weekly on day {day} at {time}'))
+                
+        elif settings.frequency == 'monthly':
+            # First day of month at specified times
+            schedules.append((f'{minute} {hour} 1 * *', 
+                            f'Monthly on day 1 at {time}'))
+    
+    return schedules
+
+def setup_email_cron_jobs():
+    """
+    Set up cron jobs for email notifications.
+    Removes existing jobs and creates new ones based on notification settings.
+    """
+    try:
+        # Get notification settings
+        settings = NotificationSettings.objects.first()
+        if not settings:
+            logger.warning("No notification settings found. Using default daily schedule.")
+            settings = NotificationSettings(
+                frequency='daily',
+                enable_notifications=True
+            )
+        
+        if not settings.enable_notifications:
+            logger.info("Notifications are disabled in settings")
+            return False
+        
+        # Get project directory
+        project_dir = Path(__file__).resolve().parent.parent.parent
+        
+        # Get the Python interpreter path from the virtual environment
+        venv_python = os.path.join(project_dir, 'venv', 'bin', 'python')
+        if not os.path.exists(venv_python):
+            # Try Windows path
+            venv_python = os.path.join(project_dir, 'venv', 'Scripts', 'python.exe')
+        
+        if not os.path.exists(venv_python):
+            logger.error("Virtual environment Python interpreter not found")
+            return False
+
+        # Create logs directory if it doesn't exist
+        logs_dir = os.path.join(project_dir, 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Initialize crontab
+        cron = CronTab(user=True)
+        
+        # Remove existing radar email jobs
+        cron.remove_all(comment='radar_email_job')
+        
+        # Create the base command
+        base_cmd = f'cd {project_dir} && {venv_python} manage.py send_json_reports >> {logs_dir}/email_reports.log 2>&1'
+        
+        # Get schedules based on notification settings
+        schedules = get_cron_schedule(settings)
+        
+        # Add jobs for each schedule
+        for schedule, description in schedules:
+            job = cron.new(command=base_cmd, comment=f'radar_email_job - {description}')
+            job.setall(schedule)
+            logger.info(f"Created cron job: {description} ({schedule})")
+        
+        # Write the crontab
+        cron.write()
+        
+        # Make log file writable
+        log_file = os.path.join(logs_dir, 'email_reports.log')
+        if not os.path.exists(log_file):
+            with open(log_file, 'a'):
+                pass
+        os.chmod(log_file, 0o666)
+        
+        logger.info(f"Email cron jobs set up successfully with {len(schedules)} schedule(s)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to set up cron jobs: {str(e)}")
+        return False 
+
+def check_cron_status():
+    """Thread function to check and report cron job status every minute"""
+    while True:
+        try:
+            cron = CronTab(user=True)
+            email_jobs = [job for job in cron if 'radar_email_job' in str(job.comment)]
+            
+            print("\n=== Email Cron Jobs Status ===", flush=True)
+            if not email_jobs:
+                print("No email cron jobs found", flush=True)
+            else:
+                now = datetime.now()
+                for job in email_jobs:
+                    schedule = job.slices
+                    next_run = job.schedule(date_from=now).get_next()
+                    print(f"Schedule: {schedule}", flush=True)
+                    print(f"Next run in: {next_run} seconds", flush=True)
+            print("===========================\n", flush=True)
+            
+        except Exception as e:
+            print(f"Error checking cron status: {e}", flush=True)
+        
+        pytime.sleep(60)  # Wait for 1 minute
+
+def start_status_monitor():
+    """Start the status monitoring thread"""
+    status_thread = threading.Thread(target=check_cron_status, daemon=True)
+    status_thread.start()
+    logger.info("Cron status monitoring thread started") 

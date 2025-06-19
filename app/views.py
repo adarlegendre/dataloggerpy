@@ -22,6 +22,8 @@ from collections import deque
 from django.core.paginator import Paginator
 from django.utils import timezone
 from app.utils.notification_utils import create_notification, create_notification_for_today
+from django.core.mail import EmailMessage
+from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 
@@ -598,6 +600,7 @@ def radar_files_api(request, radar_id):
                 'record_count': file.record_count,
                 'file_size': file.file_size,
                 'is_valid': file.is_valid,
+                'email_sent': file.email_sent,
                 'id': file.id
             })
         
@@ -826,3 +829,22 @@ def summary_stats(request):
         return JsonResponse({
             'error': 'Internal server error'
         }, status=500)
+
+@csrf_exempt
+@require_POST
+def send_test_email(request):
+    try:
+        settings = NotificationSettings.objects.first()
+        if not settings:
+            return JsonResponse({'success': False, 'message': 'No notification settings found.'}, status=400)
+        email = EmailMessage(
+            subject='Test Email from Datalogger',
+            body='This is a test email to confirm your SMTP settings.',
+            from_email=settings.smtp_username,
+            to=[settings.primary_email],
+            cc=settings.get_cc_emails_list(),
+        )
+        email.send()
+        return JsonResponse({'success': True, 'message': 'Test email sent successfully.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Failed to send test email: {str(e)}'}, status=500)

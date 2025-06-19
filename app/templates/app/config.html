@@ -668,6 +668,14 @@
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
+                            <div class="col-md-12">
+                                <button type="button" class="btn btn-outline-info" id="sendTestEmailBtn">
+                                    <i class="fas fa-paper-plane"></i> Send Test Email
+                                </button>
+                                <span id="testEmailStatus" class="ms-3"></span>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
                             <div class="col-md-6">
                                 <div class="form-check">
                                     {{ notification_form.enable_notifications }}
@@ -1058,6 +1066,34 @@
             // Reset button state
             this.disabled = false;
             this.innerHTML = 'Test Connection';
+        });
+    });
+
+    // Send Test Email AJAX
+    $(document).ready(function() {
+        $('#sendTestEmailBtn').on('click', function() {
+            var $btn = $(this);
+            var $status = $('#testEmailStatus');
+            $btn.prop('disabled', true);
+            $status.text('Sending...').removeClass('text-success text-danger').addClass('text-info');
+            $.ajax({
+                url: '/api/send-test-email/',
+                type: 'POST',
+                headers: { 'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() },
+                success: function(response) {
+                    $status.text(response.message).removeClass('text-info text-danger').addClass('text-success');
+                },
+                error: function(xhr) {
+                    var msg = 'Failed to send test email.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        msg = xhr.responseJSON.message;
+                    }
+                    $status.text(msg).removeClass('text-info text-success').addClass('text-danger');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                }
+            });
         });
     });
 </script>

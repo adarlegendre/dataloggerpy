@@ -473,6 +473,7 @@
                                     <th>Records</th>
                                     <th>File Size</th>
                                     <th>Status</th>
+                                    <th>Email</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -489,6 +490,13 @@
                                         <span class="badge bg-success">Valid</span>
                                         {% else %}
                                         <span class="badge bg-danger">Invalid</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if data_file.email_sent %}
+                                        <span class="badge bg-success">Sent</span>
+                                        {% else %}
+                                        <span class="badge bg-warning">Pending</span>
                                         {% endif %}
                                     </td>
                                     <td>
@@ -1601,12 +1609,12 @@
                 "columnDefs": [
                     { 
                         "orderable": false, 
-                        "targets": [0, 6],
+                        "targets": [0, 7],
                         "className": "text-center"
                     },
-                    { "className": "text-center", "targets": [3, 4, 5] },
+                    { "className": "text-center", "targets": [3, 4, 5, 6] },
                     { "width": "5%", "targets": 0 },
-                    { "width": "15%", "targets": 6 }
+                    { "width": "15%", "targets": 7 }
                 ],
                 "language": {
                     "search": "Search files:",
@@ -1669,6 +1677,14 @@
                             return data ? 
                                 '<span class="badge bg-success">Valid</span>' : 
                                 '<span class="badge bg-danger">Invalid</span>';
+                        }
+                    },
+                    {
+                        "data": "email_sent",
+                        "render": function(data) {
+                            return data ? 
+                                '<span class="badge bg-success">Sent</span>' : 
+                                '<span class="badge bg-warning">Pending</span>';
                         }
                     },
                     {

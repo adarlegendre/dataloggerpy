@@ -29,4 +29,5 @@ urlpatterns = [
     path('api/radar-detection/<int:detection_id>/', views.radar_detection_details, name='radar_detection_details'),
     path('api/test-anpr-connection/', views.test_anpr_connection, name='test_anpr_connection'),
     path('api/summary-stats/', views.summary_stats, name='summary_stats'),
+    path('api/send-test-email/', views.send_test_email, name='send_test_email'),
 ] 

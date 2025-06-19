@@ -476,6 +476,7 @@ class RadarDataFile(models.Model):
     record_count = models.IntegerField(help_text="Number of records in the file")
     file_size = models.BigIntegerField(help_text="Size of the file in bytes")
     is_valid = models.BooleanField(default=True, help_text="Whether the file is valid and complete")
+    email_sent = models.BooleanField(default=False, help_text="Whether this file has been sent via email")
 
     class Meta:
         verbose_name = 'Radar Data File'
