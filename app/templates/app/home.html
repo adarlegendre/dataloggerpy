@@ -388,7 +388,7 @@
                                         <th>Time</th>
                                         <th>Duration</th>
                                         <th>Range (m)</th>
-                                        <th>Speed (mm/s)</th>
+                                        <th>Speed (km/h)</th>
                                         <th>Direction</th>
                                         <th>ANPR</th>
                                         <th>License</th>
@@ -886,7 +886,7 @@
                         max: 1000,
                         title: {
                             display: true,
-                            text: 'Speed (mm/s)',
+                            text: 'Speed (km/h)',
                             color: '#666666'
                         }
                     }
@@ -956,7 +956,7 @@
                                 const angle = context.dataIndex * 45;
                                 return [
                                     `Angle: ${angle}°`,
-                                    `Speed: ${context.raw.toFixed(1)} mm/s`
+                                    `Speed: ${context.raw.toFixed(1)} km/h`
                                 ];
                             }
                         }
@@ -1235,7 +1235,7 @@
                     updateSerialData(radarId, {
                         ...data,
                         connection_status: 'connected',
-                        display_text: `[CONNECTED] Range: ${range.toFixed(1)}m, Speed: ${speed.toFixed(1)}mm/s`
+                        display_text: `[CONNECTED] Range: ${range.toFixed(1)}m, Speed: ${speed.toFixed(1)}km/h`
                     });
                 } else {
                     // No data available - update status accordingly
@@ -1760,7 +1760,7 @@
                                 <td>Min: ${data.min_range.toFixed(1)}, Max: ${data.max_range.toFixed(1)}, Avg: ${data.avg_range.toFixed(1)}</td>
                             </tr>
                             <tr>
-                                <th>Speed (mm/s):</th>
+                                <th>Speed (km/h):</th>
                                 <td>Min: ${data.min_speed.toFixed(1)}, Max: ${data.max_speed.toFixed(1)}, Avg: ${data.avg_speed.toFixed(1)}</td>
                             </tr>
                         </table>

@@ -86,7 +86,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('timestamp', models.DateTimeField(auto_now_add=True)),
                 ('range', models.FloatField(blank=True, help_text='Range measurement in meters', null=True)),
-                ('speed', models.FloatField(blank=True, help_text='Speed measurement in m/s', null=True)),
+                ('speed', models.FloatField(blank=True, help_text='Speed measurement in km/h', null=True)),
                 ('direction', models.FloatField(blank=True, help_text='Direction in degrees', null=True)),
                 ('raw_data', models.TextField(blank=True, help_text='Raw data if parsing failed', null=True)),
                 ('status', models.CharField(default='success', help_text='Status of the reading', max_length=20)),

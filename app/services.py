@@ -365,7 +365,7 @@ class RadarDataService:
             file_handle.write(f',\n    {{"comment": "Object Detection #{detection_number} - End Time: {end_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}, ')
             file_handle.write(f'Duration: {duration:.1f}s, Readings: {len(detection)}, ')
             file_handle.write(f'Range: {min_range:.1f}-{max_range:.1f}m (avg: {avg_range:.1f}m), ')
-            file_handle.write(f'Speed: {min_speed:.1f}-{max_speed:.1f}mm/s (avg: {avg_speed:.1f}mm/s)"}}\n')
+            file_handle.write(f'Speed: {min_speed:.1f}-{max_speed:.1f}km/h (avg: {avg_speed:.1f}km/h)"}}\n')
             file_handle.write('  ]')
             
             # Determine majority direction for the detection
@@ -543,7 +543,7 @@ class RadarDataService:
                                                     'timestamp': time.time(),
                                                     'connection_status': 'connected',
                                                     'raw_data': decoded_data,
-                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}mm/s",
+                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}km/h",
                                                     'direction_name': direction_name,  # Save direction name directly
                                                     'direction_prefix': prefix         # Save prefix for reference
                                                 }
