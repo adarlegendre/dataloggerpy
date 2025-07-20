@@ -338,6 +338,19 @@ class NotificationSettings(models.Model):
             return []
         return [email.strip() for email in self.cc_emails.split(',') if email.strip()]
 
+    def get_email_connection(self):
+        """Returns a configured email connection using the stored SMTP settings"""
+        from django.core.mail import get_connection
+        
+        return get_connection(
+            host=self.smtp_server,
+            port=self.smtp_port,
+            username=self.smtp_username,
+            password=self.smtp_password,
+            use_tls=self.use_tls,
+            fail_silently=False
+        )
+
 class ANPRConfig(models.Model):
     radar = models.ForeignKey(
         RadarConfig,

@@ -229,36 +229,49 @@ def setup_email_cron_jobs():
         logs_dir = os.path.join(project_dir, 'logs')
         os.makedirs(logs_dir, exist_ok=True)
         
-        # Initialize crontab
-        cron = CronTab(user=True)
+        # Check if we're on Windows
+        if platform.system() == 'Windows':
+            logger.info("Running on Windows - cron jobs will be handled by Windows Service")
+            logger.info("Make sure the RadarNotificationService is installed and running")
+            return True
         
-        # Remove existing radar email jobs
-        cron.remove_all(comment='radar_email_job')
-        
-        # Create the base command
-        base_cmd = f'cd {project_dir} && {venv_python} manage.py send_json_reports >> {logs_dir}/email_reports.log 2>&1'
-        
-        # Get schedules based on notification settings
-        schedules = get_cron_schedule(settings)
-        
-        # Add jobs for each schedule
-        for schedule, description in schedules:
-            job = cron.new(command=base_cmd, comment=f'radar_email_job - {description}')
-            job.setall(schedule)
-            logger.info(f"Created cron job: {description} ({schedule})")
-        
-        # Write the crontab
-        cron.write()
-        
-        # Make log file writable
-        log_file = os.path.join(logs_dir, 'email_reports.log')
-        if not os.path.exists(log_file):
-            with open(log_file, 'a'):
-                pass
-        os.chmod(log_file, 0o666)
-        
-        logger.info(f"Email cron jobs set up successfully with {len(schedules)} schedule(s)")
-        return True
+        # Unix/Linux cron setup
+        try:
+            # Initialize crontab
+            cron = CronTab(user=True)
+            
+            # Remove existing radar email jobs
+            cron.remove_all(comment='radar_email_job')
+            
+            # Create the base command
+            base_cmd = f'cd {project_dir} && {venv_python} manage.py send_json_reports >> {logs_dir}/email_reports.log 2>&1'
+            
+            # Get schedules based on notification settings
+            schedules = get_cron_schedule(settings)
+            
+            # Add jobs for each schedule
+            for schedule, description in schedules:
+                job = cron.new(command=base_cmd, comment=f'radar_email_job - {description}')
+                job.setall(schedule)
+                logger.info(f"Created cron job: {description} ({schedule})")
+            
+            # Write the crontab
+            cron.write()
+            
+            # Make log file writable
+            log_file = os.path.join(logs_dir, 'email_reports.log')
+            if not os.path.exists(log_file):
+                with open(log_file, 'a'):
+                    pass
+            os.chmod(log_file, 0o666)
+            
+            logger.info(f"Email cron jobs set up successfully with {len(schedules)} schedule(s)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to set up Unix cron jobs: {str(e)}")
+            logger.info("Falling back to Windows Service approach")
+            return True
         
     except Exception as e:
         logger.error(f"Failed to set up cron jobs: {str(e)}")
@@ -268,20 +281,27 @@ def check_cron_status():
     """Thread function to check and report cron job status every minute"""
     while True:
         try:
-            cron = CronTab(user=True)
-            email_jobs = [job for job in cron if 'radar_email_job' in str(job.comment)]
-            
-            print("\n=== Email Cron Jobs Status ===", flush=True)
-            if not email_jobs:
-                print("No email cron jobs found", flush=True)
+            if platform.system() == 'Windows':
+                print("\n=== Windows Service Status ===", flush=True)
+                print("Email notifications are handled by RadarNotificationService", flush=True)
+                print("Service runs every minute and calls check_notification_schedule", flush=True)
+                print("Check notification_service.log for service status", flush=True)
+                print("===========================\n", flush=True)
             else:
-                now = datetime.now()
-                for job in email_jobs:
-                    schedule = job.slices
-                    next_run = job.schedule(date_from=now).get_next()
-                    print(f"Schedule: {schedule}", flush=True)
-                    print(f"Next run in: {next_run} seconds", flush=True)
-            print("===========================\n", flush=True)
+                cron = CronTab(user=True)
+                email_jobs = [job for job in cron if 'radar_email_job' in str(job.comment)]
+                
+                print("\n=== Email Cron Jobs Status ===", flush=True)
+                if not email_jobs:
+                    print("No email cron jobs found", flush=True)
+                else:
+                    now = datetime.now()
+                    for job in email_jobs:
+                        schedule = job.slices
+                        next_run = job.schedule(date_from=now).get_next()
+                        print(f"Schedule: {schedule}", flush=True)
+                        print(f"Next run in: {next_run} seconds", flush=True)
+                print("===========================\n", flush=True)
             
         except Exception as e:
             print(f"Error checking cron status: {e}", flush=True)

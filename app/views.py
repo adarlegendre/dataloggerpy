@@ -844,6 +844,7 @@ def send_test_email(request):
             from_email=settings.smtp_username,
             to=[settings.primary_email],
             cc=settings.get_cc_emails_list(),
+            connection=settings.get_email_connection(),
         )
         email.send()
         return JsonResponse({'success': True, 'message': 'Test email sent successfully.'})

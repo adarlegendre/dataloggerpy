@@ -45,13 +45,14 @@ def send_notification_email(notification):
         # Create email
         subject = f"Radar Detection Report - {notification.start_date.strftime('%Y-%m-%d')} to {notification.end_date.strftime('%Y-%m-%d')}"
         
-        # Create email message
+        # Create email message with custom connection
         email = EmailMessage(
             subject=subject,
             body=f"Please find attached the radar detection report for the period {notification.start_date} to {notification.end_date}.",
             from_email=settings.smtp_username,
             to=[settings.primary_email],
             cc=settings.get_cc_emails_list(),
+            connection=settings.get_email_connection(),
         )
         
         # Attach JSON report
@@ -165,13 +166,14 @@ def send_json_files(json_file_paths, subject=None, body=None, notification_setti
         if body is None:
             body = "Please find attached the JSON data files."
         
-        # Create email message
+        # Create email message with custom connection
         email = EmailMessage(
             subject=subject,
             body=body,
             from_email=notification_settings.smtp_username,
             to=[notification_settings.primary_email],
             cc=notification_settings.get_cc_emails_list(),
+            connection=notification_settings.get_email_connection(),
         )
         
         # Get RadarDataFile objects for the files
