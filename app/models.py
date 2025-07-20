@@ -143,6 +143,7 @@ class FTPConfig(models.Model):
 
 class RadarConfig(models.Model):
     name = models.CharField(max_length=100, help_text="Name to identify this radar")
+    imr_ad = models.CharField(max_length=50, blank=True, null=True, help_text="IMR_AD identifier (e.g., IMR_KD-BEKO)")
     port = models.CharField(max_length=50, help_text="Serial port (e.g., COM1, /dev/ttyUSB0)", unique=True)
     baud_rate = models.IntegerField(
         choices=[
@@ -200,6 +201,18 @@ class RadarConfig(models.Model):
         max_length=100,
         default='Towards Town',
         help_text="Name for the negative direction"
+    )
+    direction_id_positive = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Positive direction ID (e.g., IMR_KD-BE)"
+    )
+    direction_id_negative = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Negative direction ID (e.g., IMR_KD-KO)"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -617,54 +630,35 @@ class SummaryStats(models.Model):
         ordering = ['-timestamp']
 
     def __str__(self):
-        return f"Summary Stats at {self.timestamp}"
+        return f"Summary Stats - {self.timestamp}"
 
     @classmethod
     def get_latest_stats(cls):
-        """Get the most recent summary statistics."""
-        try:
-            return cls.objects.order_by('-timestamp').first()
-        except Exception as e:
-            logger.error(f"Error getting latest stats: {str(e)}")
-            return None
+        """Get the latest summary statistics"""
+        return cls.objects.first()
 
     @classmethod
     def update_stats(cls):
-        """Update summary statistics based on current data."""
-        from django.db.models import Count, Max
-        from django.utils import timezone
-        from django.db import transaction
+        """Update summary statistics"""
+        total_objects = RadarObjectDetection.objects.count()
+        active_radars = RadarConfig.objects.filter(is_active=True).count()
+        last_detection = RadarObjectDetection.objects.aggregate(
+            last=Max('start_time')
+        )['last']
 
-        logger = logging.getLogger(__name__)
+        stats, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'total_objects': total_objects,
+                'active_radars': active_radars,
+                'last_detection': last_detection
+            }
+        )
+        
+        if not created:
+            stats.total_objects = total_objects
+            stats.active_radars = active_radars
+            stats.last_detection = last_detection
+            stats.save()
 
-        try:
-            with transaction.atomic():
-                # Get total objects detected
-                total_objects = RadarObjectDetection.objects.count()
 
-                # Get number of active radars
-                active_radars = RadarConfig.objects.filter(is_active=True).count()
-
-                # Get time of last detection
-                last_detection = RadarObjectDetection.objects.aggregate(
-                    last_detection=Max('end_time')
-                )['last_detection']
-
-                # Create new stats entry
-                stats = cls.objects.create(
-                    total_objects=total_objects,
-                    active_radars=active_radars,
-                    last_detection=last_detection
-                )
-
-                # Clean up old stats (keep only last 1000 entries)
-                # Get IDs of records to keep
-                keep_ids = cls.objects.order_by('-timestamp')[:1000].values_list('id', flat=True)
-                # Delete all records except those we want to keep
-                cls.objects.exclude(id__in=keep_ids).delete()
-
-                return stats
-        except Exception as e:
-            logger.error(f"Error updating summary stats: {str(e)}")
-            # Return the last valid stats if available
-            return cls.get_latest_stats()

@@ -13,7 +13,7 @@
                     <form method="post" class="needs-validation" novalidate>
                         {% csrf_token %}
                         <div class="row g-3">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label for="id_name" class="form-label">Radar Name</label>
                                 {{ form.name }}
                                 {% if form.name.errors %}
@@ -22,7 +22,17 @@
                                 </div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
+                                <label for="id_imr_ad" class="form-label">IMR_AD</label>
+                                {{ form.imr_ad }}
+                                <div class="form-text">System identifier</div>
+                                {% if form.imr_ad.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.imr_ad.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
                                 <label for="id_port" class="form-label">Serial Port</label>
                                 {{ form.port }}
                                 {% if form.port.errors %}
@@ -62,7 +72,7 @@
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="id_stop_bits" class="form-label">Stop Bits</label>
                                 {{ form.stop_bits }}
                                 {% if form.stop_bits.errors %}
@@ -71,7 +81,7 @@
                                 </div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="id_direction_positive_name" class="form-label">Positive Direction Name</label>
                                 {{ form.direction_positive_name }}
                                 <div class="form-text">E.g. Towards Village</div>
@@ -81,13 +91,35 @@
                                 </div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="id_direction_negative_name" class="form-label">Negative Direction Name</label>
                                 {{ form.direction_negative_name }}
                                 <div class="form-text">E.g. Towards Town</div>
                                 {% if form.direction_negative_name.errors %}
                                 <div class="invalid-feedback d-block">
                                     {{ form.direction_negative_name.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_direction_id_positive" class="form-label">Positive Direction ID</label>
+                                {{ form.direction_id_positive }}
+                                <div class="form-text">E.g. IMR_KD-BE</div>
+                                {% if form.direction_id_positive.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.direction_id_positive.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-3">
+                                <label for="id_direction_id_negative" class="form-label">Negative Direction ID</label>
+                                {{ form.direction_id_negative }}
+                                <div class="form-text">E.g. IMR_KD-KO</div>
+                                {% if form.direction_id_negative.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.direction_id_negative.errors }}
                                 </div>
                                 {% endif %}
                             </div>

@@ -159,6 +159,7 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="anpr-tab" data-bs-toggle="tab" data-bs-target="#anpr" type="button" role="tab" aria-controls="anpr" aria-selected="false" data-translate="anpr_settings">ANPR Settings</button>
         </li>
+
     </ul>
 
     <div class="tab-content mt-3" id="configTabsContent">
@@ -306,15 +307,20 @@
                     <div class="card-body">
                         <h5 class="card-title mb-4 text-center" data-translate="add_new_radar">Add New Radar Connection</h5>
                         <div class="row g-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="radar-name" class="form-label" data-translate="radar_name">Radar Name</label>
                                 {{ radar_form.name }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <label for="radar-imr_ad" class="form-label">IMR_AD</label>
+                                {{ radar_form.imr_ad }}
+                                <div class="form-text">System identifier</div>
+                            </div>
+                            <div class="col-md-3">
                                 <label for="radar-port" class="form-label" data-translate="serial_port">Serial Port</label>
                                 {{ radar_form.port }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="radar-baud_rate" class="form-label" data-translate="baud_rate">Baud Rate</label>
                                 {{ radar_form.baud_rate }}
                             </div>
@@ -351,15 +357,25 @@
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="radar-direction_positive_name" class="form-label">Positive Direction Name</label>
                                 {{ radar_form.direction_positive_name }}
                                 <div class="form-text">E.g. Towards Village</div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="radar-direction_negative_name" class="form-label">Negative Direction Name</label>
                                 {{ radar_form.direction_negative_name }}
                                 <div class="form-text">E.g. Towards Town</div>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="radar-direction_id_positive" class="form-label">Positive Direction ID</label>
+                                {{ radar_form.direction_id_positive }}
+                                <div class="form-text">E.g. IMR_KD-BE</div>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="radar-direction_id_negative" class="form-label">Negative Direction ID</label>
+                                {{ radar_form.direction_id_negative }}
+                                <div class="form-text">E.g. IMR_KD-KO</div>
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
@@ -391,6 +407,7 @@
                             <thead class="sticky-top bg-white">
                                 <tr>
                                     <th data-translate="name">Name</th>
+                                    <th>IMR_AD</th>
                                     <th data-translate="port">Port</th>
                                     <th data-translate="baud_rate">Baud Rate</th>
                                     <th data-translate="data_bits">Data Bits</th>
@@ -401,6 +418,8 @@
                                     <th data-translate="data_path">Data Path</th>
                                     <th>+ Name</th>
                                     <th>- Name</th>
+                                    <th>+ ID</th>
+                                    <th>- ID</th>
                                     <th data-translate="anpr">ANPR</th>
                                     <th data-translate="status">Status</th>
                                     <th data-translate="last_updated">Last Updated</th>
@@ -412,6 +431,7 @@
                                     {% for radar in radar_configs %}
                                     <tr>
                                         <td>{{ radar.name }}</td>
+                                        <td>{{ radar.imr_ad|default:"-" }}</td>
                                         <td>{{ radar.port }}</td>
                                         <td>{{ radar.baud_rate }}</td>
                                         <td>{{ radar.data_bits }}</td>
@@ -422,6 +442,8 @@
                                         <td>{{ radar.data_storage_path }}</td>
                                         <td>{{ radar.direction_positive_name }}</td>
                                         <td>{{ radar.direction_negative_name }}</td>
+                                        <td>{{ radar.direction_id_positive|default:"-" }}</td>
+                                        <td>{{ radar.direction_id_negative|default:"-" }}</td>
                                         <td>
                                             {% with anpr=radar.anpr_configs.first %}
                                             {% if anpr %}
@@ -493,7 +515,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="9" class="text-center">No radar configurations found</td>
+                                        <td colspan="17" class="text-center">No radar configurations found</td>
                                     </tr>
                                 {% endif %}
                             </tbody>
@@ -861,6 +883,8 @@
                 </div>
             </div>
         </div>
+
+
     </div>
 </div>
 
@@ -1096,6 +1120,55 @@
             });
         });
     });
+
+    // Function to update system details from radar data
+    function updateFromRadar(systemId) {
+        if (confirm('Update system details from radar data?')) {
+            fetch(`/api/update-system-from-radar/${systemId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('System details updated successfully from radar data!');
+                    location.reload();
+                } else {
+                    alert('Error updating system details: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error updating system details');
+            });
+        }
+    }
+
+    // Function to view directions
+    function viewDirections(systemId) {
+        fetch(`/api/system-directions/${systemId}/`)
+        .then(response => response.json())
+        .then(data => {
+            let directionsHtml = '<div class="table-responsive"><table class="table table-striped">';
+            directionsHtml += '<thead><tr><th>Direction ID</th><th>Name</th><th>Detections</th><th>ANPR Detections</th></tr></thead><tbody>';
+            
+            data.directions.forEach(direction => {
+                directionsHtml += `<tr><td>${direction.direction_id}</td><td>${direction.name}</td><td>${direction.detections}</td><td>${direction.detections_ANPR}</td></tr>`;
+            });
+            
+            directionsHtml += '</tbody></table></div>';
+            
+            // Show in a modal or alert
+            alert('Directions:\n' + JSON.stringify(data.directions, null, 2));
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error loading directions');
+        });
+    }
 </script>
 {% endblock %}
 {% endblock %} 

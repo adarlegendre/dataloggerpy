@@ -16,3 +16,5 @@ class FTPConfigAdmin(admin.ModelAdmin):
     list_display = ('server', 'port', 'username', 'remote_directory', 'updated_at')
     readonly_fields = ('created_at', 'updated_at')
     exclude = ('password',)  # Don't show password in admin
+
+

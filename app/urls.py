@@ -30,4 +30,6 @@ urlpatterns = [
     path('api/test-anpr-connection/', views.test_anpr_connection, name='test_anpr_connection'),
     path('api/summary-stats/', views.summary_stats, name='summary_stats'),
     path('api/send-test-email/', views.send_test_email, name='send_test_email'),
+    path('api/update-system-from-radar/<int:system_id>/', views.update_system_from_radar, name='update_system_from_radar'),
+    path('api/system-directions/<int:system_id>/', views.system_directions, name='system_directions'),
 ] 

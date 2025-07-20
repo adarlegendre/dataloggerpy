@@ -117,10 +117,12 @@ class RadarForm(forms.ModelForm):
 
     class Meta:
         model = RadarConfig
-        fields = ['name', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 
-                 'update_interval', 'file_save_interval', 'data_storage_path', 'is_active', 'direction_positive_name', 'direction_negative_name']
+        fields = ['name', 'imr_ad', 'port', 'baud_rate', 'data_bits', 'parity', 'stop_bits', 
+                 'update_interval', 'file_save_interval', 'data_storage_path', 'is_active', 
+                 'direction_positive_name', 'direction_negative_name', 'direction_id_positive', 'direction_id_negative']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'imr_ad': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., IMR_KD-BEKO'}),
             'port': forms.TextInput(attrs={'class': 'form-control'}),
             'baud_rate': forms.NumberInput(attrs={'class': 'form-control'}),
             'data_bits': forms.NumberInput(attrs={'class': 'form-control'}),
@@ -145,6 +147,8 @@ class RadarForm(forms.ModelForm):
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'direction_positive_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g. Towards Village"}),
             'direction_negative_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g. Towards Town"}),
+            'direction_id_positive': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g., IMR_KD-BE"}),
+            'direction_id_negative': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g., IMR_KD-KO"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -414,4 +418,6 @@ class UserSearchForm(forms.Form):
         'placeholder': 'Search users...'
     }))
     role = forms.ChoiceField(required=False, choices=[('', 'All Roles')] + User.ROLE_CHOICES,
-                           widget=forms.Select(attrs={'class': 'form-control'})) 
+                            widget=forms.Select(attrs={'class': 'form-select'}))
+
+ 

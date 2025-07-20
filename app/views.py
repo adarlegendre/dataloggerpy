@@ -234,6 +234,7 @@ def config(request):
                 messages.success(request, 'ANPR settings updated successfully.')
                 return redirect('config')
 
+
     context = {
         'tcp_form': tcp_form,
         'time_form': time_form,
@@ -848,3 +849,35 @@ def send_test_email(request):
         return JsonResponse({'success': True, 'message': 'Test email sent successfully.'})
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'Failed to send test email: {str(e)}'}, status=500)
+
+@login_required
+@require_POST
+def update_system_from_radar(request, system_id):
+    """API endpoint to update system details from radar data"""
+    try:
+        system_detail = get_object_or_404(SystemDetails, id=system_id)
+        system_detail.update_from_radar_data()
+        return JsonResponse({'success': True, 'message': 'System details updated successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+@require_GET
+def system_directions(request, system_id):
+    """API endpoint to get system directions"""
+    try:
+        system_detail = get_object_or_404(SystemDetails, id=system_id)
+        directions = system_detail.directions.all()
+        directions_data = []
+        
+        for direction in directions:
+            directions_data.append({
+                'direction_id': direction.direction_id,
+                'name': direction.name,
+                'detections': direction.detections,
+                'detections_ANPR': direction.detections_ANPR
+            })
+        
+        return JsonResponse({'success': True, 'directions': directions_data})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
