@@ -141,6 +141,58 @@ class FTPConfig(models.Model):
             self.password = f"encrypted:{self.password}"
         super().save(*args, **kwargs)
 
+class DisplayConfig(models.Model):
+    """Model for CP5200 VMS Display Settings"""
+    ip_address = models.GenericIPAddressField(
+        default='192.168.1.222',
+        help_text="IP address of the display device"
+    )
+    port = models.IntegerField(
+        default=8080,
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        help_text="Port number for display communication"
+    )
+    font_size = models.IntegerField(
+        default=16,
+        validators=[MinValueValidator(8), MaxValueValidator(72)],
+        help_text="Font size for display text"
+    )
+    effect_type = models.CharField(
+        max_length=20,
+        default='draw',
+        choices=[
+            ('draw', 'Draw'),
+            ('scroll', 'Scroll'),
+            ('flash', 'Flash'),
+            ('fade', 'Fade'),
+        ],
+        help_text="Visual effect for text display"
+    )
+    justify = models.CharField(
+        max_length=10,
+        default='right',
+        choices=[
+            ('left', 'Left'),
+            ('center', 'Center'),
+            ('right', 'Right'),
+        ],
+        help_text="Text alignment on display"
+    )
+    test_message = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Test message for display testing"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Display Configuration'
+        verbose_name_plural = 'Display Configurations'
+
+    def __str__(self):
+        return f"Display Config - {self.ip_address}:{self.port}"
+
 class RadarConfig(models.Model):
     name = models.CharField(max_length=100, help_text="Name to identify this radar")
     imr_ad = models.CharField(max_length=50, blank=True, null=True, help_text="IMR_AD identifier (e.g., IMR_KD-BEKO)")
@@ -331,6 +383,26 @@ class NotificationSettings(models.Model):
 
     def __str__(self):
         return f"Notification Settings - {self.primary_email}"
+    
+    def save(self, *args, **kwargs):
+        """Override save to automatically manage cron jobs"""
+        # Call the parent save method first
+        super().save(*args, **kwargs)
+        
+        # Set up or remove cron job based on settings
+        cron_updated = False
+        if self.enable_notifications:
+            cron_updated = self.setup_cron_job()
+        else:
+            cron_updated = self.remove_cron_job()
+        
+        # Log the settings save
+        try:
+            from app.utils.notification_logger import notification_logger
+            notification_logger.log_settings_save(self, cron_updated)
+        except Exception as e:
+            # Don't let logging errors break the save
+            pass
 
     def get_cc_emails_list(self):
         """Returns a list of CC email addresses"""
@@ -350,6 +422,28 @@ class NotificationSettings(models.Model):
             use_tls=self.use_tls,
             fail_silently=False
         )
+    
+    def setup_cron_job(self):
+        """Set up cron job for this notification configuration"""
+        try:
+            from app.utils.cron_manager import cron_manager
+            return cron_manager.setup_notification_cron(self)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to setup cron job: {e}")
+            return False
+    
+    def remove_cron_job(self):
+        """Remove cron job for this notification configuration"""
+        try:
+            from app.utils.cron_manager import cron_manager
+            return cron_manager.remove_notification_cron()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to remove cron job: {e}")
+            return False
 
 class ANPRConfig(models.Model):
     radar = models.ForeignKey(

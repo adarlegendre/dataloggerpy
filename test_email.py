@@ -71,7 +71,15 @@ def test_email_sending():
         )
         
         email.send()
+        
+        # Show recipient information
         print("✅ Test email sent successfully!")
+        print(f"📧 From: {settings.smtp_username}")
+        print(f"📧 To: {settings.primary_email}")
+        if cc_emails:
+            print(f"📧 CC: {', '.join(cc_emails)}")
+        else:
+            print("📧 CC: None")
         return True
         
     except Exception as e:

@@ -1,0 +1,16 @@
+[Unit]
+Description=Radar Notification System
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/path/to/dataloggerpy
+ExecStart=/usr/bin/python3 /path/to/dataloggerpy/startup_cron_setup.py
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target 

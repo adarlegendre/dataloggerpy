@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>jQuery Test</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+</head>
+<body>
+    <h1>jQuery Test</h1>
+    <button id="testBtn">Test jQuery</button>
+    <div id="result"></div>
+    
+    <script>
+        $(document).ready(function() {
+            $('#testBtn').on('click', function() {
+                $('#result').html('<p style="color: green;">✅ jQuery is working!</p>');
+                console.log('jQuery test successful');
+            });
+            
+            // Test if jQuery is available immediately
+            if (typeof $ !== 'undefined') {
+                console.log('✅ jQuery is available immediately');
+            } else {
+                console.error('❌ jQuery is not available');
+            }
+        });
+    </script>
+</body>
+</html> 

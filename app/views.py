@@ -3,8 +3,8 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth import logout
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
-from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, RadarForm, NotificationForm, UserForm, UserSearchForm, ANPRForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo, RadarObjectDetection, ANPRConfig, SummaryStats
+from .forms import SystemSettingsForm, TCPIPForm, TimeForm, FTPForm, DisplayForm, RadarForm, NotificationForm, UserForm, UserSearchForm, ANPRForm
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, DisplayConfig, RadarConfig, NotificationSettings, User, RadarDataFile, SystemInfo, RadarObjectDetection, ANPRConfig, SummaryStats
 from app.utils import get_system_info
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.contrib.auth.models import Permission
@@ -94,11 +94,26 @@ def home(request):
         # Get system info
         system_info = get_system_info()
         
+        # Get radar service status
+        try:
+            from app.utils.startup_service import get_radar_service_status
+            radar_service_status = get_radar_service_status()
+        except Exception as e:
+            logger.error(f"Error getting radar service status: {str(e)}")
+            radar_service_status = {
+                'started': False,
+                'radar_service': 'error',
+                'active_radars': 0,
+                'active_threads': 0,
+                'last_check': timezone.now().isoformat()
+            }
+        
         context = {
             'system_settings': system_settings,
             'radars': radars,
             'radar_detections': radar_detections,
             'system_info': system_info,
+            'radar_service_status': radar_service_status,
         }
         return render(request, 'app/home.html', context)
     except Exception as e:
@@ -166,6 +181,7 @@ def config(request):
     tcp_form = TCPIPForm(instance=TCPIPConfig.objects.first())
     time_form = TimeForm(instance=TimeConfig.objects.first())
     ftp_form = FTPForm(instance=FTPConfig.objects.first())
+    display_form = DisplayForm(instance=DisplayConfig.objects.first())
     radar_form = RadarForm()
     notification_form = NotificationForm(instance=notification_settings)
     anpr_form = ANPRForm(instance=anpr_settings)
@@ -200,6 +216,15 @@ def config(request):
                 ftp_form.save()
                 messages.success(request, 'FTP settings updated successfully.')
                 return redirect('config')
+        elif form_type == 'display':
+            if not request.user.is_superuser and not request.user.has_perm('app.change_displayconfig'):
+                messages.error(request, 'You do not have permission to modify display settings.')
+                return redirect('config')
+            display_form = DisplayForm(request.POST, instance=DisplayConfig.objects.first())
+            if display_form.is_valid():
+                display_form.save()
+                messages.success(request, 'Display settings updated successfully.')
+                return redirect('config')
         elif form_type == 'radar':
             if not request.user.is_superuser and not request.user.has_perm('app.add_radarconfig'):
                 messages.error(request, 'You do not have permission to add radar configurations.')
@@ -221,8 +246,11 @@ def config(request):
                 return redirect('config')
             notification_form = NotificationForm(request.POST, instance=notification_settings)
             if notification_form.is_valid():
-                notification_form.save()
+                saved_settings = notification_form.save()
                 messages.success(request, 'Notification settings updated successfully.')
+                return redirect('config')
+            else:
+                messages.error(request, f'Notification settings update failed: {notification_form.errors}')
                 return redirect('config')
         elif form_type == 'anpr':
             if not request.user.is_superuser and not request.user.has_perm('app.change_anprconfig'):
@@ -235,14 +263,24 @@ def config(request):
                 return redirect('config')
 
 
+    # Get cron status
+    try:
+        from app.utils.cron_manager import cron_manager
+        cron_status = cron_manager.get_cron_status()
+    except Exception as e:
+        logger.error(f"Error getting cron status: {e}")
+        cron_status = {'installed': False, 'cron_job': None, 'log_file': None}
+
     context = {
         'tcp_form': tcp_form,
         'time_form': time_form,
         'ftp_form': ftp_form,
+        'display_form': display_form,
         'radar_form': radar_form,
         'notification_form': notification_form,
         'anpr_form': anpr_form,
         'radar_configs': RadarConfig.objects.all().order_by('-created_at'),
+        'cron_status': cron_status,
     }
     
     return render(request, 'app/config.html', context)
@@ -838,16 +876,37 @@ def send_test_email(request):
         settings = NotificationSettings.objects.first()
         if not settings:
             return JsonResponse({'success': False, 'message': 'No notification settings found.'}, status=400)
+        
+        # Prepare recipient information
+        to_emails = [settings.primary_email]
+        cc_emails = settings.get_cc_emails_list()
+        
         email = EmailMessage(
             subject='Test Email from Datalogger',
             body='This is a test email to confirm your SMTP settings.',
             from_email=settings.smtp_username,
-            to=[settings.primary_email],
-            cc=settings.get_cc_emails_list(),
+            to=to_emails,
+            cc=cc_emails,
             connection=settings.get_email_connection(),
         )
         email.send()
-        return JsonResponse({'success': True, 'message': 'Test email sent successfully.'})
+        
+        # Create detailed success message with recipient information
+        message = f'Test email sent successfully!'
+        if to_emails:
+            message += f' To: {", ".join(to_emails)}'
+        if cc_emails:
+            message += f' CC: {", ".join(cc_emails)}'
+        
+        return JsonResponse({
+            'success': True, 
+            'message': message,
+            'recipients': {
+                'to': to_emails,
+                'cc': cc_emails,
+                'from': settings.smtp_username
+            }
+        })
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'Failed to send test email: {str(e)}'}, status=500)
 

@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, RadarConfig, NotificationSettings, User, ANPRConfig
+from .models import SystemSettings, TCPIPConfig, TimeConfig, FTPConfig, DisplayConfig, RadarConfig, NotificationSettings, User, ANPRConfig
 import ipaddress
 from django.db.models import Q
 
@@ -77,11 +77,11 @@ class TCPIPForm(forms.ModelForm):
         model = TCPIPConfig
         fields = ['ip_address', 'gateway', 'subnet_mask', 'dns', 'timeout']
         widgets = {
-            'ip_address': forms.TextInput(attrs={'class': 'form-control'}),
-            'gateway': forms.TextInput(attrs={'class': 'form-control'}),
-            'subnet_mask': forms.TextInput(attrs={'class': 'form-control'}),
-            'dns': forms.TextInput(attrs={'class': 'form-control'}),
-            'timeout': forms.NumberInput(attrs={'class': 'form-control'})
+            'ip_address': forms.TextInput(attrs={'class': 'form-control', 'id': 'tcp-ip_address'}),
+            'gateway': forms.TextInput(attrs={'class': 'form-control', 'id': 'tcp-gateway'}),
+            'subnet_mask': forms.TextInput(attrs={'class': 'form-control', 'id': 'tcp-subnet_mask'}),
+            'dns': forms.TextInput(attrs={'class': 'form-control', 'id': 'tcp-dns'}),
+            'timeout': forms.NumberInput(attrs={'class': 'form-control', 'id': 'tcp-timeout'})
         }
 
 class TimeForm(forms.ModelForm):
@@ -89,9 +89,9 @@ class TimeForm(forms.ModelForm):
         model = TimeConfig
         fields = ['timezone', 'date_format', 'time_format']
         widgets = {
-            'timezone': forms.Select(attrs={'class': 'form-select'}),
-            'date_format': forms.Select(attrs={'class': 'form-select'}),
-            'time_format': forms.Select(attrs={'class': 'form-select'})
+            'timezone': forms.Select(attrs={'class': 'form-select', 'id': 'time-timezone'}),
+            'date_format': forms.Select(attrs={'class': 'form-select', 'id': 'time-date_format'}),
+            'time_format': forms.Select(attrs={'class': 'form-select', 'id': 'time-time_format'})
         }
 
 class FTPForm(forms.ModelForm):
@@ -99,11 +99,24 @@ class FTPForm(forms.ModelForm):
         model = FTPConfig
         fields = ['server', 'port', 'username', 'password', 'remote_directory']
         widgets = {
-            'server': forms.TextInput(attrs={'class': 'form-control'}),
-            'port': forms.NumberInput(attrs={'class': 'form-control'}),
-            'username': forms.TextInput(attrs={'class': 'form-control'}),
-            'password': forms.PasswordInput(attrs={'class': 'form-control'}),
-            'remote_directory': forms.TextInput(attrs={'class': 'form-control'})
+            'server': forms.TextInput(attrs={'class': 'form-control', 'id': 'ftp-server'}),
+            'port': forms.NumberInput(attrs={'class': 'form-control', 'id': 'ftp-port'}),
+            'username': forms.TextInput(attrs={'class': 'form-control', 'id': 'ftp-username'}),
+            'password': forms.PasswordInput(attrs={'class': 'form-control', 'id': 'ftp-password'}),
+            'remote_directory': forms.TextInput(attrs={'class': 'form-control', 'id': 'ftp-remote_directory'})
+        }
+
+class DisplayForm(forms.ModelForm):
+    class Meta:
+        model = DisplayConfig
+        fields = ['ip_address', 'port', 'font_size', 'effect_type', 'justify', 'test_message']
+        widgets = {
+            'ip_address': forms.TextInput(attrs={'class': 'form-control', 'id': 'display-ip_address'}),
+            'port': forms.NumberInput(attrs={'class': 'form-control', 'id': 'display-port'}),
+            'font_size': forms.NumberInput(attrs={'class': 'form-control', 'id': 'display-font_size'}),
+            'effect_type': forms.Select(attrs={'class': 'form-select', 'id': 'display-effect_type'}),
+            'justify': forms.Select(attrs={'class': 'form-select', 'id': 'display-justify'}),
+            'test_message': forms.TextInput(attrs={'class': 'form-control', 'id': 'display-test_message'})
         }
 
 class RadarForm(forms.ModelForm):
@@ -121,34 +134,37 @@ class RadarForm(forms.ModelForm):
                  'update_interval', 'file_save_interval', 'data_storage_path', 'is_active', 
                  'direction_positive_name', 'direction_negative_name', 'direction_id_positive', 'direction_id_negative']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'imr_ad': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., IMR_KD-BEKO'}),
-            'port': forms.TextInput(attrs={'class': 'form-control'}),
-            'baud_rate': forms.NumberInput(attrs={'class': 'form-control'}),
-            'data_bits': forms.NumberInput(attrs={'class': 'form-control'}),
-            'parity': forms.Select(attrs={'class': 'form-control'}),
-            'stop_bits': forms.NumberInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-name'}),
+            'imr_ad': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-imr_ad', 'placeholder': 'e.g., IMR_KD-BEKO'}),
+            'port': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-port'}),
+            'baud_rate': forms.NumberInput(attrs={'class': 'form-control', 'id': 'radar-baud_rate'}),
+            'data_bits': forms.NumberInput(attrs={'class': 'form-control', 'id': 'radar-data_bits'}),
+            'parity': forms.Select(attrs={'class': 'form-control', 'id': 'radar-parity'}),
+            'stop_bits': forms.NumberInput(attrs={'class': 'form-control', 'id': 'radar-stop_bits'}),
             'update_interval': forms.NumberInput(attrs={
                 'class': 'form-control',
+                'id': 'radar-update_interval',
                 'min': '50',
                 'max': '1000',
                 'step': '10'
             }),
             'file_save_interval': forms.NumberInput(attrs={
                 'class': 'form-control',
+                'id': 'radar-file_save_interval',
                 'min': '1',
                 'max': '60',
                 'step': '1'
             }),
             'data_storage_path': forms.TextInput(attrs={
                 'class': 'form-control',
+                'id': 'radar-data_storage_path',
                 'placeholder': 'Enter path for data storage'
             }),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'direction_positive_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g. Towards Village"}),
-            'direction_negative_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g. Towards Town"}),
-            'direction_id_positive': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g., IMR_KD-BE"}),
-            'direction_id_negative': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "e.g., IMR_KD-KO"}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'radar-is_active'}),
+            'direction_positive_name': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-direction_positive_name', 'placeholder': "e.g. Towards Village"}),
+            'direction_negative_name': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-direction_negative_name', 'placeholder': "e.g. Towards Town"}),
+            'direction_id_positive': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-direction_id_positive', 'placeholder': "e.g., IMR_KD-BE"}),
+            'direction_id_negative': forms.TextInput(attrs={'class': 'form-control', 'id': 'radar-direction_id_negative', 'placeholder': "e.g., IMR_KD-KO"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -212,14 +228,14 @@ class NotificationForm(forms.ModelForm):
     ]
     days_of_week = forms.MultipleChoiceField(
         choices=DAYS_OF_WEEK,
-        widget=forms.CheckboxSelectMultiple,
+        widget=forms.CheckboxSelectMultiple(attrs={'id': 'notification-days_of_week'}),
         required=False,
         label='Days of the Week',
         help_text='Select days to send notifications.'
     )
     notification_times = forms.CharField(
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., 08:00,14:00'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'id': 'notification-notification_times', 'placeholder': 'e.g., 08:00,14:00'}),
         label='Notification Times',
         help_text='Enter one or more times in HH:MM format, separated by commas.'
     )
@@ -238,20 +254,28 @@ class NotificationForm(forms.ModelForm):
             'days_of_week',
             'notification_times',
         ]
+        help_texts = {
+            'smtp_password': 'Leave empty to keep the current password unchanged.',
+        }
         widgets = {
-            'primary_email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'frequency': forms.Select(attrs={'class': 'form-select'}),
+            'primary_email': forms.EmailInput(attrs={'class': 'form-control', 'id': 'notification-primary_email'}),
+            'frequency': forms.Select(attrs={'class': 'form-select', 'id': 'notification-frequency'}),
             'cc_emails': forms.Textarea(attrs={
                 'class': 'form-control',
+                'id': 'notification-cc_emails',
                 'rows': 3,
                 'placeholder': 'Enter multiple email addresses separated by commas'
             }),
-            'smtp_server': forms.TextInput(attrs={'class': 'form-control'}),
-            'smtp_port': forms.NumberInput(attrs={'class': 'form-control'}),
-            'smtp_username': forms.TextInput(attrs={'class': 'form-control'}),
-            'smtp_password': forms.PasswordInput(attrs={'class': 'form-control'}),
-            'enable_notifications': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'use_tls': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+            'smtp_server': forms.TextInput(attrs={'class': 'form-control', 'id': 'notification-smtp_server'}),
+            'smtp_port': forms.NumberInput(attrs={'class': 'form-control', 'id': 'notification-smtp_port'}),
+            'smtp_username': forms.TextInput(attrs={'class': 'form-control', 'id': 'notification-smtp_username'}),
+            'smtp_password': forms.PasswordInput(attrs={
+                'class': 'form-control', 
+                'id': 'notification-smtp_password',
+                'placeholder': 'Enter password to change'
+            }),
+            'enable_notifications': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'notification-enable_notifications'}),
+            'use_tls': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'notification-use_tls'})
         }
 
     def clean_cc_emails(self):
@@ -292,6 +316,45 @@ class NotificationForm(forms.ModelForm):
         # If instance exists, populate days_of_week as a list
         if self.instance and self.instance.days_of_week:
             self.initial['days_of_week'] = [d.strip() for d in self.instance.days_of_week.split(',') if d.strip()]
+        
+        # Set a placeholder for password field if instance exists and has a password
+        if self.instance and self.instance.pk and self.instance.smtp_password:
+            self.fields['smtp_password'].widget.attrs['placeholder'] = '••••••••'
+            # Don't set initial value for password field to keep it empty
+            # This way the field shows as empty but user knows there's a password saved
+        
+        # Make password field not required when updating an existing instance
+        if self.instance and self.instance.pk:
+            self.fields['smtp_password'].required = False
+            # Ensure password field is always empty in the form (for security)
+            if 'smtp_password' in self.initial:
+                del self.initial['smtp_password']
+
+    def save(self, commit=True):
+        """Custom save method to handle password field properly"""
+        instance = super().save(commit=False)
+        
+        # Get fresh instance from database if we have a pk
+        if self.instance and self.instance.pk:
+            try:
+                fresh_instance = NotificationSettings.objects.get(pk=self.instance.pk)
+            except NotificationSettings.DoesNotExist:
+                fresh_instance = None
+        else:
+            fresh_instance = None
+        
+        # Only update password if a new one was provided
+        if self.cleaned_data.get('smtp_password'):
+            instance.smtp_password = self.cleaned_data['smtp_password']
+        # If no password provided and this is an update, keep the existing password
+        elif fresh_instance and fresh_instance.smtp_password:
+            instance.smtp_password = fresh_instance.smtp_password
+        elif self.instance and self.instance.pk and self.instance.smtp_password:
+            instance.smtp_password = self.instance.smtp_password
+        
+        if commit:
+            instance.save()
+        return instance
 
 class ANPRForm(forms.ModelForm):
     class Meta:
@@ -310,40 +373,49 @@ class ANPRForm(forms.ModelForm):
         widgets = {
             'ip_address': forms.TextInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-ip_address',
                 'placeholder': 'e.g., 192.168.1.200'
             }),
             'port': forms.NumberInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-port',
                 'min': '1',
                 'max': '65535'
             }),
             'polling_interval': forms.NumberInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-polling_interval',
                 'min': '100',
                 'max': '5000',
                 'step': '100'
             }),
             'timeout': forms.NumberInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-timeout',
                 'min': '1',
                 'max': '30'
             }),
             'endpoint': forms.TextInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-endpoint',
                 'placeholder': 'e.g., /api/plate'
             }),
             'api_key': forms.TextInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-api_key',
                 'placeholder': 'Enter API key if required'
             }),
             'enable_continuous_reading': forms.CheckboxInput(attrs={
-                'class': 'form-check-input'
+                'class': 'form-check-input',
+                'id': 'anpr-enable_continuous_reading'
             }),
             'enable_logging': forms.CheckboxInput(attrs={
-                'class': 'form-check-input'
+                'class': 'form-check-input',
+                'id': 'anpr-enable_logging'
             }),
             'log_path': forms.TextInput(attrs={
                 'class': 'form-control',
+                'id': 'anpr-log_path',
                 'placeholder': 'e.g., logs/anpr'
             })
         }

@@ -18,14 +18,16 @@ class AppConfig(AppConfig):
         if 'runserver' not in sys.argv and 'uwsgi' not in sys.argv:
             return
 
-        # Start radar data service
+        # Start radar data collection service
         try:
-            from .services import RadarDataService
-            service = RadarDataService()
-            service.start_service()
-            logger.info("Radar data service started")
+            from .utils.startup_service import initialize_radar_data_collection
+            success = initialize_radar_data_collection()
+            if success:
+                logger.info("Radar data collection service started successfully")
+            else:
+                logger.error("Failed to start radar data collection service")
         except Exception as e:
-            logger.error(f"Failed to start radar data service: {str(e)}")
+            logger.error(f"Failed to start radar data collection service: {str(e)}")
 
         # Setup cron jobs
         try:

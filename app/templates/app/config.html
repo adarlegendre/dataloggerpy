@@ -687,6 +687,13 @@
                                     {{ notification_form.smtp_password.errors }}
                                 </div>
                                 {% endif %}
+                                <div class="form-text">
+                                    <i class="fas fa-info-circle text-info"></i> 
+                                    Leave empty to keep the current password unchanged.
+                                    {% if notification_form.instance.smtp_password %}
+                                    <span class="text-success"><i class="fas fa-check-circle"></i> Password is saved</span>
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
@@ -737,6 +744,53 @@
                                 </div>
                                 {% endif %}
                                 <div class="form-text">Enter one or more times in HH:MM format, separated by commas (e.g., 08:00,14:00).</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Cron Job Status -->
+                        <div class="row g-3 mt-3">
+                            <div class="col-md-12">
+                                <div class="card border-info">
+                                    <div class="card-header bg-info text-white">
+                                        <h6 class="mb-0"><i class="fas fa-clock"></i> Scheduled Notification Status</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if cron_status.installed %}
+                                            <div class="alert alert-success mb-3">
+                                                <i class="fas fa-check-circle"></i> 
+                                                <strong>✅ Cron job is active</strong>
+                                                <br>
+                                                <small class="text-muted">Notifications will be sent automatically according to your settings</small>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <strong>Cron Job:</strong><br>
+                                                    <code class="small">{{ cron_status.cron_job }}</code>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <strong>Log File:</strong><br>
+                                                    <code class="small">{{ cron_status.log_file }}</code>
+                                                </div>
+                                            </div>
+                                        {% else %}
+                                            <div class="alert alert-warning mb-3">
+                                                <i class="fas fa-exclamation-triangle"></i> 
+                                                <strong>⚠️ Cron job not configured</strong>
+                                                <br>
+                                                <small class="text-muted">Notifications will not be sent automatically. Save your settings to configure the cron job.</small>
+                                            </div>
+                                        {% endif %}
+                                        
+                                        <div class="mt-3">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" id="refreshCronStatus">
+                                                <i class="fas fa-sync-alt"></i> Refresh Status
+                                            </button>
+                                            <button type="button" class="btn btn-outline-info btn-sm" id="viewCronLog">
+                                                <i class="fas fa-file-alt"></i> View Log
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -890,6 +944,17 @@
 
 {% block extra_js %}
 <script>
+    // Ensure jQuery is loaded
+    if (typeof $ === 'undefined') {
+        console.warn('jQuery not found, loading dynamically...');
+        var jqueryScript = document.createElement('script');
+        jqueryScript.src = 'https://code.jquery.com/jquery-3.7.1.min.js';
+        jqueryScript.onload = function() {
+            console.log('jQuery loaded successfully');
+        };
+        document.head.appendChild(jqueryScript);
+    }
+
     // Form validation
     (function () {
         'use strict'
@@ -1094,32 +1159,145 @@
     });
 
     // Send Test Email AJAX
-    $(document).ready(function() {
-        $('#sendTestEmailBtn').on('click', function() {
-            var $btn = $(this);
-            var $status = $('#testEmailStatus');
-            $btn.prop('disabled', true);
-            $status.text('Sending...').removeClass('text-success text-danger').addClass('text-info');
-            $.ajax({
-                url: '/api/send-test-email/',
-                type: 'POST',
-                headers: { 'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() },
-                success: function(response) {
-                    $status.text(response.message).removeClass('text-info text-danger').addClass('text-success');
-                },
-                error: function(xhr) {
-                    var msg = 'Failed to send test email.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        msg = xhr.responseJSON.message;
-                    }
-                    $status.text(msg).removeClass('text-info text-success').addClass('text-danger');
-                },
-                complete: function() {
-                    $btn.prop('disabled', false);
-                }
-            });
-        });
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if jQuery is available
+        if (typeof $ === 'undefined') {
+            console.error('jQuery is not loaded. Loading jQuery dynamically...');
+            // Load jQuery dynamically if not available
+            var script = document.createElement('script');
+            script.src = 'https://code.jquery.com/jquery-3.7.1.min.js';
+            script.onload = function() {
+                console.log('jQuery loaded dynamically');
+                initializeTestEmail();
+                initializePasswordField();
+            };
+            document.head.appendChild(script);
+        } else {
+            initializeTestEmail();
+            initializePasswordField();
+        }
     });
+
+    function initializePasswordField() {
+        // Set password field placeholder to show dots if there's a saved password
+        const passwordField = document.getElementById('notification-smtp_password');
+        if (passwordField) {
+            // Check if there's a password saved (we can't check the actual value, but we can set a placeholder)
+            passwordField.placeholder = '•••••••• (Enter new password to change)';
+        }
+    }
+
+    function initializeTestEmail() {
+        // Try jQuery first
+        if (typeof $ !== 'undefined') {
+            $('#sendTestEmailBtn').on('click', function() {
+                var $btn = $(this);
+                var $status = $('#testEmailStatus');
+                
+                // Show loading state
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+                $status.text('Sending test email...').removeClass('text-success text-danger').addClass('text-info');
+                
+                $.ajax({
+                    url: '/api/send-test-email/',
+                    type: 'POST',
+                    headers: { 'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() },
+                    success: function(response) {
+                        var statusHtml = '<i class="fas fa-check-circle"></i> ' + response.message;
+                        
+                        // Add recipient details if available
+                        if (response.recipients) {
+                            statusHtml += '<br><small class="text-muted">';
+                            if (response.recipients.to && response.recipients.to.length > 0) {
+                                statusHtml += '<strong>To:</strong> ' + response.recipients.to.join(', ');
+                            }
+                            if (response.recipients.cc && response.recipients.cc.length > 0) {
+                                statusHtml += '<br><strong>CC:</strong> ' + response.recipients.cc.join(', ');
+                            }
+                            statusHtml += '</small>';
+                        }
+                        
+                        $status.html(statusHtml).removeClass('text-info text-danger').addClass('text-success');
+                        console.log('Test email sent successfully:', response);
+                    },
+                    error: function(xhr, status, error) {
+                        var msg = 'Failed to send test email.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        $status.html('<i class="fas fa-exclamation-circle"></i> ' + msg).removeClass('text-info text-success').addClass('text-danger');
+                        console.error('Test email error:', xhr.responseText);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
+                        $btn.html('<i class="fas fa-paper-plane"></i> Send Test Email');
+                    }
+                });
+            });
+        } else {
+            // Fallback to vanilla JavaScript
+            console.warn('jQuery not available, using vanilla JavaScript fallback');
+            var btn = document.getElementById('sendTestEmailBtn');
+            var status = document.getElementById('testEmailStatus');
+            
+            if (btn && status) {
+                btn.addEventListener('click', function() {
+                    // Show loading state
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                    status.textContent = 'Sending test email...';
+                    status.className = 'ms-3 text-info';
+                    
+                    // Get CSRF token
+                    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                    
+                    fetch('/api/send-test-email/', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken 
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            var statusHtml = '<i class="fas fa-check-circle"></i> ' + data.message;
+                            
+                            // Add recipient details if available
+                            if (data.recipients) {
+                                statusHtml += '<br><small class="text-muted">';
+                                if (data.recipients.to && data.recipients.to.length > 0) {
+                                    statusHtml += '<strong>To:</strong> ' + data.recipients.to.join(', ');
+                                }
+                                if (data.recipients.cc && data.recipients.cc.length > 0) {
+                                    statusHtml += '<br><strong>CC:</strong> ' + data.recipients.cc.join(', ');
+                                }
+                                statusHtml += '</small>';
+                            }
+                            
+                            status.innerHTML = statusHtml;
+                            status.className = 'ms-3 text-success';
+                            console.log('Test email sent successfully:', data);
+                        } else {
+                            status.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + data.message;
+                            status.className = 'ms-3 text-danger';
+                            console.error('Test email error:', data.message);
+                        }
+                    })
+                    .catch(error => {
+                        status.innerHTML = '<i class="fas fa-exclamation-circle"></i> Failed to send test email.';
+                        status.className = 'ms-3 text-danger';
+                        console.error('Test email error:', error);
+                    })
+                    .finally(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Test Email';
+                    });
+                });
+            }
+        }
+    }
 
     // Function to update system details from radar data
     function updateFromRadar(systemId) {
