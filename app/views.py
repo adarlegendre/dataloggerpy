@@ -848,15 +848,12 @@ def create_notification_view(request):
 def summary_stats(request):
     """API endpoint to get summary statistics for the dashboard."""
     try:
-        # Get or create latest stats
-        stats = SummaryStats.get_latest_stats()
+        # Always update stats before returning
+        stats = SummaryStats.update_stats()
         if not stats:
-            stats = SummaryStats.update_stats()
-            if not stats:
-                return JsonResponse({
-                    'error': 'Unable to get or create summary statistics'
-                }, status=500)
-        
+            return JsonResponse({
+                'error': 'Unable to get or create summary statistics'
+            }, status=500)
         # Return the stats as JSON
         return JsonResponse({
             'total_objects': stats.total_objects,
