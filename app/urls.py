@@ -32,4 +32,5 @@ urlpatterns = [
     path('api/send-test-email/', views.send_test_email, name='send_test_email'),
     path('api/update-system-from-radar/<int:system_id>/', views.update_system_from_radar, name='update_system_from_radar'),
     path('api/system-directions/<int:system_id>/', views.system_directions, name='system_directions'),
+    path('api/upark/capture', views.receive_anpr_capture, name='receive_anpr_capture'),
 ] 

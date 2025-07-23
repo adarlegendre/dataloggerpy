@@ -24,6 +24,7 @@ from django.utils import timezone
 from app.utils.notification_utils import create_notification, create_notification_for_today
 from django.core.mail import EmailMessage
 from django.views.decorators.csrf import csrf_exempt
+from app.shared_state import recent_anpr_events
 
 logger = logging.getLogger(__name__)
 
@@ -938,3 +939,36 @@ def system_directions(request, system_id):
         return JsonResponse({'success': True, 'directions': directions_data})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+@csrf_exempt
+@require_POST
+def receive_anpr_capture(request):
+    """Endpoint to receive ANPR vehicle capture data from Dahua camera."""
+    import json
+    from datetime import datetime
+    try:
+        data = json.loads(request.body)
+        params = data.get('params', {})
+        plate = params.get('plateNo')
+        pic_time = params.get('picTime')
+        device_id = data.get('deviceId')
+        confidence = params.get('confidence')
+        pic_info = params.get('picInfo', [])
+        image_url = pic_info[0]['url'] if pic_info else None
+        record_id = params.get('recordId')
+
+        # Convert pic_time to datetime
+        anpr_time = datetime.fromisoformat(pic_time) if pic_time else None
+
+        # Store in memory for matching with radar
+        recent_anpr_events.append({
+            'plate': plate,
+            'timestamp': anpr_time,
+            'device_id': device_id,
+            'confidence': confidence,
+            'image_url': image_url,
+            'record_id': record_id,
+        })
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

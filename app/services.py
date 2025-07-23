@@ -9,8 +9,25 @@ import os
 from datetime import datetime, timezone
 from collections import deque
 from django.utils import timezone
+from app.shared_state import recent_anpr_events
+import socket
 
 logger = logging.getLogger(__name__)
+
+def send_to_display(plate, ip='192.168.1.222', port=8080):
+    # Placeholder: build the message according to your display protocol
+    # For now, just send the plate as plain text
+    message = plate.encode('utf-8')
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect((ip, port))
+        sock.sendall(message)
+
+def test_send_to_display():
+    """Test sending a sample plate to the C-Power5200 display board."""
+    sample_plate = "1A2 3456"
+    print(f"Sending test plate '{sample_plate}' to display...")
+    send_to_display(sample_plate)
+    print("Test message sent.")
 
 class RadarDataService:
     _instance = None
@@ -378,6 +395,10 @@ class RadarDataService:
             
             # Save to database
             RadarObjectDetection = apps.get_model('app', 'RadarObjectDetection')
+            now = datetime.now()
+            recent_anpr = next((e for e in reversed(recent_anpr_events)
+                               if e['timestamp'] and abs((now - e['timestamp']).total_seconds()) < 2), None)
+
             RadarObjectDetection.objects.create(
                 radar=radar,
                 start_time=start_time,
@@ -390,8 +411,18 @@ class RadarDataService:
                 avg_speed=avg_speed,
                 detection_count=len(detection),
                 raw_data=formatted_data,
-                direction_name=detection_direction_name
+                direction_name=detection_direction_name,
+                anpr_detected=bool(recent_anpr and recent_anpr['plate']),
+                license_plate=recent_anpr['plate'] if recent_anpr else None,
+                anpr_timestamp=recent_anpr['timestamp'] if recent_anpr else None,
+                anpr_device_id=recent_anpr['device_id'] if recent_anpr else None,
+                anpr_confidence=recent_anpr['confidence'] if recent_anpr else None,
+                anpr_image_url=recent_anpr['image_url'] if recent_anpr else None,
+                anpr_record_id=recent_anpr['record_id'] if recent_anpr else None,
             )
+
+            if recent_anpr and recent_anpr['plate']:
+                send_to_display(recent_anpr['plate'])
             
             return True
             

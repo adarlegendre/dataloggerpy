@@ -1347,6 +1347,28 @@
             alert('Error loading directions');
         });
     }
+
+    // Display Test Button
+    $('#testDisplayBtn').on('click', function() {
+        fetch('/api/test-display/', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
+            .then(response => response.json())
+            .then(data => {
+                alert(data.status === 'ok' ? 'Test message sent to display!' : 'Display test failed: ' + data.message);
+            });
+    });
+
+    // ANPR Test Button
+    $('#testAnprBtn').on('click', function() {
+        fetch('/api/test-anpr-connection/', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    $('#anprTestResults').prepend('<tr><td>' + new Date().toLocaleString() + '</td><td>' + (data.plate || '-') + '</td><td>' + (data.confidence || '-') + '</td><td>Success</td></tr>');
+                } else {
+                    $('#anprTestResults').prepend('<tr><td>' + new Date().toLocaleString() + '</td><td>-</td><td>-</td><td>Failed: ' + data.message + '</td></tr>');
+                }
+            });
+    });
 </script>
 {% endblock %}
 {% endblock %} 

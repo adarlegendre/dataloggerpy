@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Max
 from django.core.validators import EmailValidator, MinValueValidator, MaxValueValidator
 import re
 from django.utils import timezone
@@ -638,7 +639,12 @@ class RadarObjectDetection(models.Model):
     detection_count = models.IntegerField(help_text="Number of readings in this detection")
     raw_data = models.JSONField(help_text="All raw readings for this detection")
     anpr_detected = models.BooleanField(default=False, help_text="Whether a license plate was detected")
-    license_plate = models.CharField(max_length=20, null=True, blank=True, help_text="Detected license plate number")
+    license_plate = models.CharField(max_length=20, null=True, blank=True, help_text="Detected license plate number")  # plateNo
+    anpr_timestamp = models.DateTimeField(null=True, blank=True, help_text="Timestamp of ANPR event (picTime)")
+    anpr_device_id = models.CharField(max_length=32, null=True, blank=True, help_text="Device ID of ANPR camera")
+    anpr_confidence = models.IntegerField(null=True, blank=True, help_text="Confidence of ANPR detection")
+    anpr_image_url = models.URLField(null=True, blank=True, help_text="URL of ANPR image")
+    anpr_record_id = models.CharField(max_length=64, null=True, blank=True, help_text="Record ID of ANPR event")
     email_sent = models.BooleanField(default=False, help_text="Whether notification email has been sent")
     created_at = models.DateTimeField(auto_now_add=True)
     direction_name = models.CharField(max_length=100, null=True, blank=True, help_text="Direction name for this detection")
