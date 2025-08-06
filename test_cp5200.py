@@ -16,7 +16,7 @@ django.setup()
 from app.services import build_cp5200_protocol, get_effect_code, get_alignment_code, get_color_code, send_cp5200_message
 from app.models import DisplayConfig
 
-def send_sample_plate(ip_address='192.168.1.222', port=80):
+def send_sample_plate(ip_address='192.168.1.222', port=80, continuous=False, interval=3):
     """Send a sample Czech license plate to the display"""
     
     # Create a test display config for Czech license plate
@@ -30,38 +30,69 @@ def send_sample_plate(ip_address='192.168.1.222', port=80):
         test_message='ABC 1234'  # Czech license plate format
     )
     
-    print("Sending Sample Czech License Plate to Display")
+    print("Sending Czech License Plates to Display")
     print("=" * 60)
-    print(f"License Plate: {config.test_message}")
     print(f"Target: {config.ip_address}:{config.port}")
     print(f"Font Size: {config.font_size}")
     print(f"Effect Type: {config.effect_type}")
     print(f"Alignment: {config.justify}")
     print(f"Color: {config.color}")
+    print(f"Continuous Mode: {'Yes' if continuous else 'No'}")
+    if continuous:
+        print(f"Interval: {interval} seconds")
     print()
     
+    # Sample license plates to cycle through
+    sample_plates = [
+        "ABC 1234",
+        "XYZ 5678", 
+        "DEF 9012",
+        "GHI 3456",
+        "JKL 7890",
+        "MNO 2345",
+        "PQR 6789",
+        "STU 0123"
+    ]
+    
+    plate_index = 0
+    message_counter = 0
+    
     try:
-        # Send the license plate to the display
-        send_cp5200_message(config.test_message, config.ip_address, config.port, config)
-        print(f"✓ Successfully sent '{config.test_message}' to {config.ip_address}:{config.port}")
+        if continuous:
+            print("Starting continuous sending... Press Ctrl+C to stop")
+            print()
+            
+            while True:
+                # Get current plate
+                current_plate = sample_plates[plate_index]
+                message_counter += 1
+                
+                # Send the license plate to the display
+                send_cp5200_message(current_plate, config.ip_address, config.port, config)
+                print(f"[{message_counter:03d}] ✓ Sent '{current_plate}' to {config.ip_address}:{config.port}")
+                
+                # Move to next plate
+                plate_index = (plate_index + 1) % len(sample_plates)
+                
+                # Wait for next interval
+                time.sleep(interval)
+                
+        else:
+            # Send just a few sample plates
+            for i, plate in enumerate(sample_plates[:3]):
+                send_cp5200_message(plate, config.ip_address, config.port, config)
+                print(f"✓ Successfully sent '{plate}' to {config.ip_address}:{config.port}")
+                
+                if i < 2:  # Don't sleep after the last one
+                    time.sleep(2)
+            
+            print("\n✓ All sample plates sent successfully!")
         
-        # Wait a moment and send another sample
-        time.sleep(2)
-        
-        # Send a second sample plate
-        second_plate = "XYZ 5678"
-        send_cp5200_message(second_plate, config.ip_address, config.port, config)
-        print(f"✓ Successfully sent '{second_plate}' to {config.ip_address}:{config.port}")
-        
-        # Wait and send a third sample
-        time.sleep(2)
-        
-        third_plate = "DEF 9012"
-        send_cp5200_message(third_plate, config.ip_address, config.port, config)
-        print(f"✓ Successfully sent '{third_plate}' to {config.ip_address}:{config.port}")
-        
-        print("\n✓ All sample plates sent successfully!")
-        
+    except KeyboardInterrupt:
+        if continuous:
+            print("\n\n✓ Continuous sending stopped by user")
+        else:
+            print("\n\n✓ Sending interrupted by user")
     except Exception as e:
         print(f"✗ Error sending to display: {str(e)}")
         print("\nTroubleshooting tips:")
@@ -117,6 +148,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test CP5200 display protocol')
     parser.add_argument('--ip', default='192.168.1.222', help='Target IP address (default: 192.168.1.222)')
     parser.add_argument('--port', type=int, default=80, help='Target port (default: 80)')
+    parser.add_argument('--continuous', action='store_true', help='Send continuously (default: send 3 samples)')
+    parser.add_argument('--interval', type=int, default=3, help='Interval between sends in seconds (default: 3)')
     parser.add_argument('--test-only', action='store_true', help='Only test protocol, don\'t send to display')
     
     args = parser.parse_args()
@@ -124,4 +157,4 @@ if __name__ == "__main__":
     if args.test_only:
         test_protocol_only(args.ip, args.port)
     else:
-        send_sample_plate(args.ip, args.port) 
+        send_sample_plate(args.ip, args.port, args.continuous, args.interval) 
