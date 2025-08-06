@@ -179,6 +179,20 @@ class DisplayConfig(models.Model):
         ],
         help_text="Text alignment on display"
     )
+    color = models.CharField(
+        max_length=20,
+        default='white',
+        choices=[
+            ('white', 'White'),
+            ('red', 'Red'),
+            ('green', 'Green'),
+            ('yellow', 'Yellow'),
+            ('blue', 'Blue'),
+            ('orange', 'Orange'),
+            ('purple', 'Purple'),
+        ],
+        help_text="Text color for display"
+    )
     test_message = models.CharField(
         max_length=255,
         blank=True,
@@ -497,8 +511,19 @@ class ANPRConfig(models.Model):
         default='logs/anpr',
         help_text="Path where ANPR logs will be stored"
     )
+    matching_window_seconds = models.IntegerField(
+        default=2,
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+        help_text="Time window (seconds) to match ANPR to radar detections"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    protocol = models.CharField(
+        max_length=10,
+        default='http',
+        choices=[('http', 'HTTP'), ('https', 'HTTPS')],
+        help_text="Protocol to use for ANPR camera callback URL"
+    )
 
     class Meta:
         verbose_name = 'ANPR Configuration'

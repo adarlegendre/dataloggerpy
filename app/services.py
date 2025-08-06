@@ -14,20 +14,151 @@ import socket
 
 logger = logging.getLogger(__name__)
 
-def send_to_display(plate, ip='192.168.1.222', port=8080):
-    # Placeholder: build the message according to your display protocol
-    # For now, just send the plate as plain text
-    message = plate.encode('utf-8')
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.connect((ip, port))
-        sock.sendall(message)
+def send_to_display(plate, ip=None, port=None):
+    """Send license plate to display using database configuration"""
+    try:
+        from app.models import DisplayConfig
+        
+        # Get display configuration from database
+        display_config = DisplayConfig.objects.first()
+        if not display_config:
+            logger.error("No display configuration found in database")
+            return
+        
+        # Use provided values or fall back to database settings
+        display_ip = ip or display_config.ip_address
+        display_port = port or display_config.port
+        
+        # Send using CP5200 protocol
+        send_cp5200_message(plate, display_ip, display_port, display_config)
+        logger.info(f"Sent plate '{plate}' to display at {display_ip}:{display_port}")
+    except Exception as e:
+        logger.error(f"Error sending to display: {str(e)}")
+        raise
+
+def send_cp5200_message(text, ip, port, config):
+    """Send message to CP5200 VMS display using the proper protocol"""
+    try:
+        # Convert text to CP5200 protocol format
+        protocol_data = build_cp5200_protocol(text, config)
+        
+        # Send via TCP socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect((ip, port))
+            sock.sendall(protocol_data)
+            logger.info(f"CP5200 protocol data sent: {protocol_data.hex()}")
+            
+    except Exception as e:
+        logger.error(f"Error sending CP5200 message: {str(e)}")
+        raise
+
+def build_cp5200_protocol(text, config):
+    """Build CP5200 protocol data packet"""
+    try:
+        # Protocol structure based on sample:
+        # FF FF FF FF - Header (4 bytes)
+        # 2D 00 00 00 - Length (4 bytes, little endian)
+        # 68 32 01 7B - Command/parameters
+        # 01 22 00 00 00 - Font size, effect, alignment, color
+        # 02 00 00 01 06 00 00 - Text parameters
+        # 12 00 31 12 00 41 12 00 32 12 00 20 12 00 33 12 00 34 12 00 35 12 00 36 - Text data
+        # 00 00 00 68 03 - Footer
+        
+        # Convert text to CP5200 format (each character followed by 0x12)
+        text_data = b''
+        for char in text:
+            text_data += char.encode('ascii') + b'\x12'
+        
+        # Calculate total length
+        data_length = len(text_data) + 20  # Base length + text length
+        
+        # Build protocol packet
+        packet = bytearray()
+        
+        # Header
+        packet.extend(b'\xFF\xFF\xFF\xFF')
+        
+        # Length (little endian)
+        packet.extend(data_length.to_bytes(4, 'little'))
+        
+        # Command/parameters (fixed for text display)
+        packet.extend(b'\x68\x32\x01\x7B')
+        
+        # Font size, effect, alignment, color
+        font_size = config.font_size
+        effect_type = get_effect_code(config.effect_type)
+        alignment = get_alignment_code(config.justify)
+        color = get_color_code(config.color)
+        
+        packet.extend(bytes([font_size, effect_type, alignment, color, 0x00]))
+        
+        # Text parameters
+        packet.extend(b'\x02\x00\x00\x01\x06\x00\x00')
+        
+        # Text data
+        packet.extend(text_data)
+        
+        # Footer
+        packet.extend(b'\x00\x00\x00\x68\x03')
+        
+        return bytes(packet)
+        
+    except Exception as e:
+        logger.error(f"Error building CP5200 protocol: {str(e)}")
+        raise
+
+def get_effect_code(effect_type):
+    """Convert effect type to CP5200 code"""
+    effect_codes = {
+        'draw': 0x01,
+        'scroll': 0x02,
+        'flash': 0x03,
+        'fade': 0x04
+    }
+    return effect_codes.get(effect_type, 0x01)
+
+def get_alignment_code(alignment):
+    """Convert alignment to CP5200 code"""
+    alignment_codes = {
+        'left': 0x01,
+        'center': 0x02,
+        'right': 0x03
+    }
+    return alignment_codes.get(alignment, 0x03)
+
+def get_color_code(color):
+    """Convert color to CP5200 code"""
+    color_codes = {
+        'white': 0x01,
+        'red': 0x02,
+        'green': 0x03,
+        'yellow': 0x04,
+        'blue': 0x05,
+        'orange': 0x06,
+        'purple': 0x07
+    }
+    return color_codes.get(color, 0x01)
 
 def test_send_to_display():
     """Test sending a sample plate to the C-Power5200 display board."""
-    sample_plate = "1A2 3456"
-    print(f"Sending test plate '{sample_plate}' to display...")
-    send_to_display(sample_plate)
-    print("Test message sent.")
+    try:
+        from app.models import DisplayConfig
+        
+        # Get display configuration
+        display_config = DisplayConfig.objects.first()
+        if not display_config:
+            print("No display configuration found in database")
+            return
+        
+        sample_plate = display_config.test_message or "1A2 3456"
+        print(f"Sending test plate '{sample_plate}' to display at {display_config.ip_address}:{display_config.port}...")
+        print(f"Using settings: Font={display_config.font_size}, Effect={display_config.effect_type}, Alignment={display_config.justify}, Color={display_config.color}")
+        
+        # Send using CP5200 protocol
+        send_cp5200_message(sample_plate, display_config.ip_address, display_config.port, display_config)
+        print("Test message sent using CP5200 protocol.")
+    except Exception as e:
+        print(f"Error sending test message: {str(e)}")
 
 class RadarDataService:
     _instance = None
@@ -393,12 +524,17 @@ class RadarDataService:
             else:
                 detection_direction_name = 'Unknown'
             
-            # Save to database
-            RadarObjectDetection = apps.get_model('app', 'RadarObjectDetection')
+            # Load ANPRConfig settings for matching window
+            from app.models import ANPRConfig
+            anpr_settings = ANPRConfig.objects.first()
+            window = anpr_settings.matching_window_seconds if anpr_settings and hasattr(anpr_settings, 'matching_window_seconds') else 2
+
             now = datetime.now()
             recent_anpr = next((e for e in reversed(recent_anpr_events)
-                               if e['timestamp'] and abs((now - e['timestamp']).total_seconds()) < 2), None)
+                               if e['timestamp'] and abs((now - e['timestamp']).total_seconds()) < window), None)
 
+            # Save to database
+            RadarObjectDetection = apps.get_model('app', 'RadarObjectDetection')
             RadarObjectDetection.objects.create(
                 radar=radar,
                 start_time=start_time,

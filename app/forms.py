@@ -109,14 +109,42 @@ class FTPForm(forms.ModelForm):
 class DisplayForm(forms.ModelForm):
     class Meta:
         model = DisplayConfig
-        fields = ['ip_address', 'port', 'font_size', 'effect_type', 'justify', 'test_message']
+        fields = ['ip_address', 'port', 'font_size', 'effect_type', 'justify', 'color', 'test_message']
         widgets = {
-            'ip_address': forms.TextInput(attrs={'class': 'form-control', 'id': 'display-ip_address'}),
-            'port': forms.NumberInput(attrs={'class': 'form-control', 'id': 'display-port'}),
-            'font_size': forms.NumberInput(attrs={'class': 'form-control', 'id': 'display-font_size'}),
-            'effect_type': forms.Select(attrs={'class': 'form-select', 'id': 'display-effect_type'}),
-            'justify': forms.Select(attrs={'class': 'form-select', 'id': 'display-justify'}),
-            'test_message': forms.TextInput(attrs={'class': 'form-control', 'id': 'display-test_message'})
+            'ip_address': forms.TextInput(attrs={
+                'class': 'form-control',
+                'id': 'display-ip_address',
+                'placeholder': 'e.g., 192.168.1.222'
+            }),
+            'port': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'id': 'display-port',
+                'min': '1',
+                'max': '65535'
+            }),
+            'font_size': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'id': 'display-font_size',
+                'min': '8',
+                'max': '72'
+            }),
+            'effect_type': forms.Select(attrs={
+                'class': 'form-select',
+                'id': 'display-effect_type'
+            }),
+            'justify': forms.Select(attrs={
+                'class': 'form-select',
+                'id': 'display-justify'
+            }),
+            'color': forms.Select(attrs={
+                'class': 'form-select',
+                'id': 'display-color'
+            }),
+            'test_message': forms.TextInput(attrs={
+                'class': 'form-control',
+                'id': 'display-test_message',
+                'placeholder': 'Enter test message'
+            })
         }
 
 class RadarForm(forms.ModelForm):
@@ -368,7 +396,8 @@ class ANPRForm(forms.ModelForm):
             'api_key',
             'enable_continuous_reading',
             'enable_logging',
-            'log_path'
+            'log_path',
+            'matching_window_seconds'
         ]
         widgets = {
             'ip_address': forms.TextInput(attrs={
@@ -417,6 +446,13 @@ class ANPRForm(forms.ModelForm):
                 'class': 'form-control',
                 'id': 'anpr-log_path',
                 'placeholder': 'e.g., logs/anpr'
+            }),
+            'matching_window_seconds': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'id': 'anpr-matching_window_seconds',
+                'min': '1',
+                'max': '10',
+                'step': '1'
             })
         }
 
@@ -426,6 +462,7 @@ class ANPRForm(forms.ModelForm):
         port = cleaned_data.get('port')
         polling_interval = cleaned_data.get('polling_interval')
         timeout = cleaned_data.get('timeout')
+        matching_window_seconds = cleaned_data.get('matching_window_seconds')
 
         # Validate IP address format
         if ip_address:
@@ -445,6 +482,10 @@ class ANPRForm(forms.ModelForm):
         # Validate timeout
         if timeout and (timeout < 1 or timeout > 30):
             self.add_error('timeout', 'Timeout must be between 1 and 30 seconds')
+
+        # Validate matching window seconds
+        if matching_window_seconds and (matching_window_seconds < 1 or matching_window_seconds > 10):
+            self.add_error('matching_window_seconds', 'Matching window must be between 1 and 10 seconds')
 
         return cleaned_data
 

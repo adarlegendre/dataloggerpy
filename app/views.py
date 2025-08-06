@@ -272,6 +272,10 @@ def config(request):
         logger.error(f"Error getting cron status: {e}")
         cron_status = {'installed': False, 'cron_job': None, 'log_file': None}
 
+    # Build the camera URL for display
+    protocol = getattr(anpr_settings, 'protocol', 'http') if anpr_settings else 'http'
+    camera_url = f"{protocol}://{anpr_settings.ip_address}:{anpr_settings.port}/api/upark/capture" if anpr_settings else None
+
     context = {
         'tcp_form': tcp_form,
         'time_form': time_form,
@@ -282,6 +286,7 @@ def config(request):
         'anpr_form': anpr_form,
         'radar_configs': RadarConfig.objects.all().order_by('-created_at'),
         'cron_status': cron_status,
+        'camera_url': camera_url,
     }
     
     return render(request, 'app/config.html', context)
@@ -946,7 +951,17 @@ def receive_anpr_capture(request):
     """Endpoint to receive ANPR vehicle capture data from Dahua camera."""
     import json
     from datetime import datetime
+    from app.models import ANPRConfig
+    import logging
     try:
+        # Load ANPRConfig settings
+        anpr_settings = ANPRConfig.objects.first()
+        if anpr_settings:
+            camera_url = f"http://{anpr_settings.ip_address}:{anpr_settings.port}/api/upark/capture"
+            logging.getLogger(__name__).info(f"[ANPR] Camera should POST to: {camera_url}")
+        else:
+            logging.getLogger(__name__).warning("[ANPR] No ANPRConfig found to construct camera URL.")
+
         data = json.loads(request.body)
         params = data.get('params', {})
         plate = params.get('plateNo')
@@ -972,3 +987,46 @@ def receive_anpr_capture(request):
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+@require_POST
+def test_display(request):
+    """Test sending a message to the display"""
+    try:
+        from app.models import DisplayConfig
+        from app.services import send_cp5200_message, build_cp5200_protocol
+        
+        # Get display configuration
+        display_config = DisplayConfig.objects.first()
+        if not display_config:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No display configuration found'
+            })
+        
+        # Send test message using database settings
+        test_message = display_config.test_message or "TEST MESSAGE"
+        
+        # Build protocol data for display
+        protocol_data = build_cp5200_protocol(test_message, display_config)
+        
+        # Send using CP5200 protocol
+        send_cp5200_message(test_message, display_config.ip_address, display_config.port, display_config)
+        
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Test message sent to {display_config.ip_address}:{display_config.port}',
+            'protocol_data': protocol_data.hex(),
+            'settings': {
+                'font_size': display_config.font_size,
+                'effect_type': display_config.effect_type,
+                'justify': display_config.justify,
+                'color': display_config.color
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error testing display: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Failed to send test message: {str(e)}'
+        })

@@ -906,6 +906,15 @@
                                 {% endif %}
                             </div>
                         </div>
+                        <div class="row g-3 mt-4">
+                            <div class="col-md-12">
+                                <div class="alert alert-info" id="camera-url-info">
+                                    <strong>Camera POST URL:</strong>
+                                    <span id="camera-url-value">{{ camera_url }}</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="navigator.clipboard.writeText(document.getElementById('camera-url-value').innerText)">Copy</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="mt-4 d-flex gap-2">
