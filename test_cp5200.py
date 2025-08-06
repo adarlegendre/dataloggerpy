@@ -16,13 +16,13 @@ django.setup()
 from app.services import build_cp5200_protocol, get_effect_code, get_alignment_code, get_color_code, send_cp5200_message
 from app.models import DisplayConfig
 
-def send_sample_plate():
+def send_sample_plate(ip_address='192.168.1.222', port=80):
     """Send a sample Czech license plate to the display"""
     
     # Create a test display config for Czech license plate
     config = DisplayConfig(
-        ip_address='192.168.1.222',
-        port=80,
+        ip_address=ip_address,
+        port=port,
         font_size=16,
         effect_type='draw',
         justify='center',
@@ -70,13 +70,13 @@ def send_sample_plate():
         print("- Check network connectivity")
         print("- Try running as administrator (for port 80)")
 
-def test_protocol_only():
+def test_protocol_only(ip_address='192.168.1.222', port=80):
     """Test the CP5200 protocol implementation without sending"""
     
     # Create a test display config for Czech license plate
     config = DisplayConfig(
-        ip_address='192.168.1.222',
-        port=80,
+        ip_address=ip_address,
+        port=port,
         font_size=16,
         effect_type='draw',
         justify='center',
@@ -115,11 +115,13 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Test CP5200 display protocol')
+    parser.add_argument('--ip', default='192.168.1.222', help='Target IP address (default: 192.168.1.222)')
+    parser.add_argument('--port', type=int, default=80, help='Target port (default: 80)')
     parser.add_argument('--test-only', action='store_true', help='Only test protocol, don\'t send to display')
     
     args = parser.parse_args()
     
     if args.test_only:
-        test_protocol_only()
+        test_protocol_only(args.ip, args.port)
     else:
-        send_sample_plate() 
+        send_sample_plate(args.ip, args.port) 
