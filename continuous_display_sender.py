@@ -35,7 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ContinuousDisplaySender:
-    def __init__(self, target_ip='localhost', target_port=80, interval=5):
+    def __init__(self, target_ip='192.168.1.222', target_port=80, interval=5):
         """
         Initialize the continuous display sender
         
@@ -61,13 +61,13 @@ class ContinuousDisplaySender:
                 logger.warning("No display configuration found in database, using defaults")
                 # Create a default configuration
                 self.display_config = DisplayConfig(
-                    ip_address=self.target_ip,
+                    ip_address='192.168.1.222',
                     port=self.target_port,
                     font_size=16,
                     effect_type='draw',
                     justify='center',
                     color='red',
-                    test_message='TEST 123'
+                    test_message='ABC 1234'
                 )
         except Exception as e:
             logger.error(f"Error setting up display config: {e}")
@@ -79,14 +79,28 @@ class ContinuousDisplaySender:
                 effect_type='draw',
                 justify='center',
                 color='red',
-                test_message='TEST 123'
+                                    test_message='ABC 1234'
             )
     
-    def create_test_message(self):
-        """Create a test message with timestamp and counter"""
+    def create_czech_license_plate(self):
+        """Create a Czech license plate with timestamp and counter"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.message_counter += 1
-        return f"MSG {self.message_counter:03d} {timestamp}"
+        
+        # Czech license plate format: ABC 1234 (3 letters + space + 4 digits)
+        import random
+        import string
+        
+        # Generate random letters (A-Z)
+        letters = ''.join(random.choices(string.ascii_uppercase, k=3))
+        
+        # Generate random digits (0-9)
+        digits = ''.join(random.choices(string.digits, k=4))
+        
+        # Format: ABC 1234
+        license_plate = f"{letters} {digits}"
+        
+        return license_plate
     
     def send_display_data(self, message):
         """Send display data to the target port"""
@@ -119,8 +133,8 @@ class ContinuousDisplaySender:
         
         while self.running:
             try:
-                # Create test message
-                message = self.create_test_message()
+                # Create Czech license plate
+                message = self.create_czech_license_plate()
                 
                 # Send the message
                 self.send_display_data(message)
@@ -154,7 +168,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Continuous Display Data Sender')
-    parser.add_argument('--ip', default='localhost', help='Target IP address (default: localhost)')
+    parser.add_argument('--ip', default='192.168.1.222', help='Target IP address (default: 192.168.1.222)')
     parser.add_argument('--port', type=int, default=80, help='Target port (default: 80)')
     parser.add_argument('--interval', type=int, default=5, help='Interval between sends in seconds (default: 5)')
     parser.add_argument('--test', action='store_true', help='Run a single test send instead of continuous')
@@ -179,7 +193,7 @@ def main():
     if args.test:
         # Run a single test
         logger.info("Running single test send...")
-        test_message = sender.create_test_message()
+        test_message = sender.create_czech_license_plate()
         sender.send_display_data(test_message)
         logger.info("Test completed")
     else:

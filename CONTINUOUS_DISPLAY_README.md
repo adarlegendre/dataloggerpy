@@ -73,17 +73,18 @@ python continuous_display_sender.py --ip localhost --port 8080
 
 ## Message Format
 
-The script sends test messages in the format:
+The script sends Czech license plates in the format:
 ```
-MSG 001 14:30:25
-MSG 002 14:30:30
-MSG 003 14:30:35
+ABC 1234
+XYZ 5678
+DEF 9012
 ...
 ```
 
-Each message includes:
-- Message counter (3-digit number)
-- Current timestamp (HH:MM:SS)
+Each license plate follows the Czech format:
+- 3 random uppercase letters (A-Z)
+- Space
+- 4 random digits (0-9)
 
 ## Protocol Details
 

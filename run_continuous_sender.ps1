@@ -18,7 +18,7 @@ Write-Host "Press Ctrl+C to stop" -ForegroundColor Cyan
 Write-Host ""
 
 try {
-    python continuous_display_sender.py --ip localhost --port 80 --interval 5
+    python continuous_display_sender.py --ip 192.168.1.222 --port 80 --interval 5
 }
 catch {
     Write-Host "Error running the script: $_" -ForegroundColor Red
