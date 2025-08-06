@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for CP5200 VMS display protocol
+Test script for CP5200 VMS display protocol - Czech License Plate
 """
 
 import sys
@@ -15,9 +15,9 @@ from app.services import build_cp5200_protocol, get_effect_code, get_alignment_c
 from app.models import DisplayConfig
 
 def test_cp5200_protocol():
-    """Test the CP5200 protocol implementation"""
+    """Test the CP5200 protocol implementation with Czech license plate"""
     
-    # Create a test display config
+    # Create a test display config for Czech license plate
     config = DisplayConfig(
         ip_address='192.168.1.222',
         port=8080,
@@ -25,12 +25,12 @@ def test_cp5200_protocol():
         effect_type='draw',
         justify='center',
         color='red',
-        test_message='1A2 3456'
+        test_message='ABC 1234'  # Czech license plate format
     )
     
-    print("Testing CP5200 Protocol Implementation")
-    print("=" * 50)
-    print(f"Text: {config.test_message}")
+    print("Testing CP5200 Protocol Implementation - Czech License Plate")
+    print("=" * 60)
+    print(f"Czech License Plate: {config.test_message}")
     print(f"Font Size: {config.font_size}")
     print(f"Effect Type: {config.effect_type} (code: {get_effect_code(config.effect_type)})")
     print(f"Alignment: {config.justify} (code: {get_alignment_code(config.justify)})")
@@ -61,7 +61,7 @@ def test_cp5200_protocol():
     print("00 00 00 68 03")
     print()
     
-    print("Our generated protocol:")
+    print("Our generated protocol for Czech license plate:")
     hex_data = protocol_data.hex()
     for i in range(0, len(hex_data), 32):
         print(hex_data[i:i+32])
