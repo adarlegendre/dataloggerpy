@@ -9,6 +9,7 @@ import time
 import threading
 import ipaddress
 import argparse
+import logging
 from datetime import datetime
 
 class FlexibleCP5200Scanner:
