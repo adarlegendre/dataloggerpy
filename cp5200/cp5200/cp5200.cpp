@@ -626,19 +626,11 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
         return -1;
     }
     
-    // konvertálás UTF-8 > extended ASCII (max. 255)
+    // Skip the problematic conversion entirely - use original text directly
     string szoveg = "";
     if (pText[0] != 0)
     {
-        char *coni = convertUTF8ToEASCII(pText);
-        if (coni != NULL) {
-            szoveg = string(coni);
-            // Free the memory allocated by convertUTF8ToEASCII
-            free(coni);
-        } else {
-            // Fallback: use original text if conversion fails
-            szoveg = string(pText);
-        }
+        szoveg = string(pText);
     }
     
     // Ensure text is not empty
@@ -858,19 +850,11 @@ extern "C" int SendPicture(int nWndNo, int nPosX, int nPosY, char * pPictureFile
 extern "C" int SendClock(int nWndNo, int nStayTime, int nCalType, int nFormat[], int nCont[], char * pText, int nColor[], int nFontSize)
 {
     WLOG("entry point...");
-    // convert UTF-8 > extended ASCII (max. 255)
+    // Skip the problematic conversion entirely - use original text directly
     string szoveg = "";
     if (pText[0] != 0)
     {
-        char *coni = convertUTF8ToEASCII(pText);
-        if (coni != NULL) {
-            szoveg = string(coni);
-            // Free the memory allocated by convertUTF8ToEASCII
-            free(coni);
-        } else {
-            // Fallback: use original text if conversion fails
-            szoveg = string(pText);
-        }
+        szoveg = string(pText);
     }
 // <editor-fold desc="create main params">
     int tmeret = (int)(szoveg.length());    // text length
