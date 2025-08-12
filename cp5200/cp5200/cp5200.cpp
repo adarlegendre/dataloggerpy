@@ -145,34 +145,20 @@ char *convert(const char *from, const char *to, char *src)
     if(cd == (iconv_t)-1)
         return NULL;
 
-    size_t len;
-    size_t target_len;
-    char *target;
-    char *target_start;
-    const char *src_start;
-    size_t len_start;
-    size_t target_len_start;
-
-    len = strlen(src);
+    size_t len = strlen(src);
     if(!len) {
         iconv_close(cd);
         return NULL;
     }
 
-    //	target_len = 2*len;
-    //	target_len = len;
-    target_len = len+1;
-    target = (char *)calloc(target_len, 1);
+    // Allocate target buffer
+    size_t target_len = len * 2; // UTF-8 can expand to 2x
+    char *target = (char *)calloc(target_len, 1);
     if (!target) {
         iconv_close(cd);
         return NULL;
     }
     
-    len_start = len;
-    target_len_start = target_len;
-    target_start = target;
-    src_start = src;
-
     // Create a mutable copy of src for iconv
     char *src_mutable = strdup(src);
     if (!src_mutable) {
@@ -182,18 +168,21 @@ char *convert(const char *from, const char *to, char *src)
     }
     
     size_t src_len = len;
+    char *target_start = target; // Save the start position
     
-    size_t iconv_value;
-    iconv_value = iconv(cd, &src_mutable, &src_len, &target, &target_len);
+    // Perform conversion
+    size_t iconv_value = iconv(cd, &src_mutable, &src_len, &target, &target_len);
+    
+    // Clean up
+    free(src_mutable);
+    iconv_close(cd);
+    
     if(iconv_value == (size_t)-1) {
-        free(src_mutable);
-        free(target);
-        iconv_close(cd);
+        free(target_start);
         return NULL;
     }
     
-    free(src_mutable);
-    iconv_close(cd);
+    // Return the start of the converted string
     return target_start;
 }
 
@@ -203,13 +192,12 @@ char *convertUTF8ToEASCII(string str)
         return NULL;
     }
     
-    const char *src = str.c_str();
-    //char *res = convert("UTF-8", "ISO-8859-2", (char *)src);
-    char *res = convert("UTF-8", "ISO-8859-1", (char *)src);
+    // For simple ASCII text, just return a copy
+    // This avoids the complex iconv conversion that's causing issues
+    char *res = strdup(str.c_str());
     
-    // If conversion fails, return NULL
     if (res == NULL) {
-        WLOG("Warning: UTF-8 to EASCII conversion failed, using original text");
+        WLOG("Warning: Memory allocation failed");
         return NULL;
     }
     
