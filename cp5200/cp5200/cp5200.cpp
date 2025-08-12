@@ -136,16 +136,16 @@ char *convert(const char *from, const char *to, char *src)
 {
     iconv_t cd;
     cd = iconv_open(to, from);
-    if(cd == (iconv_t)-1)
+    if((int)cd == -1)
         return (0);
 
-    size_t len;
-    size_t target_len;
+    unsigned int len;
+    unsigned int target_len;
     char *target;
     char *target_start;
     const char *src_start;
-    size_t len_start;
-    size_t target_len_start;
+    int len_start;
+    int target_len_start;
 
     len = strlen(src);
     if(!len)
@@ -161,12 +161,9 @@ char *convert(const char *from, const char *to, char *src)
     src_start = src;
 
     size_t iconv_value;
-    iconv_value = iconv(cd, (char**)&src, &len, &target, &target_len);
-    if(iconv_value == (size_t)-1) {
-        iconv_close(cd);
+    iconv_value = iconv(cd, &src, &len, &target, &target_len);
+    if(iconv_value == (size_t)-1)
         return (0);
-    }
-    iconv_close(cd);
     return target_start;
 }
 

@@ -1,0 +1,13 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+includedir=${prefix}/include
+libdir=${exec_prefix}/lib
+
+Name: cp5200
+Description: CP5200 LED Display Control Library
+Version: @CMAKE_PROJECT_VERSION@
+URL: https://github.com/your-repo/cp5200
+Libs: -L${libdir} -lcp5200
+Cflags: -I${includedir}
+Requires: 
+Libs.private: -lpthread
