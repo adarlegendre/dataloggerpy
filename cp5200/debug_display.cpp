@@ -22,56 +22,59 @@ int main() {
     std::cout << "\n4. Setting IP address to 192.168.1.222:5200..." << std::endl;
     _set_cp5200_ipcomm((char*)"192.168.1.222", 5200);
     
-    // Step 5: Test basic connectivity with a simple command
-    std::cout << "\n5. Testing basic connectivity..." << std::endl;
-    int result = _MessageSend("6832010100", 1);
-    std::cout << "Basic command result: " << result << std::endl;
-    
-    // Step 6: Split display into windows
-    std::cout << "\n6. Splitting display into 2 windows..." << std::endl;
+    // Step 5: Split display into windows first (required before sending text)
+    std::cout << "\n5. Splitting display into 2 windows..." << std::endl;
     int winConfig[8] = {0, 1, 0, 64, 64, 64, 0, 128};
-    result = SplitWindow(2, winConfig, 8);
+    int result = SplitWindow(2, winConfig, 8);
     std::cout << "SplitWindow result: " << result << std::endl;
     
     if (result != 0) {
         std::cout << "ERROR: Failed to split display windows!" << std::endl;
+        std::cout << "This is required before sending text. Check your display connection." << std::endl;
         return 1;
     }
     
-    // Step 7: Wait a moment for display to process
-    std::cout << "\n7. Waiting 2 seconds for display to process..." << std::endl;
+    // Step 6: Wait a moment for display to process
+    std::cout << "\n6. Waiting 2 seconds for display to process..." << std::endl;
     sleep(2);
     
-    // Step 8: Send simple text
-    std::cout << "\n8. Sending simple text 'TEST'..." << std::endl;
+    // Step 7: Send simple text
+    std::cout << "\n7. Sending simple text 'TEST'..." << std::endl;
     result = SendText(0, (char*)"TEST", 0xFF0000, 16, 1, 0, 10, 0);
     std::cout << "SendText result: " << result << std::endl;
     
     if (result != 0) {
         std::cout << "ERROR: Failed to send text!" << std::endl;
+        std::cout << "Error code: " << result << std::endl;
         return 1;
     }
     
-    // Step 9: Wait and send another text
-    std::cout << "\n9. Waiting 3 seconds..." << std::endl;
+    // Step 8: Wait and send another text
+    std::cout << "\n8. Waiting 3 seconds..." << std::endl;
     sleep(3);
     
-    std::cout << "\n10. Sending 'HELLO'..." << std::endl;
+    std::cout << "\n9. Sending 'HELLO'..." << std::endl;
     result = SendText(0, (char*)"HELLO", 0x00FF00, 14, 1, 0, 8, 1);
     std::cout << "SendText result: " << result << std::endl;
     
-    // Step 10: Test brightness control
-    std::cout << "\n11. Setting brightness to 20..." << std::endl;
+    // Step 9: Test brightness control
+    std::cout << "\n10. Setting brightness to 20..." << std::endl;
     result = BrightnessControl(0, 20);
     std::cout << "BrightnessControl result: " << result << std::endl;
     
-    // Step 11: Sync time
-    std::cout << "\n12. Syncing time..." << std::endl;
+    // Step 10: Sync time
+    std::cout << "\n11. Syncing time..." << std::endl;
     result = SyncTime();
     std::cout << "SyncTime result: " << result << std::endl;
     
     std::cout << "\n=== Debug Program Complete ===" << std::endl;
     std::cout << "Check your LED display for output!" << std::endl;
+    
+    if (result == 0) {
+        std::cout << "✓ All operations completed successfully!" << std::endl;
+    } else {
+        std::cout << "⚠ Some operations had issues. Check the error codes above." << std::endl;
+    }
     
     return 0;
 }
