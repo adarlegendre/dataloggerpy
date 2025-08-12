@@ -595,7 +595,7 @@ extern "C" int SplitWindow(int nWndNo, int nWinC[], int nWinCS)
     if (_cp5200_debug > 0)
     {
         WLOG("window(s) number: " + to_string(wn) + ", window(s) parameters: ");
-        for (int i=0; i<tmeret; i++)
+        for (size_t i=0; i<static_cast<size_t>(tmeret); i++)
             cout << i << ": " << nWinC[i] << endl;
     }
     int pack = 2 + (tmeret * 2);
@@ -604,7 +604,7 @@ extern "C" int SplitWindow(int nWndNo, int nWinC[], int nWinCS)
             __cint2bytes(pack, 4) +                     // packet data length
             "000001" +                                  // packet number 00, last packet number 00, text CC=01
             __cint2bytes(nWndNo, 2);                    // count of windows
-    for (int i = 0; i < tmeret; i++)
+    for (size_t i = 0; i < static_cast<size_t>(tmeret); i++)
     {
         hexi += __cint2bytes_lofo(nWinC[i], 4);
     }
@@ -662,7 +662,7 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
             __cint2bytes(nSpeed, 2) +           // effect speed
             __cint2bytes_lofo(nStayTime, 4);    // stay time
     
-    for (int i = 0; i < szoveg.length(); i++)   // create packet
+    for (size_t i = 0; i < szoveg.length(); i++)   // create packet
     {
         hexi += fc + "00" + __cint2bytes(szoveg[i], 2);
     }
@@ -736,7 +736,7 @@ extern "C" int SendPicture(int nWndNo, int nPosX, int nPosY, char * pPictureFile
 // </editor-fold>
 // <editor-fold desc="make work string array">    
     stringstream convertStream;
-    while (fileoffs < filesize)
+    while (static_cast<unsigned long>(fileoffs) < filesize)
     {
         if (packno == 0)    // first pack
         {
@@ -781,7 +781,7 @@ extern "C" int SendPicture(int nWndNo, int nPosX, int nPosY, char * pPictureFile
         }
         else                // többi csomag
         {
-            if ((filesize - fileoffs) > 200)   // intermediate packs
+                         if ((filesize - static_cast<unsigned long>(fileoffs)) > 200)   // intermediate packs
             {
                 string header = "";
                 pack = pbyteno;
@@ -793,7 +793,7 @@ extern "C" int SendPicture(int nWndNo, int nPosX, int nPosY, char * pPictureFile
                 string gifh = "";
                 for (int p = 0; p < gpack; p++)
                 {
-                    convertStream << setfill('0') << setw(2) << hex << (int)static_cast<char>(gbuffer[p + fileoffs]);
+                    convertStream << setfill('0') << setw(2) << hex << (int)static_cast<char>(gbuffer[p + static_cast<int>(fileoffs)]);
                     gifh += convertStream.str();
                     convertStream.str(string());
                     convertStream.clear();
@@ -807,8 +807,8 @@ extern "C" int SendPicture(int nWndNo, int nPosX, int nPosY, char * pPictureFile
             else                                // last pack
             {
                 string header = "";
-                pack = filesize - fileoffs;
-                gpack = filesize - fileoffs;
+                                 pack = static_cast<int>(filesize - static_cast<unsigned long>(fileoffs));
+                 gpack = static_cast<int>(filesize - static_cast<unsigned long>(fileoffs));
                 header =  pact + cart + caid + prco + adin +        // always same
                         __cint2bytes(pack, 4) +                     // packed data length = GIF méret + 8
                         __cint2bytes(packno, 2) +                   // packet number
@@ -816,7 +816,7 @@ extern "C" int SendPicture(int nWndNo, int nPosX, int nPosY, char * pPictureFile
                 string gifh = "";
                 for (int p = 0; p < gpack; p++)
                 {
-                    convertStream << setfill('0') << setw(2) << hex << (int)static_cast<char>(gbuffer[p + fileoffs]);
+                    convertStream << setfill('0') << setw(2) << hex << (int)static_cast<char>(gbuffer[p + static_cast<int>(fileoffs)]);
                     gifh += convertStream.str();
                     convertStream.str(string());
                     convertStream.clear();
@@ -896,7 +896,7 @@ extern "C" int SendClock(int nWndNo, int nStayTime, int nCalType, int nFormat[],
             __cint2bytes(nColor[0], 2) +                // R
             __cint2bytes(nColor[1], 2) +                // G
             __cint2bytes(nColor[2], 2);                 // B
-    for (int i = 0; i < tmeret; i++)            // make text content
+    for (size_t i = 0; i < static_cast<size_t>(tmeret); i++)            // make text content
     {
         hexi += __cint2bytes(szoveg[i], 2);
     }
