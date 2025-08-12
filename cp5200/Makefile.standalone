@@ -1,0 +1,55 @@
+# Standalone Makefile for CP5200 LED Display Library
+# This Makefile can build the library without NetBeans project files
+
+CC = g++
+CFLAGS = -Wall -Wextra -std=c++11 -fPIC
+LIBS = -liconv
+TARGET = libcp5200.a
+SOURCES = cp5200.cpp
+OBJECTS = $(SOURCES:.cpp=.o)
+
+# Default target
+all: $(TARGET)
+
+# Build the static library
+$(TARGET): $(OBJECTS)
+	ar rcs $(TARGET) $(OBJECTS)
+	@echo "Library $(TARGET) built successfully!"
+
+# Build test program
+test: $(TARGET) test_cp5200.cpp
+	$(CC) $(CFLAGS) -o test_cp5200 test_cp5200.cpp $(TARGET) $(LIBS)
+	@echo "Test program built successfully!"
+
+# Compile source files
+%.o: %.cpp
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean build files
+clean:
+	rm -f $(OBJECTS) $(TARGET) test_cp5200
+	@echo "Build files cleaned!"
+
+# Install library and headers
+install: $(TARGET)
+	sudo cp $(TARGET) /usr/local/lib/
+	sudo cp cp5200.h /usr/local/include/
+	@echo "Library installed to /usr/local/lib/ and /usr/local/include/"
+
+# Uninstall
+uninstall:
+	sudo rm -f /usr/local/lib/$(TARGET)
+	sudo rm -f /usr/local/include/cp5200.h
+	@echo "Library uninstalled!"
+
+# Show help
+help:
+	@echo "Available targets:"
+	@echo "  all       - Build the library (default)"
+	@echo "  test      - Build and test the library"
+	@echo "  clean     - Remove build files"
+	@echo "  install   - Install library to system"
+	@echo "  uninstall - Remove library from system"
+	@echo "  help      - Show this help message"
+
+.PHONY: all test clean install uninstall help
