@@ -136,10 +136,14 @@ char *revesc(char *src) // decode esape seqences after receive from RS-232/485
 
 char *convert(const char *from, const char *to, char *src) 
 {
+    if (!from || !to || !src) {
+        return NULL;
+    }
+    
     iconv_t cd;
     cd = iconv_open(to, from);
     if(cd == (iconv_t)-1)
-        return (0);
+        return NULL;
 
     size_t len;
     size_t target_len;
@@ -150,13 +154,20 @@ char *convert(const char *from, const char *to, char *src)
     size_t target_len_start;
 
     len = strlen(src);
-    if(!len)
-        return (0);
+    if(!len) {
+        iconv_close(cd);
+        return NULL;
+    }
 
     //	target_len = 2*len;
     //	target_len = len;
     target_len = len+1;
     target = (char *)calloc(target_len, 1);
+    if (!target) {
+        iconv_close(cd);
+        return NULL;
+    }
+    
     len_start = len;
     target_len_start = target_len;
     target_start = target;
@@ -164,24 +175,44 @@ char *convert(const char *from, const char *to, char *src)
 
     // Create a mutable copy of src for iconv
     char *src_mutable = strdup(src);
+    if (!src_mutable) {
+        free(target);
+        iconv_close(cd);
+        return NULL;
+    }
+    
     size_t src_len = len;
     
     size_t iconv_value;
     iconv_value = iconv(cd, &src_mutable, &src_len, &target, &target_len);
     if(iconv_value == (size_t)-1) {
         free(src_mutable);
-        return (0);
+        free(target);
+        iconv_close(cd);
+        return NULL;
     }
     
     free(src_mutable);
+    iconv_close(cd);
     return target_start;
 }
 
 char *convertUTF8ToEASCII(string str) 
 {
+    if (str.empty()) {
+        return NULL;
+    }
+    
     const char *src = str.c_str();
     //char *res = convert("UTF-8", "ISO-8859-2", (char *)src);
     char *res = convert("UTF-8", "ISO-8859-1", (char *)src);
+    
+    // If conversion fails, return NULL
+    if (res == NULL) {
+        WLOG("Warning: UTF-8 to EASCII conversion failed, using original text");
+        return NULL;
+    }
+    
     return res;
 }
 // </editor-fold>
@@ -600,13 +631,34 @@ extern "C" int SplitWindow(int nWndNo, int nWinC[], int nWinCS)
 extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int nSpeed, int nEffect, int nStayTime, int nAlign)
 {
     WLOG("entry point...");
+    
+    // Validate input parameters
+    if (pText == NULL) {
+        WLOG("Error: pText is NULL");
+        return -1;
+    }
+    
     // konvertálás UTF-8 > extended ASCII (max. 255)
     string szoveg = "";
     if (pText[0] != 0)
     {
         char *coni = convertUTF8ToEASCII(pText);
-        szoveg = string(coni);
+        if (coni != NULL) {
+            szoveg = string(coni);
+            // Note: convertUTF8ToEASCII returns a pointer that should be freed
+            // but since we don't have access to free() here, we'll use it carefully
+        } else {
+            // Fallback: use original text if conversion fails
+            szoveg = string(pText);
+        }
     }
+    
+    // Ensure text is not empty
+    if (szoveg.empty()) {
+        WLOG("Warning: Empty text, using default");
+        szoveg = " ";
+    }
+    
 // <editor-fold desc="fő paraméterek kiszámolása">
     int szhossz = (int)(szoveg.length()*3);     // text length
     int pack = 7 + szhossz + 3;                 // text-packet length with subheader

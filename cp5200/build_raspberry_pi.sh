@@ -54,6 +54,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Compile the simple test program
+echo "Compiling simple test program..."
+g++ -std=c++11 -I../cp5200 ../test_simple.cpp -L. -lcp5200 -Wl,-rpath,. -o test_simple
+
+if [ $? -ne 0 ]; then
+    echo "✗ Simple test compilation failed!"
+    echo "Please check the error messages above"
+    exit 1
+fi
+
 # Check if all compilation was successful
 echo "✓ All compilation successful!"
 echo "Build successful!"
@@ -63,6 +73,7 @@ echo "  - libcp5200.a (static library)"
 echo "  - libcp5200.so (shared library)"
 echo "  - simple_example (example program)"
 echo "  - test_cp5200 (test program)"
+echo "  - test_simple (simple test program)"
 echo ""
 echo "Installing library system-wide..."
 echo "This requires sudo privileges to copy files to system directories."
