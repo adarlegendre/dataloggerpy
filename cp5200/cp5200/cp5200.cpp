@@ -645,8 +645,8 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
         char *coni = convertUTF8ToEASCII(pText);
         if (coni != NULL) {
             szoveg = string(coni);
-            // Note: convertUTF8ToEASCII returns a pointer that should be freed
-            // but since we don't have access to free() here, we'll use it carefully
+            // Free the memory allocated by convertUTF8ToEASCII
+            free(coni);
         } else {
             // Fallback: use original text if conversion fails
             szoveg = string(pText);
@@ -875,7 +875,14 @@ extern "C" int SendClock(int nWndNo, int nStayTime, int nCalType, int nFormat[],
     if (pText[0] != 0)
     {
         char *coni = convertUTF8ToEASCII(pText);
-        szoveg = string(coni);
+        if (coni != NULL) {
+            szoveg = string(coni);
+            // Free the memory allocated by convertUTF8ToEASCII
+            free(coni);
+        } else {
+            // Fallback: use original text if conversion fails
+            szoveg = string(pText);
+        }
     }
 // <editor-fold desc="create main params">
     int tmeret = (int)(szoveg.length());    // text length
