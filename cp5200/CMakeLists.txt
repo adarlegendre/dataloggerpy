@@ -74,6 +74,17 @@ install(FILES cp5200/cp5200.h
     DESTINATION include
 )
 
+# Print installation information
+message(STATUS "")
+message(STATUS "Installation targets:")
+message(STATUS "  make install    - Install to system directories")
+message(STATUS "  sudo make install - Install to system directories (requires sudo)")
+message(STATUS "")
+message(STATUS "Installation locations:")
+message(STATUS "  Libraries: ${CMAKE_INSTALL_PREFIX}/lib")
+message(STATUS "  Headers:  ${CMAKE_INSTALL_PREFIX}/include")
+message(STATUS "  Binaries: ${CMAKE_INSTALL_PREFIX}/bin")
+
 # Create pkg-config file
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cp5200.pc.in"

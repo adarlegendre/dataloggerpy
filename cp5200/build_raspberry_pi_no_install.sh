@@ -1,9 +1,10 @@
 #!/bin/bash
 
-# CP5200 Library Build Script for Raspberry Pi
+# CP5200 Library Build Script for Raspberry Pi (No Auto-Install)
 # This script compiles the CP5200 library and example program on Raspberry Pi
+# WITHOUT automatically installing to system directories
 
-echo "Building CP5200 Library for Raspberry Pi..."
+echo "Building CP5200 Library for Raspberry Pi (No Auto-Install)..."
 
 # Check if we're on Raspberry Pi
 if ! grep -q "Raspberry Pi" /proc/cpuinfo 2>/dev/null; then
@@ -34,7 +35,7 @@ ranlib libcp5200.a
 echo "Creating shared library..."
 g++ -shared -fPIC -o libcp5200.so cp5200.o
 
-# Compile the example program
+# Compile the example program with rpath
 echo "Compiling example program..."
 g++ -std=c++11 -I../cp5200 ../simple_example.cpp -L. -lcp5200 -Wl,-rpath,. -o simple_example
 
@@ -44,7 +45,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Compile the test program
+# Compile the test program with rpath
 echo "Compiling test program..."
 g++ -std=c++11 -I../cp5200 ../test_cp5200.cpp -L. -lcp5200 -Wl,-rpath,. -o test_cp5200
 
@@ -64,30 +65,19 @@ echo "  - libcp5200.so (shared library)"
 echo "  - simple_example (example program)"
 echo "  - test_cp5200 (test program)"
 echo ""
-echo "Installing library system-wide..."
-echo "This requires sudo privileges to copy files to system directories."
-
-# Install the library system-wide
-sudo cp libcp5200.a /usr/local/lib/
-sudo cp libcp5200.so /usr/local/lib/
-sudo cp ../cp5200/cp5200.h /usr/local/include/
-
-# Update the dynamic linker cache
-echo "Updating dynamic linker cache..."
-sudo ldconfig
-
+echo "The programs are compiled with rpath, so they can find the library"
+echo "in the same directory. You can run them directly:"
 echo ""
-echo "✓ Library installed system-wide!"
-echo "  - Static library: /usr/local/lib/libcp5200.a"
-echo "  - Shared library: /usr/local/lib/libcp5200.so"
-echo "  - Header file: /usr/local/include/cp5200.h"
-echo ""
-echo "Now you can run the examples from anywhere:"
 echo "  ./simple_example"
 echo "  ./test_cp5200"
-echo "  python3 ../quick_start.py"
 echo ""
 echo "To test network connectivity first:"
 echo "  python3 ../test_network.py"
+echo ""
+echo "To install the library system-wide (optional):"
+echo "  sudo cp libcp5200.a /usr/local/lib/"
+echo "  sudo cp libcp5200.so /usr/local/lib/"
+echo "  sudo cp ../cp5200/cp5200.h /usr/local/include/"
+echo "  sudo ldconfig"
 
 cd ..
