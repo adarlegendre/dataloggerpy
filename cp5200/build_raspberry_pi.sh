@@ -17,7 +17,13 @@ cd build
 
 # Compile the library
 echo "Compiling CP5200 library..."
-g++ -c -O2 -std=c++11 -fPIC ../cp5200/cp5200.cpp -o cp5200.o
+g++ -c -O2 -std=c++11 -fPIC -D_GNU_SOURCE -Wall -Wextra ../cp5200/cp5200.cpp -o cp5200.o
+
+if [ $? -ne 0 ]; then
+    echo "✗ Library compilation failed!"
+    echo "Please check the error messages above"
+    exit 1
+fi
 
 # Create static library
 echo "Creating static library..."
@@ -32,8 +38,24 @@ g++ -shared -fPIC -o libcp5200.so cp5200.o
 echo "Compiling example program..."
 g++ -std=c++11 -I../cp5200 ../simple_example.cpp -L. -lcp5200 -o simple_example
 
-# Check if compilation was successful
-if [ $? -eq 0 ]; then
+if [ $? -ne 0 ]; then
+    echo "✗ Example compilation failed!"
+    echo "Please check the error messages above"
+    exit 1
+fi
+
+# Compile the test program
+echo "Compiling test program..."
+g++ -std=c++11 -I../cp5200 ../test_cp5200.cpp -L. -lcp5200 -o test_cp5200
+
+if [ $? -ne 0 ]; then
+    echo "✗ Test compilation failed!"
+    echo "Please check the error messages above"
+    exit 1
+fi
+
+# Check if all compilation was successful
+echo "✓ All compilation successful!"
     echo "Build successful!"
     echo ""
     echo "Files created:"
