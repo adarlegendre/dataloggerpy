@@ -13,7 +13,7 @@ int main() {
     _set_cp5200_send_mode(0);  // Use TCP/IP
     
     // Set TCP/IP communication parameters
-    _set_cp5200_ipcomm((char*)"192.168.1.200", 5200);
+    _set_cp5200_ipcomm((char*)"192.168.1.222", 5200);
     
     // Alternative: Use RS232
     // _set_cp5200_send_mode(1);

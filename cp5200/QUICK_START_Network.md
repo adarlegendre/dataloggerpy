@@ -1,6 +1,6 @@
 # Quick Start Guide for Network CP5200 Testing
 
-This guide is specifically for testing your CP5200 display at **192.168.1.200:5200**.
+This guide is specifically for testing your CP5200 display at **192.168.1.222:5200**.
 
 ## **Step-by-Step Testing Process**
 
@@ -22,12 +22,12 @@ python3 ../test_network.py
 ```
 CP5200 Network Connectivity Test
 ========================================
-Target: 192.168.1.200:5200
+Target: 192.168.1.222:5200
 
-Testing basic network reachability to 192.168.1.200...
-✓ SUCCESS: 192.168.1.200 is reachable
+Testing basic network reachability to 192.168.1.222...
+✓ SUCCESS: 192.168.1.222 is reachable
 
-Scanning ports 5195-5205 on 192.168.1.200...
+Scanning ports 5195-5205 on 192.168.1.222...
   ✗ Port 5195 is closed
   ✗ Port 5196 is closed
   ✗ Port 5197 is closed
@@ -40,8 +40,8 @@ Scanning ports 5195-5205 on 192.168.1.200...
   ✗ Port 5204 is closed
   ✗ Port 5205 is closed
 
-Testing TCP connectivity to 192.168.1.200:5200...
-✓ SUCCESS: Connected to 192.168.1.200:5200
+Testing TCP connectivity to 192.168.1.222:5200...
+✓ SUCCESS: Connected to 192.168.1.222:5200
 
 ========================================
 TEST SUMMARY:
@@ -112,7 +112,7 @@ python3 quick_start.py
 
 ### **For CP5200 Display:**
 1. **Network Settings**
-   - IP Address: 192.168.1.200
+   - IP Address: 192.168.1.222
    - Port: 5200
    - Gateway: Your router's IP (e.g., 192.168.1.1)
    - Subnet: 255.255.255.0

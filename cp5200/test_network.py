@@ -93,7 +93,7 @@ def test_port_scan(host, start_port=5195, end_port=5205):
 
 def main():
     """Main test function"""
-    host = "192.168.1.200"
+    host = "192.168.1.222"
     port = 5200
     
     print("CP5200 Network Connectivity Test")
@@ -137,7 +137,7 @@ def main():
     elif not ping_success:
         print("❌ Network connectivity failed.")
         print("  - Check your network connection")
-        print("  - Verify the IP address 192.168.1.200")
+        print("  - Verify the IP address 192.168.1.222")
         print("  - Check if the display is powered on")
     else:
         print("❌ Multiple issues detected. Check network and display configuration.")

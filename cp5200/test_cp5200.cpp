@@ -22,8 +22,8 @@ int main() {
     
     // Test 4: TCP/IP configuration
     std::cout << "\n4. Testing TCP/IP configuration..." << std::endl;
-    _set_cp5200_ipcomm((char*)"192.168.1.200", 5200);
-    std::cout << "TCP/IP configured for 192.168.1.200:5200" << std::endl;
+    _set_cp5200_ipcomm((char*)"192.168.1.222", 5200);
+    std::cout << "TCP/IP configured for 192.168.1.222:5200" << std::endl;
     
     // Test 5: RS232 configuration (for reference)
     std::cout << "\n5. Testing RS232 configuration..." << std::endl;
@@ -33,7 +33,7 @@ int main() {
     // Test 6: Switch back to TCP/IP
     std::cout << "\n6. Switching back to TCP/IP..." << std::endl;
     _set_cp5200_send_mode(0);
-    _set_cp5200_ipcomm((char*)"192.168.1.200", 5200);
+    _set_cp5200_ipcomm((char*)"192.168.1.222", 5200);
     std::cout << "Switched back to TCP/IP mode" << std::endl;
     
     // Test 7: Window splitting (without sending)

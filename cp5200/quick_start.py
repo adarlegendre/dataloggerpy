@@ -35,7 +35,7 @@ class CP5200:
         
         # Initialize communication mode to TCP/IP by default
         self.set_send_mode(0)  # TCP/IP mode
-        self.set_ip_comm("192.168.1.200", 5200)
+        self.set_ip_comm("192.168.1.222", 5200)
     
     def _setup_function_signatures(self):
         """Setup the C function signatures for proper Python integration"""
