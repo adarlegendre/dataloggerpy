@@ -201,6 +201,7 @@ char *convertUTF8ToEASCII(string str)
         return NULL;
     }
     
+    WLOG("convertUTF8ToEASCII: '" + str + "' -> allocated " + to_string(str.length()) + " bytes");
     return res;
 }
 // </editor-fold>
@@ -626,7 +627,7 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
         return -1;
     }
     
-    // Skip the problematic conversion entirely - use original text directly
+    // Use original text directly - no conversion needed for ASCII
     string szoveg = "";
     if (pText[0] != 0)
     {
@@ -639,6 +640,8 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
         szoveg = " ";
     }
     
+    WLOG("Text to send: '" + szoveg + "'");
+    
 // <editor-fold desc="fő paraméterek kiszámolása">
     int szhossz = (int)(szoveg.length()*3);     // text length
     int pack = 7 + szhossz + 3;                 // text-packet length with subheader
@@ -646,10 +649,10 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
     int fonts = nFontSize;
     int color = nColor;
     int fontcol = 10*color + fonts;
-    //string fc = __cint2bytes(fontcol, 2); 
-    ostringstream ostr;
-    ostr << fontcol;
-    string fc = ostr.str();
+    
+    // Convert fontcol to proper hex format
+    string fc = __cint2bytes(fontcol, 2);
+    WLOG("Font/Color: " + to_string(fontcol) + " -> " + fc);
 // </editor-fold>
 // <editor-fold desc="csomag összerakása">
     string hexi = "";
@@ -662,14 +665,21 @@ extern "C" int SendText(int nWndNo, char * pText, int nColor, int nFontSize, int
             __cint2bytes(nSpeed, 2) +           // effect speed
             __cint2bytes_lofo(nStayTime, 4);    // stay time
     
+    WLOG("Base packet: " + hexi);
+    
     for (size_t i = 0; i < szoveg.length(); i++)   // create packet
     {
-        hexi += fc + "00" + __cint2bytes(szoveg[i], 2);
+        string char_hex = __cint2bytes((unsigned char)szoveg[i], 2);
+        hexi += fc + "00" + char_hex;
+        WLOG("Char '" + string(1, szoveg[i]) + "' -> " + char_hex);
     }
     hexi += "000000";           // vége: 3byte 00
-    WLOG("sendable hex:" + hexi);
+    WLOG("Final sendable hex: " + hexi);
+    WLOG("Packet length: " + to_string(pack) + ", Total hex length: " + to_string(hexi.length()));
+    
     // elküldjük
     int ret = _MessageSend(hexi, 2);
+    WLOG("MessageSend returned: " + to_string(ret));
 // </editor-fold>
     WLOG("endpoint");
     return ret;
