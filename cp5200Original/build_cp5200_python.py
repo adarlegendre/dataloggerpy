@@ -135,7 +135,6 @@ class CP5200Builder:
             compile_cmd = [
                 'g++', '-c', '-O2', '-std=c++11', '-fPIC',
                 '-march=native', '-mtune=native',
-                '-D__ARM_ARCH',
                 '-I', str(self.current_dir),
                 str(self.source_files['cpp']),
                 '-o', str(self.build_dir / 'cp5200.o')
