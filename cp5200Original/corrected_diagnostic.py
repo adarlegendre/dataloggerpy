@@ -116,7 +116,7 @@ def test_window_configuration_corrected(lib):
         # Test 1: Single window (full display) - CORRECTED
         print("1. Testing single window (full display)...")
         # For 1 window, array size must be 4 (x1, y1, x2, y2)
-        window_config = [0, 0, 128, 64]  # 4 coordinates
+        window_config = (ctypes.c_int * 4)(0, 0, 128, 64)  # 4 coordinates, properly typed
         result = lib.SplitWindow(1, window_config, 4)  # 1 window, 4 coordinates
         print(f"   SplitWindow result: {result} (0=success, other=error)")
         
@@ -130,7 +130,7 @@ def test_window_configuration_corrected(lib):
         # Test 2: Two windows (horizontal split) - CORRECTED
         print("2. Testing two windows (horizontal split)...")
         # For 2 windows, array size must be 8 (x1, y1, x2, y2, x3, y3, x4, y4)
-        window_config = [0, 0, 64, 64, 64, 0, 128, 64]  # 8 coordinates
+        window_config = (ctypes.c_int * 8)(0, 0, 64, 64, 64, 0, 128, 64)  # 8 coordinates, properly typed
         result = lib.SplitWindow(2, window_config, 8)  # 2 windows, 8 coordinates
         print(f"   SplitWindow result: {result} (0=success, other=error)")
         
@@ -155,7 +155,7 @@ def test_text_sending_corrected(lib):
     try:
         # First, configure a single window
         print("1. Configuring single window for text...")
-        window_config = [0, 0, 128, 64]
+        window_config = (ctypes.c_int * 4)(0, 0, 128, 64)
         result = lib.SplitWindow(1, window_config, 4)
         if result != 0:
             print(f"   ❌ Window configuration failed: {result}")
@@ -185,7 +185,7 @@ def test_czech_plates_corrected(lib):
     try:
         # Configure single window first
         print("1. Configuring single window...")
-        window_config = [0, 0, 128, 64]
+        window_config = (ctypes.c_int * 4)(0, 0, 128, 64)
         result = lib.SplitWindow(1, window_config, 4)
         if result != 0:
             print(f"   ❌ Window configuration failed: {result}")
