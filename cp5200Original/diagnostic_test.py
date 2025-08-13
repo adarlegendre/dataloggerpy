@@ -47,11 +47,11 @@ def test_simple_text(lib):
         time.sleep(3)
         
         # Test 2: Different effect
-        #print("2. Sending 'SCROLL' with scroll effect (green)...")
-        #result = lib.SendText(0, b'SCROLL', 0x00FF00, 12, 1, 1, 25, 1)
-        #print(f"   Result: {result} (0=success, other=error)")
+        print("2. Sending 'SCROLL' with scroll effect (green)...")
+        result = lib.SendText(0, b'SCROLL', 0x00FF00, 12, 1, 1, 25, 1)
+        print(f"   Result: {result} (0=success, other=error)")
         
-        #time.sleep(3)
+        time.sleep(3)
         
         # Test 3: Different window
         print("3. Sending 'WINDOW1' to window 1 (blue)...")
