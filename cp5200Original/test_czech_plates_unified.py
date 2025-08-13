@@ -153,21 +153,23 @@ class CP5200UnifiedTest:
         """Check if the CP5200 library exists"""
         print("3. Checking CP5200 library...")
         
-        # Define possible library paths
+        # Define possible library paths - prioritize .so files
         library_paths = []
         
         if self.base_path:
             library_paths.extend([
-                f"{self.base_path}/dist/Release/GNU-Linux/libcp5200.a",
-                f"{self.base_path}/dist/Debug/GNU-Linux/libcp5200.a"
+                f"{self.base_path}/libcp5200.so",  # Shared library first
+                f"{self.base_path}/libcp5200.a",   # Static library second
+                f"{self.base_path}/dist/Release/GNU-Linux/libcp5200.so",
+                f"{self.base_path}/dist/Debug/GNU-Linux/libcp5200.so"
             ])
         
-        # Add fallback paths
+        # Add fallback paths - prioritize .so files
         library_paths.extend([
-            "./libcp5200.so",
-            "./libcp5200.a",
-            "../cp5200Original/dist/Release/GNU-Linux/libcp5200.a",
-            "../cp5200Original/dist/Debug/GNU-Linux/libcp5200.a",
+            "./libcp5200.so",  # Shared library first
+            "./libcp5200.a",   # Static library second
+            "../libcp5200.so", # Parent directory shared library
+            "../libcp5200.a",  # Parent directory static library
             "/usr/local/lib/libcp5200.so",
             "/usr/local/lib/libcp5200.a",
             "/usr/lib/libcp5200.so",
