@@ -39,7 +39,7 @@ string sveg = "AE";                 // serial end               1 bytes
 // </editor-fold>
 
 int _ip_port = 5200;
-const char *_ip_address = "192.168.000.000";
+string _ip_address = "192.168.000.000";
 tcflag_t _rs232_baud = B115200;
 int _rs232_baud_int = 115200;
 const char *_rs232_serport = "/dev/ttyAMA0";
@@ -74,7 +74,7 @@ extern "C" void _set_cp5200_send_mode(int sm)
 
 extern "C" void _set_cp5200_ipcomm(char *ipcim, int ippor)
 {
-    _ip_address = ipcim;
+    _ip_address = string(ipcim);
     _ip_port = ippor;
 }
 
@@ -237,14 +237,14 @@ string _getCRC16(string mibol, int offset)
 int _MessageSend_net(char * mess, int meret)
 {
     WLOG("entry point...");
-    WLOG("IP address: " + string(_ip_address));
+    WLOG("IP address: " + _ip_address);
     WLOG("IP port: " + to_string(_ip_port));
     int sd;
     struct sockaddr_in server;
 
     sd = socket(AF_INET,SOCK_STREAM,0);
     server.sin_family = AF_INET;
-    inet_pton(PF_INET, _ip_address, &(server.sin_addr));
+    inet_pton(PF_INET, _ip_address.c_str(), &(server.sin_addr));
     server.sin_port = htons(_ip_port);
     // küldés
     WLOG("create socket and connecting...");

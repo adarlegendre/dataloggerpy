@@ -258,6 +258,11 @@ class CP5200Builder:
                 
                 if source.exists():
                     try:
+                        # Remove existing file if it exists
+                        if destination.exists():
+                            destination.unlink()
+                            print(f"  ✓ Removed existing {lib_name}")
+                        
                         shutil.copy2(source, destination)
                         print(f"  ✓ {lib_name} → {destination}")
                     except Exception as e:
