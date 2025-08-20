@@ -53,7 +53,7 @@ class CP5200Controller:
             result = subprocess.run(["g++", "--version"], capture_output=True, text=True)
             if result.returncode == 0:
                 self.logger.info("✅ g++ compiler found")
-                self.logger.debug(f"g++ version: {result.stdout.split('\\n')[0]}")
+                self.logger.debug(f"g++ version: {result.stdout.split(chr(10))[0]}")
             else:
                 self.logger.error("❌ g++ compiler not found")
                 return False
