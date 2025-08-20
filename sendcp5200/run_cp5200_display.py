@@ -16,7 +16,7 @@ class CP5200Controller:
         self.ip_address = ip_address
         self.port = port
         self.debug = debug
-        self.executable_path = "./sendcp5200"
+        self.executable_path = "./dist/Debug/GNU-Linux/sendcp5200"
         
     def check_dependencies(self):
         """Check if required dependencies are installed"""
