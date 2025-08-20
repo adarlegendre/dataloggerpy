@@ -213,9 +213,23 @@ class CP5200Controller:
                 if window_result.stdout:
                     self.logger.debug(f"Window creation output: {window_result.stdout}")
             else:
-                self.logger.error("❌ Failed to position window!")
-                if window_result.stderr:
-                    self.logger.error(f"Window error: {window_result.stderr}")
+                # Enhanced error logging for window positioning
+                error_code = window_result.returncode
+                args = {
+                    'window_number': window_number,
+                    'x': x,
+                    'y': y,
+                    'target_ip': target_ip,
+                    'port': self.port
+                }
+                additional_info = {
+                    'stderr': window_result.stderr if window_result.stderr else None,
+                    'stdout': window_result.stdout if window_result.stdout else None,
+                    'command': ' '.join(window_args)
+                }
+                
+                self.log_function_error(error_code, "SplitWindow", args, window_result.stderr)
+                self.log_detailed_error(error_code, "SplitWindow", args, additional_info)
                 return False
                 
         except Exception as e:
@@ -300,18 +314,58 @@ class CP5200Controller:
                     self.logger.warning(result.stderr)
                     
             else:
-                self.logger.error("❌ Failed to send positioned text!")
-                if result.stderr:
-                    self.logger.error("Error:")
-                    self.logger.error(result.stderr)
-                if result.stdout:
-                    self.logger.error("Output:")
-                    self.logger.error(result.stdout)
+                # Enhanced error logging for positioned text sending
+                error_code = result.returncode
+                args = {
+                    'text': text,
+                    'window_number': window_number,
+                    'x': x,
+                    'y': y,
+                    'color': color,
+                    'font_size': font_size,
+                    'speed': speed,
+                    'effect': effect,
+                    'stay_time': stay_time,
+                    'alignment': alignment,
+                    'target_ip': target_ip,
+                    'port': self.port
+                }
+                additional_info = {
+                    'stderr': result.stderr if result.stderr else None,
+                    'stdout': result.stdout if result.stdout else None,
+                    'command': ' '.join(text_args)
+                }
+                
+                self.log_function_error(error_code, "SendText", args, result.stderr)
+                self.log_detailed_error(error_code, "SendText", args, additional_info)
+                
+                # Network-specific error logging
+                if error_code in [-1, 10]:
+                    self.log_network_error(error_code, target_ip, self.port, "SendText")
                     
         except subprocess.TimeoutExpired:
             self.logger.error("❌ Command timed out after 30 seconds")
+            # Enhanced timeout error logging for positioned text
+            timeout_info = {
+                'timeout_duration': '30 seconds',
+                'function': 'SendText (Positioned)',
+                'target_ip': target_ip,
+                'port': self.port,
+                'suggestion': 'Check network latency or increase timeout value'
+            }
+            self.log_detailed_error('TIMEOUT', 'SendText (Positioned)', args, timeout_info)
         except Exception as e:
             self.logger.error(f"❌ Error executing command: {e}")
+            # Enhanced exception error logging for positioned text
+            exception_info = {
+                'exception_type': type(e).__name__,
+                'exception_message': str(e),
+                'function': 'SendText (Positioned)',
+                'target_ip': target_ip,
+                'port': self.port,
+                'suggestion': 'Check system resources and network configuration'
+            }
+            self.log_detailed_error('EXCEPTION', 'SendText (Positioned)', args, exception_info)
 
     def send_text(self, text, window_number=1, color=1, font_size=16, speed=5, effect=1, stay_time=10, alignment=1, use_connection_code=False):
         """
@@ -420,18 +474,269 @@ class CP5200Controller:
                     self.logger.warning(result.stderr)
                     
             else:
-                self.logger.error("❌ Failed to send text!")
-                if result.stderr:
-                    self.logger.error("Error:")
-                    self.logger.error(result.stderr)
-                if result.stdout:
-                    self.logger.error("Output:")
-                    self.logger.error(result.stdout)
+                # Enhanced error logging for text sending
+                error_code = result.returncode
+                args = {
+                    'text': text,
+                    'window_number': window_number,
+                    'color': color,
+                    'font_size': font_size,
+                    'speed': speed,
+                    'effect': effect,
+                    'stay_time': stay_time,
+                    'alignment': alignment,
+                    'target_ip': target_ip,
+                    'port': self.port
+                }
+                additional_info = {
+                    'stderr': result.stderr if result.stderr else None,
+                    'stdout': result.stdout if result.stdout else None,
+                    'command': ' '.join(args)
+                }
+                
+                self.log_function_error(error_code, "SendText", args, result.stderr)
+                self.log_detailed_error(error_code, "SendText", args, additional_info)
+                
+                # Network-specific error logging
+                if error_code in [-1, 10]:
+                    self.log_network_error(error_code, target_ip, self.port, "SendText")
                     
         except subprocess.TimeoutExpired:
             self.logger.error("❌ Command timed out after 30 seconds")
         except Exception as e:
             self.logger.error(f"❌ Error executing command: {e}")
+
+    def classify_error(self, error_code):
+        """Classify error codes for appropriate handling"""
+        try:
+            error_code = int(error_code)
+            if error_code == 0:
+                return "SUCCESS"
+            elif error_code == 1:
+                return "WARNING"
+            elif 2 <= error_code <= 13:
+                return "LIBRARY_ERROR"
+            elif error_code == 100:
+                return "ARGUMENT_ERROR"
+            elif error_code == 200:
+                return "BRIGHTNESS_ERROR"
+            elif error_code == -1:
+                return "FATAL_ERROR"
+            elif error_code == 10:
+                return "COMMUNICATION_ERROR"
+            else:
+                return "UNKNOWN_ERROR"
+        except ValueError:
+            return "PARSE_ERROR"
+    
+    def get_error_suggestions(self, error_code):
+        """Get helpful suggestions for error resolution"""
+        try:
+            error_code = int(error_code)
+            suggestions = {
+                0: "Operation completed successfully",
+                1: "Operation completed with warnings - check display status",
+                2: "Library initialization error - verify cp5200 library installation",
+                3: "Memory allocation error - check system resources",
+                4: "File operation error - verify file permissions and existence",
+                5: "Network protocol error - check display firmware version",
+                6: "Display communication error - verify display is online",
+                7: "Parameter validation error - check input values",
+                8: "Display busy error - wait and retry",
+                9: "Display memory error - restart display if persistent",
+                10: "Insufficient response data - check network connection",
+                11: "Display timeout error - check network latency",
+                12: "Display buffer overflow - reduce data size",
+                13: "Display internal error - restart display",
+                100: "Invalid function arguments - check parameter types and ranges",
+                200: "Invalid brightness value - use 0-31 or 255 for auto",
+                -1: "Fatal system error - check system logs and restart service"
+            }
+            return suggestions.get(error_code, "Unknown error - check system logs")
+        except ValueError:
+            return "Error code parsing failed - check response format"
+    
+    def log_detailed_error(self, error_code, function_name, args, additional_info=None):
+        """Log detailed error information for debugging"""
+        error_info = {
+            'timestamp': datetime.now().isoformat(),
+            'function': function_name,
+            'error_code': error_code,
+            'arguments': args,
+            'error_type': self.classify_error(error_code),
+            'suggestions': self.get_error_suggestions(error_code),
+            'additional_info': additional_info or {}
+        }
+        
+        # Log error details
+        self.logger.error("🚨 DETAILED ERROR REPORT")
+        self.logger.error("=" * 50)
+        self.logger.error(f"   Timestamp: {error_info['timestamp']}")
+        self.logger.error(f"   Function: {error_info['function']}")
+        self.logger.error(f"   Error Code: {error_info['error_code']}")
+        self.logger.error(f"   Error Type: {error_info['error_type']}")
+        self.logger.error(f"   Arguments: {error_info['arguments']}")
+        self.logger.error(f"   Suggestions: {error_info['suggestions']}")
+        
+        if additional_info:
+            self.logger.error("   Additional Info:")
+            for key, value in additional_info.items():
+                self.logger.error(f"      {key}: {value}")
+        
+        self.logger.error("=" * 50)
+        
+        return error_info
+    
+    def log_network_error(self, error_code, ip_address, port, function_name):
+        """Log network-specific error information"""
+        network_info = {
+            'ip_address': ip_address,
+            'port': port,
+            'connection_type': 'TCP/IP',
+            'timestamp': datetime.now().isoformat(),
+            'function': function_name
+        }
+        
+        self.logger.error("🌐 NETWORK ERROR DETAILS")
+        self.logger.error("=" * 40)
+        self.logger.error(f"   Target: {ip_address}:{port}")
+        self.logger.error(f"   Function: {function_name}")
+        self.logger.error(f"   Error Code: {error_code}")
+        self.logger.error(f"   Error Type: {self.classify_error(error_code)}")
+        
+        # Network-specific suggestions
+        if error_code == -1:
+            self.logger.error("   🔍 Troubleshooting:")
+            self.logger.error("      • Check if display is powered on")
+            self.logger.error("      • Verify IP address is correct")
+            self.logger.error("      • Check network connectivity (ping test)")
+            self.logger.error("      • Verify firewall settings")
+        elif error_code == 10:
+            self.logger.error("   🔍 Troubleshooting:")
+            self.logger.error("      • Check display response time")
+            self.logger.error("      • Verify network stability")
+            self.logger.error("      • Check for network congestion")
+        
+        self.logger.error("=" * 40)
+        return network_info
+    
+    def log_function_error(self, error_code, function_name, args, stderr_output=None):
+        """Log function execution error details"""
+        function_info = {
+            'function_name': function_name,
+            'arguments': args,
+            'error_code': error_code,
+            'stderr': stderr_output,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        self.logger.error("⚙️ FUNCTION EXECUTION ERROR")
+        self.logger.error("=" * 40)
+        self.logger.error(f"   Function: {function_name}")
+        self.logger.error(f"   Arguments: {args}")
+        self.logger.error(f"   Error Code: {error_code}")
+        self.logger.error(f"   Error Type: {self.classify_error(error_code)}")
+        self.logger.error(f"   Suggestions: {self.get_error_suggestions(error_code)}")
+        
+        if stderr_output:
+            self.logger.error("   stderr Output:")
+            self.logger.error(f"      {stderr_output}")
+        
+        # Function-specific suggestions
+        if function_name == "SplitWindow":
+            self.logger.error("   🔍 SplitWindow Troubleshooting:")
+            self.logger.error("      • Verify window coordinates are valid")
+            self.logger.error("      • Check window count matches parameter array")
+            self.logger.error("      • Ensure coordinates are within display bounds")
+        elif function_name == "SendText":
+            self.logger.error("   🔍 SendText Troubleshooting:")
+            self.logger.error("      • Verify window number exists")
+            self.logger.error("      • Check text encoding (UTF-8)")
+            self.logger.error("      • Verify parameter ranges (color: 1-16, font: 8-72)")
+        
+        self.logger.error("=" * 40)
+        return function_info
+    
+    def test_error_logging(self):
+        """Test the error logging system with sample errors"""
+        self.logger.info("🧪 Testing error logging system...")
+        
+        # Test various error types
+        test_errors = [
+            (0, "SUCCESS"),
+            (1, "WARNING"),
+            (5, "LIBRARY_ERROR"),
+            (10, "COMMUNICATION_ERROR"),
+            (100, "ARGUMENT_ERROR"),
+            (200, "BRIGHTNESS_ERROR"),
+            (-1, "FATAL_ERROR")
+        ]
+        
+        for error_code, expected_type in test_errors:
+            self.logger.info(f"Testing error code {error_code} ({expected_type})")
+            classified = self.classify_error(error_code)
+            suggestions = self.get_error_suggestions(error_code)
+            
+            self.logger.info(f"   Classified as: {classified}")
+            self.logger.info(f"   Suggestions: {suggestions}")
+            
+            if classified == expected_type:
+                self.logger.info(f"   ✅ PASS: {error_code} correctly classified as {expected_type}")
+            else:
+                self.logger.warning(f"   ⚠️  MISMATCH: {error_code} classified as {classified}, expected {expected_type}")
+        
+        self.logger.info("🧪 Error logging system test completed!")
+    
+    def get_error_summary(self):
+        """Get a summary of error types and their meanings"""
+        error_summary = {
+            'SUCCESS': {
+                'codes': [0],
+                'description': 'Operation completed successfully',
+                'action': 'No action needed'
+            },
+            'WARNING': {
+                'codes': [1],
+                'description': 'Operation completed with warnings',
+                'action': 'Check display status, may need attention'
+            },
+            'LIBRARY_ERROR': {
+                'codes': list(range(2, 14)),
+                'description': 'Internal library errors',
+                'action': 'Check system resources, restart if persistent'
+            },
+            'ARGUMENT_ERROR': {
+                'codes': [100],
+                'description': 'Invalid function arguments',
+                'action': 'Verify parameter types and ranges'
+            },
+            'BRIGHTNESS_ERROR': {
+                'codes': [200],
+                'description': 'Invalid brightness values',
+                'action': 'Use 0-31 for manual, 255 for auto'
+            },
+            'FATAL_ERROR': {
+                'codes': [-1],
+                'description': 'Critical system errors',
+                'action': 'Check system logs, restart service'
+            },
+            'COMMUNICATION_ERROR': {
+                'codes': [10],
+                'description': 'Network communication issues',
+                'action': 'Check network connectivity and display status'
+            }
+        }
+        
+        self.logger.info("📋 ERROR CODE SUMMARY")
+        self.logger.info("=" * 40)
+        for error_type, info in error_summary.items():
+            self.logger.info(f"   {error_type}:")
+            self.logger.info(f"      Codes: {info['codes']}")
+            self.logger.info(f"      Description: {info['description']}")
+            self.logger.info(f"      Action: {info['action']}")
+            self.logger.info("")
+        
+        return error_summary
 
 def main():
     parser = argparse.ArgumentParser(description="CP5200 Display Controller")
@@ -451,6 +756,8 @@ def main():
     parser.add_argument("--alignment", type=int, default=1, help="Text alignment (1=left, 2=center, 3=right)")
     parser.add_argument("--connection-code-mode", action="store_true", help="Send message using connection code")
     parser.add_argument("--no-debug", action="store_true", help="Disable debug mode")
+    parser.add_argument("--test-errors", action="store_true", help="Test the error logging system")
+    parser.add_argument("--error-summary", action="store_true", help="Show error code summary")
     
     args = parser.parse_args()
     
@@ -474,6 +781,15 @@ def main():
     if not controller.build_cpp_code():
         print("\n❌ Build failed. Please check the errors above.")
         sys.exit(1)
+    
+    # Handle error logging tests
+    if args.test_errors:
+        controller.test_error_logging()
+        return
+    
+    if args.error_summary:
+        controller.get_error_summary()
+        return
     
     # If text is provided, send it immediately
     if args.text:
@@ -520,7 +836,11 @@ def main():
         print("   python3 run_cp5200_display.py --ip 192.168.1.222 --port 5200 --text 'Test'")
         print("   # Custom connection code:")
         print("   python3 run_cp5200_display.py --connection-code 255.255.255.0 --text 'Test' --connection-code-mode")
+        print("   # Error logging features:")
+        print("   python3 run_cp5200_display.py --test-errors")
+        print("   python3 run_cp5200_display.py --error-summary")
         print("\n📝 Logs are saved in the 'logs' directory with timestamps")
+        print("🚨 Enhanced error logging provides detailed troubleshooting information")
 
 if __name__ == "__main__":
     main()
