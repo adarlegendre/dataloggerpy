@@ -155,6 +155,164 @@ class CP5200Controller:
                 
         return parsed_data
     
+    def send_text_positioned(self, text, x=0, y=0, window_number=1, color=1, font_size=16, speed=5, effect=1, stay_time=10, alignment=1, use_connection_code=False):
+        """
+        Send text to the CP5200 display at a specific position
+        
+        Args:
+            text: Text to display
+            x: X coordinate (horizontal position)
+            y: Y coordinate (vertical position)
+            window_number: Display window number
+            color: Text color (1-16)
+            font_size: Font size
+            speed: Animation speed (1-10)
+            effect: Animation effect (1-10)
+            stay_time: How long to stay on screen (seconds)
+            alignment: Text alignment (1=left, 2=center, 3=right)
+            use_connection_code: Use connection code instead of specific IP
+        """
+        self.logger.info("📤 Sending positioned text to display...")
+        self.logger.info(f"   Text: '{text}'")
+        self.logger.info(f"   Position: ({x}, {y})")
+        self.logger.info(f"   Window: {window_number}")
+        self.logger.info(f"   Color: {color}")
+        self.logger.info(f"   Font Size: {font_size}")
+        self.logger.info(f"   Speed: {speed}")
+        self.logger.info(f"   Effect: {effect}")
+        self.logger.info(f"   Stay Time: {stay_time}s")
+        self.logger.info(f"   Alignment: {alignment}")
+        
+        # Choose IP address based on connection code setting
+        target_ip = self.connection_code if use_connection_code else self.ip_address
+        self.logger.info(f"   Target: {target_ip} (connection code)" if use_connection_code else f"   Target: {target_ip}")
+        
+        # Step 1: Create/position window using SplitWindow (function 1)
+        self.logger.info("🔧 Step 1: Creating positioned window...")
+        debug_mode = 1 if self.debug else 0
+        window_args = [
+            self.executable_path,
+            str(debug_mode),      # debug + output mode
+            target_ip,            # IP address (or connection code)
+            str(self.port),       # port
+            "1",                  # function 1 = split window
+            str(window_number),   # window number
+            str(x),               # X coordinate
+            str(y)                # Y coordinate
+        ]
+        
+        self.logger.info("🚀 Executing window creation command:")
+        self.logger.info(f"   {' '.join(window_args)}")
+        
+        try:
+            # Create positioned window
+            window_result = subprocess.run(window_args, capture_output=True, text=True, timeout=30)
+            
+            if window_result.returncode == 0:
+                self.logger.info("✅ Window positioned successfully!")
+                if window_result.stdout:
+                    self.logger.debug(f"Window creation output: {window_result.stdout}")
+            else:
+                self.logger.error("❌ Failed to position window!")
+                if window_result.stderr:
+                    self.logger.error(f"Window error: {window_result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Window creation error: {e}")
+            return False
+        
+        # Step 2: Send text to the positioned window
+        self.logger.info("🔧 Step 2: Sending text to positioned window...")
+        text_args = [
+            self.executable_path,
+            str(debug_mode),      # debug + output mode
+            target_ip,            # IP address (or connection code)
+            str(self.port),       # port
+            "2",                  # function 2 = send text
+            str(window_number),   # window number
+            text,                 # text to send
+            str(color),           # color
+            str(font_size),       # font size
+            str(speed),           # speed
+            str(effect),          # effect
+            str(stay_time),       # stay time
+            str(alignment)        # alignment
+        ]
+        
+        self.logger.info("🚀 Executing text sending command:")
+        self.logger.info(f"   {' '.join(text_args)}")
+        
+        try:
+            self.logger.debug("Starting text subprocess execution...")
+            result = subprocess.run(text_args, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                self.logger.info("✅ Positioned text sent successfully!")
+                
+                # Parse and log detailed output
+                if result.stdout:
+                    self.logger.info("📋 Raw Output:")
+                    self.logger.info(result.stdout)
+                    
+                    # Parse the output for detailed information
+                    parsed = self.parse_cpp_output(result.stdout)
+                    
+                    # Log parsed information
+                    self.logger.info("🔍 Parsed Information:")
+                    if parsed['library_version']:
+                        self.logger.info(f"   Library Version: V{parsed['library_version']}")
+                    if parsed['arguments']:
+                        self.logger.info("   Arguments:")
+                        for arg in parsed['arguments']:
+                            self.logger.info(f"      {arg}")
+                    if parsed['hex_data']:
+                        self.logger.info(f"   Hex Data: {parsed['hex_data']}")
+                    if parsed['network_info']:
+                        self.logger.info("   Network Info:")
+                        for key, value in parsed['network_info'].items():
+                            self.logger.info(f"      {key}: {value}")
+                    if parsed['response_data']:
+                        self.logger.info(f"   Response Data: {parsed['response_data']}")
+                    if parsed['result_code']:
+                        self.logger.info(f"   Result Code: {parsed['result_code']}")
+                        
+                        # Interpret result code
+                        try:
+                            result_code = int(parsed['result_code'])
+                            if result_code == 0:
+                                self.logger.info("   ✅ Result: Success (0)")
+                            elif result_code == 1:
+                                self.logger.warning("   ⚠️  Result: Warning/Info (1)")
+                            elif result_code >= 2 and result_code <= 13:
+                                self.logger.error(f"   ❌ Result: Library Error ({result_code})")
+                            elif result_code == 100:
+                                self.logger.error("   ❌ Result: Argument Error (100)")
+                            elif result_code == 200:
+                                self.logger.error("   ❌ Result: Argument Error (200)")
+                            else:
+                                self.logger.info(f"   ℹ️  Result: Unknown ({result_code})")
+                        except ValueError:
+                            self.logger.warning(f"   ⚠️  Could not parse result code: {parsed['result_code']}")
+                            
+                if result.stderr:
+                    self.logger.warning("⚠️  stderr output:")
+                    self.logger.warning(result.stderr)
+                    
+            else:
+                self.logger.error("❌ Failed to send positioned text!")
+                if result.stderr:
+                    self.logger.error("Error:")
+                    self.logger.error(result.stderr)
+                if result.stdout:
+                    self.logger.error("Output:")
+                    self.logger.error(result.stdout)
+                    
+        except subprocess.TimeoutExpired:
+            self.logger.error("❌ Command timed out after 30 seconds")
+        except Exception as e:
+            self.logger.error(f"❌ Error executing command: {e}")
+
     def send_text(self, text, window_number=1, color=1, font_size=16, speed=5, effect=1, stay_time=10, alignment=1, use_connection_code=False):
         """
         Send text to the CP5200 display
@@ -281,6 +439,9 @@ def main():
     parser.add_argument("--connection-code", default="255.255.255.255", help="Connection code for network range")
     parser.add_argument("--port", type=int, default=5200, help="Display port")
     parser.add_argument("--text", help="Text to send immediately")
+    parser.add_argument("--x", type=int, default=0, help="X coordinate for positioned text (default: 0)")
+    parser.add_argument("--y", type=int, default=0, help="Y coordinate for positioned text (default: 0)")
+    parser.add_argument("--positioned", action="store_true", help="Send text at specific position using SplitWindow")
     parser.add_argument("--window", type=int, default=1, help="Window number")
     parser.add_argument("--color", type=int, default=1, help="Text color (1-16)")
     parser.add_argument("--font-size", type=int, default=16, help="Font size")
@@ -316,17 +477,34 @@ def main():
     
     # If text is provided, send it immediately
     if args.text:
-        controller.send_text(
-            text=args.text,
-            window_number=args.window,
-            color=args.color,
-            font_size=args.font_size,
-            speed=args.speed,
-            effect=args.effect,
-            stay_time=args.stay,
-            alignment=args.alignment,
-            use_connection_code=args.connection_code_mode
-        )
+        if args.positioned:
+            # Use positioned text function
+            controller.send_text_positioned(
+                text=args.text,
+                x=args.x,
+                y=args.y,
+                window_number=args.window,
+                color=args.color,
+                font_size=args.font_size,
+                speed=args.speed,
+                effect=args.effect,
+                stay_time=args.stay,
+                alignment=args.alignment,
+                use_connection_code=args.connection_code_mode
+            )
+        else:
+            # Use regular text function
+            controller.send_text(
+                text=args.text,
+                window_number=args.window,
+                color=args.color,
+                font_size=args.font_size,
+                speed=args.speed,
+                effect=args.effect,
+                stay_time=args.stay,
+                alignment=args.alignment,
+                use_connection_code=args.connection_code_mode
+            )
     else:
         # Show usage
         print("\n📖 Usage examples:")
@@ -334,6 +512,10 @@ def main():
         print("   python3 run_cp5200_display.py --text 'Hello World!'")
         print("   # Send text using connection code:")
         print("   python3 run_cp5200_display.py --text 'Hello World!' --connection-code-mode")
+        print("   # Send text at specific position (top-left corner):")
+        print("   python3 run_cp5200_display.py --text 'Top Left Text' --positioned --x 0 --y 0")
+        print("   # Send text at custom position:")
+        print("   python3 run_cp5200_display.py --text 'Custom Position' --positioned --x 100 --y 50")
         print("   # Custom settings:")
         print("   python3 run_cp5200_display.py --ip 192.168.1.222 --port 5200 --text 'Test'")
         print("   # Custom connection code:")
