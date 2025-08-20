@@ -1,6 +1,6 @@
 # CP5200 Display Controller - Raspberry Pi Edition
 
-This project provides a Python interface to control CP5200 displays using the original C++ code. It's designed to work on Raspberry Pi and makes it easy to send text and other content to your display.
+This project provides a Python interface to control CP5200 displays using the original C++ code. It's designed to work on Raspberry Pi and makes it easy to send text to your display.
 
 ## 🚀 Quick Start
 
@@ -15,10 +15,7 @@ chmod +x setup_raspberry_pi.sh
 ### 2. Run the Python Controller
 
 ```bash
-# Interactive mode (recommended for first use)
-python3 run_cp5200_display.py --interactive
-
-# Or send text directly
+# Send text directly
 python3 run_cp5200_display.py --text "Hello World!"
 ```
 
@@ -56,18 +53,17 @@ python3 run_cp5200_display.py [OPTIONS]
 
 Options:
   --ip IP_ADDRESS     Display IP address (default: 192.168.1.222)
-  --broadcast ADDR    Broadcast address for network-wide messages (default: 255.255.255.255)
+  --connection-code CODE Connection code for network range (default: 255.255.255.255)
   --port PORT         Display port (default: 5200)
   --text TEXT         Text to send immediately
   --window NUMBER     Window number (default: 1)
   --color NUMBER      Text color 1-16 (default: 1)
   --font-size NUMBER  Font size (default: 16)
   --speed NUMBER      Animation speed 1-10 (default: 5)
-  --effect NUMBER     Animation effect 1-10 (default: 1)
+  --effect NUMBER     Animation effect (1-10) (default: 1)
   --stay SECONDS      Stay time in seconds (default: 10)
   --alignment NUMBER  Text alignment: 1=left, 2=center, 3=right (default: 1)
-  --broadcast-mode    Send message using broadcast address instead of specific IP
-  --interactive       Run in interactive mode
+  --connection-code-mode Send message using connection code instead of specific IP
   --no-debug          Disable debug mode
 ```
 
@@ -83,24 +79,12 @@ python3 run_cp5200_display.py --text "Alert!" --color 2 --font-size 24 --speed 3
 # Use different display
 python3 run_cp5200_display.py --ip 192.168.1.222 --port 5200 --text "Test"
 
-# Send text using broadcast (to all devices on network)
-python3 run_cp5200_display.py --text "Network Alert!" --broadcast-mode
+# Send text using connection code (to all devices on network)
+python3 run_cp5200_display.py --text "Network Alert!" --connection-code-mode
 
-# Use custom broadcast address
-python3 run_cp5200_display.py --broadcast 192.168.1.255 --text "Local Alert!" --broadcast-mode
-
-# Interactive mode for testing
-python3 run_cp5200_display.py --interactive
+# Use custom connection code
+python3 run_cp5200_display.py --connection-code 255.255.255.0 --text "Local Alert!" --connection-code-mode
 ```
-
-## 🎮 Interactive Mode
-
-Interactive mode provides a menu-driven interface:
-
-1. **Send Text** - Enter text to display
-2. **Change Settings** - Modify IP, broadcast address, port, debug mode
-3. **Test Connection** - Verify network connectivity
-4. **Exit** - Quit the program
 
 ## 🔍 Troubleshooting
 
@@ -143,7 +127,7 @@ sendcp5200/
 
 ## 🔗 How It Works
 
-1. **Python Interface** - Provides easy-to-use commands and interactive mode
+1. **Python Interface** - Provides easy-to-use commands for sending text
 2. **C++ Compilation** - Automatically builds the original C++ code
 3. **Display Communication** - Sends commands to CP5200 display via TCP/IP
 4. **Error Handling** - Provides clear feedback and troubleshooting information
