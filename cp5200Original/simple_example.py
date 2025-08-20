@@ -111,3 +111,9 @@ if __name__ == "__main__":
         print("2. Check network connectivity to 192.168.1.222")
         print("3. Verify the library is compiled (run build_cp5200_python.py)")
         print("4. Check if port 5200 is accessible")
+
+
+
+
+
+

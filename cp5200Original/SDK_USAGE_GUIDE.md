@@ -454,3 +454,9 @@ print(f"IP port: {lib._ip_port}")
 ```
 
 This guide covers all the essential functions of the CP5200 SDK. Start with simple text display and gradually add more complex features like window splitting and picture display.
+
+
+
+
+
+

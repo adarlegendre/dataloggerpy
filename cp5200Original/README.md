@@ -298,3 +298,9 @@ Your CP5200 SDK is working correctly when:
 - ✅ All function calls return success (0)
 
 Start with `simple_example.py` to verify basic functionality, then progress to more complex tests as needed!
+
+
+
+
+
+
