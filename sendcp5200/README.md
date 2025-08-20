@@ -56,6 +56,7 @@ python3 run_cp5200_display.py [OPTIONS]
 
 Options:
   --ip IP_ADDRESS     Display IP address (default: 192.168.1.222)
+  --broadcast ADDR    Broadcast address for network-wide messages (default: 255.255.255.255)
   --port PORT         Display port (default: 5200)
   --text TEXT         Text to send immediately
   --window NUMBER     Window number (default: 1)
@@ -65,6 +66,7 @@ Options:
   --effect NUMBER     Animation effect 1-10 (default: 1)
   --stay SECONDS      Stay time in seconds (default: 10)
   --alignment NUMBER  Text alignment: 1=left, 2=center, 3=right (default: 1)
+  --broadcast-mode    Send message using broadcast address instead of specific IP
   --interactive       Run in interactive mode
   --no-debug          Disable debug mode
 ```
@@ -81,6 +83,12 @@ python3 run_cp5200_display.py --text "Alert!" --color 2 --font-size 24 --speed 3
 # Use different display
 python3 run_cp5200_display.py --ip 192.168.1.222 --port 5200 --text "Test"
 
+# Send text using broadcast (to all devices on network)
+python3 run_cp5200_display.py --text "Network Alert!" --broadcast-mode
+
+# Use custom broadcast address
+python3 run_cp5200_display.py --broadcast 192.168.1.255 --text "Local Alert!" --broadcast-mode
+
 # Interactive mode for testing
 python3 run_cp5200_display.py --interactive
 ```
@@ -90,7 +98,7 @@ python3 run_cp5200_display.py --interactive
 Interactive mode provides a menu-driven interface:
 
 1. **Send Text** - Enter text to display
-2. **Change Settings** - Modify IP, port, debug mode
+2. **Change Settings** - Modify IP, broadcast address, port, debug mode
 3. **Test Connection** - Verify network connectivity
 4. **Exit** - Quit the program
 

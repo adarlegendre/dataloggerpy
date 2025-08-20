@@ -12,9 +12,10 @@ import argparse
 from pathlib import Path
 
 class CP5200Controller:
-    def __init__(self, ip_address="192.168.1.222", port=5200, debug=True):
+    def __init__(self, ip_address="192.168.1.222", port=5200, broadcast_address="255.255.255.255", debug=True):
         self.ip_address = ip_address
         self.port = port
+        self.broadcast_address = broadcast_address
         self.debug = debug
         self.executable_path = "./dist/Debug/GNU-Linux/sendcp5200"
         
@@ -74,7 +75,7 @@ class CP5200Controller:
             print(f"❌ Build error: {e}")
             return False
     
-    def send_text(self, text, window_number=1, color=1, font_size=16, speed=5, effect=1, stay_time=10, alignment=1):
+    def send_text(self, text, window_number=1, color=1, font_size=16, speed=5, effect=1, stay_time=10, alignment=1, use_broadcast=False):
         """
         Send text to the CP5200 display
         
@@ -87,6 +88,7 @@ class CP5200Controller:
             effect: Animation effect (1-10)
             stay_time: How long to stay on screen (seconds)
             alignment: Text alignment (1=left, 2=center, 3=right)
+            use_broadcast: Use broadcast address instead of specific IP
         """
         print(f"\n📤 Sending text to display...")
         print(f"   Text: '{text}'")
@@ -98,12 +100,16 @@ class CP5200Controller:
         print(f"   Stay Time: {stay_time}s")
         print(f"   Alignment: {alignment}")
         
+        # Choose IP address based on broadcast setting
+        target_ip = self.broadcast_address if use_broadcast else self.ip_address
+        print(f"   Target: {target_ip} (broadcast)" if use_broadcast else f"   Target: {target_ip}")
+        
         # Build command arguments
         debug_mode = 1 if self.debug else 0
         args = [
             self.executable_path,
             str(debug_mode),      # debug + output mode
-            self.ip_address,      # IP address
+            target_ip,            # IP address (or broadcast)
             str(self.port),       # port
             "2",                  # function 2 = send text
             str(window_number),   # window number
@@ -185,12 +191,17 @@ class CP5200Controller:
             elif choice == "2":
                 print("\nCurrent settings:")
                 print(f"   IP Address: {self.ip_address}")
+                print(f"   Broadcast Address: {self.broadcast_address}")
                 print(f"   Port: {self.port}")
                 print(f"   Debug: {self.debug}")
                 
                 new_ip = input(f"New IP address (or press Enter to keep {self.ip_address}): ").strip()
                 if new_ip:
                     self.ip_address = new_ip
+                    
+                new_broadcast = input(f"New broadcast address (or press Enter to keep {self.broadcast_address}): ").strip()
+                if new_broadcast:
+                    self.broadcast_address = new_broadcast
                     
                 new_port = input(f"New port (or press Enter to keep {self.port}): ").strip()
                 if new_port:
@@ -215,6 +226,7 @@ class CP5200Controller:
 def main():
     parser = argparse.ArgumentParser(description="CP5200 Display Controller")
     parser.add_argument("--ip", default="192.168.1.222", help="Display IP address")
+    parser.add_argument("--broadcast", default="255.255.255.255", help="Broadcast address for network-wide messages")
     parser.add_argument("--port", type=int, default=5200, help="Display port")
     parser.add_argument("--text", help="Text to send immediately")
     parser.add_argument("--window", type=int, default=1, help="Window number")
@@ -224,6 +236,7 @@ def main():
     parser.add_argument("--effect", type=int, default=1, help="Animation effect (1-10)")
     parser.add_argument("--stay", type=int, default=10, help="Stay time in seconds")
     parser.add_argument("--alignment", type=int, default=1, help="Text alignment (1=left, 2=center, 3=right)")
+    parser.add_argument("--broadcast-mode", action="store_true", help="Send message using broadcast address")
     parser.add_argument("--interactive", action="store_true", help="Run in interactive mode")
     parser.add_argument("--no-debug", action="store_true", help="Disable debug mode")
     
@@ -236,6 +249,7 @@ def main():
     controller = CP5200Controller(
         ip_address=args.ip,
         port=args.port,
+        broadcast_address=args.broadcast,
         debug=not args.no_debug
     )
     
@@ -259,7 +273,8 @@ def main():
             speed=args.speed,
             effect=args.effect,
             stay_time=args.stay,
-            alignment=args.alignment
+            alignment=args.alignment,
+            use_broadcast=args.broadcast_mode
         )
     elif args.interactive:
         # Run interactive mode
@@ -269,10 +284,14 @@ def main():
         print("\n📖 Usage examples:")
         print("   # Send text immediately:")
         print("   python3 run_cp5200_display.py --text 'Hello World!'")
+        print("   # Send text using broadcast:")
+        print("   python3 run_cp5200_display.py --text 'Hello World!' --broadcast-mode")
         print("   # Run interactively:")
         print("   python3 run_cp5200_display.py --interactive")
         print("   # Custom settings:")
         print("   python3 run_cp5200_display.py --ip 192.168.1.222 --port 5200 --text 'Test'")
+        print("   # Custom broadcast address:")
+        print("   python3 run_cp5200_display.py --broadcast 192.168.1.255 --text 'Test' --broadcast-mode")
 
 if __name__ == "__main__":
     main()
