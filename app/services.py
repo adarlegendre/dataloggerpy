@@ -679,70 +679,109 @@ class RadarDataService:
                                     # Decode the data
                                     decoded_data = data.decode('utf-8', errors='replace').strip("b'")
                                     
-                                    # Process the data if it starts with *+, *-, or *?
-                                    if decoded_data.startswith(("*+", "*-", "*?")):
+                                    # Process the data if it starts with *+, *-, *?, A+, or A-
+                                    if decoded_data.startswith(("*+", "*-", "*?", "A+", "A-")):
                                         try:
-                                            # Get the prefix and remove it
-                                            prefix = decoded_data[:2]  # *+ or *- or *?
-                                            data_without_prefix = decoded_data[2:]
-                                            # Split by comma
-                                            parts = data_without_prefix.split(',')
-                                            if len(parts) == 2:
-                                                range_val = float(parts[0])
-                                                speed_val = float(parts[1])
-
-                                                # Determine direction name based on prefix
-                                                if prefix == '*+':
+                                            # Check for new format (A+XXX or A-XXX)
+                                            if len(decoded_data) == 5 and decoded_data.startswith('A') and decoded_data[1] in '+-':
+                                                # Parse A+XXX format
+                                                direction_sign = decoded_data[1]  # + or -
+                                                speed_str = decoded_data[2:]      # XXX (3 digits)
+                                                speed_val = int(speed_str)
+                                                range_val = None  # No range data in new format
+                                                
+                                                # Determine direction name based on sign
+                                                if direction_sign == '+':
                                                     direction_name = radar.direction_positive_name
-                                                elif prefix == '*-':
-                                                    direction_name = radar.direction_negative_name
-                                                else:  # '*?'
-                                                    direction_name = 'Unknown'
-
-                                                # Update last valid data time
-                                                last_valid_data_time = time.time()
-
-                                                # Format the data for display
-                                                display_data = {
-                                                    'status': 'success',
-                                                    'range': range_val,
-                                                    'speed': speed_val,
-                                                    'timestamp': time.time(),
-                                                    'connection_status': 'connected',
-                                                    'raw_data': decoded_data,
-                                                    'display_text': f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}km/h",
-                                                    'direction_name': direction_name,  # Save direction name directly
-                                                    'direction_prefix': prefix         # Save prefix for reference
-                                                }
-
-                                                data_queue.put(display_data)
-
-                                                # Add to data cache for periodic file saving
-                                                if radar.id in self.data_cache:
-                                                    self.data_cache[radar.id].append(display_data)
-
-                                                # Handle zero and non-zero readings
-                                                if range_val == 0 and speed_val == 0:
-                                                    consecutive_zeros += 1
-                                                    # If we have enough consecutive zeros and we were tracking a detection
-                                                    if consecutive_zeros >= max_consecutive_zeros and current_detection:
-                                                        # Save the current detection if it has any non-zero values
-                                                        has_non_zero = any(
-                                                            float(p['raw_data'][2:].split(',')[0]) != 0 or 
-                                                            float(p['raw_data'][2:].split(',')[1]) != 0 
-                                                            for p in current_detection
-                                                        )
-                                                        if has_non_zero:
-                                                            # Save detection to database
-                                                            self._save_detection(radar, current_detection)
-                                                        current_detection = []
-                                                        last_was_zero = True
+                                                    prefix = 'A+'
                                                 else:
-                                                    # Reset consecutive zeros counter
-                                                    consecutive_zeros = 0
-                                                    # Add to current detection
-                                                    current_detection.append(display_data)
-                                                    last_was_zero = False
+                                                    direction_name = radar.direction_negative_name
+                                                    prefix = 'A-'
+                                                
+                                                display_text = f"[CONNECTED] Speed: {speed_val}km/h"
+                                                
+                                            else:
+                                                # Parse old format (*+XXX,YYY or *-XXX,YYY)
+                                                prefix = decoded_data[:2]  # *+ or *- or *?
+                                                data_without_prefix = decoded_data[2:]
+                                                # Split by comma
+                                                parts = data_without_prefix.split(',')
+                                                if len(parts) == 2:
+                                                    range_val = float(parts[0])
+                                                    speed_val = float(parts[1])
+                                                    
+                                                    # Determine direction name based on prefix
+                                                    if prefix == '*+':
+                                                        direction_name = radar.direction_positive_name
+                                                    elif prefix == '*-':
+                                                        direction_name = radar.direction_negative_name
+                                                    else:  # '*?'
+                                                        direction_name = 'Unknown'
+                                                    
+                                                    display_text = f"[CONNECTED] Range: {range_val}m, Speed: {speed_val}km/h"
+                                                else:
+                                                    continue  # Skip invalid old format data
+
+                                            # Update last valid data time
+                                            last_valid_data_time = time.time()
+
+                                            # Format the data for display
+                                            display_data = {
+                                                'status': 'success',
+                                                'range': range_val,
+                                                'speed': speed_val,
+                                                'timestamp': time.time(),
+                                                'connection_status': 'connected',
+                                                'raw_data': decoded_data,
+                                                'display_text': display_text,
+                                                'direction_name': direction_name,  # Save direction name directly
+                                                'direction_prefix': prefix         # Save prefix for reference
+                                            }
+
+                                            data_queue.put(display_data)
+
+                                            # Add to data cache for periodic file saving
+                                            if radar.id in self.data_cache:
+                                                self.data_cache[radar.id].append(display_data)
+
+                                            # Handle zero and non-zero readings
+                                            if (range_val is None and speed_val == 0) or (range_val is not None and range_val == 0 and speed_val == 0):
+                                                consecutive_zeros += 1
+                                                # If we have enough consecutive zeros and we were tracking a detection
+                                                if consecutive_zeros >= max_consecutive_zeros and current_detection:
+                                                    # Save the current detection if it has any non-zero values
+                                                    has_non_zero = False
+                                                    for p in current_detection:
+                                                        if p['raw_data'].startswith('A'):
+                                                            # New format: A+XXX
+                                                            speed = int(p['raw_data'][2:])
+                                                            if speed != 0:
+                                                                has_non_zero = True
+                                                                break
+                                                        else:
+                                                            # Old format: *+XXX,YYY
+                                                            try:
+                                                                parts = p['raw_data'][2:].split(',')
+                                                                if len(parts) == 2:
+                                                                    range_val = float(parts[0])
+                                                                    speed_val = float(parts[1])
+                                                                    if range_val != 0 or speed_val != 0:
+                                                                        has_non_zero = True
+                                                                        break
+                                                            except:
+                                                                continue
+                                                    
+                                                    if has_non_zero:
+                                                        # Save detection to database
+                                                        self._save_detection(radar, current_detection)
+                                                    current_detection = []
+                                                    last_was_zero = True
+                                            else:
+                                                # Reset consecutive zeros counter
+                                                consecutive_zeros = 0
+                                                # Add to current detection
+                                                current_detection.append(display_data)
+                                                last_was_zero = False
                                                     
                                         except ValueError as e:
                                             logger.debug(f"Invalid numeric values in data: {decoded_data}, error: {str(e)}")
