@@ -514,6 +514,8 @@ class CP5200Controller:
                 return "SUCCESS"
             elif error_code == 1:
                 return "WARNING"
+            elif error_code == 10:
+                return "COMMUNICATION_ERROR"
             elif 2 <= error_code <= 13:
                 return "LIBRARY_ERROR"
             elif error_code == 100:
@@ -522,8 +524,6 @@ class CP5200Controller:
                 return "BRIGHTNESS_ERROR"
             elif error_code == -1:
                 return "FATAL_ERROR"
-            elif error_code == 10:
-                return "COMMUNICATION_ERROR"
             else:
                 return "UNKNOWN_ERROR"
         except ValueError:
