@@ -639,7 +639,9 @@ class RadarDataService:
                 with serial.Serial(
                     port=radar.port,
                     baudrate=radar.baud_rate,
-                    timeout=0.01  # Match the working script timeout
+                    timeout=0.01,  # Match the working script timeout
+                    write_timeout=0.01,
+                    inter_byte_timeout=0.01
                 ) as ser:
                     logger.info(f"Successfully connected to radar {radar.id} on {radar.port}")
                     
@@ -771,8 +773,16 @@ class RadarDataService:
                                                 except Exception as e:
                                                     logger.error(f"Error processing A+XXX data point: {str(e)}")
                                                     continue
+                            except serial.SerialException as e:
+                                if "device reports readiness to read but returned no data" in str(e):
+                                    logger.debug(f"Radar {radar.id}: Device not ready, retrying...")
+                                    time.sleep(0.1)
+                                    continue
+                                else:
+                                    logger.error(f"Radar {radar.id}: Serial error: {str(e)}")
+                                    break
                             except Exception as e:
-                                logger.error(f"Error reading data: {str(e)}")
+                                logger.error(f"Radar {radar.id}: Error reading data: {str(e)}")
                                 continue
                             
                             # Small sleep to prevent CPU spinning
