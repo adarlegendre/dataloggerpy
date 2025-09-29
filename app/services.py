@@ -700,8 +700,12 @@ class RadarDataService:
                                             decoded_data = chunk.decode('utf-8', errors='ignore')
                                             value = decoded_data[1:]  # "+123", "-005", etc.
                                             
+                                            # Log all received data for debugging
+                                            logger.debug(f"Radar {radar.id}: Received chunk: {decoded_data}, value: {value}")
+                                            
                                             # Only process non-zero values (like the working script)
                                             if value != '+000' and value != '-000':
+                                                logger.debug(f"Radar {radar.id}: Processing non-zero data: {decoded_data}")
                                                 # Process the A+XXX data
                                                 try:
                                                     # Parse A+XXX format
@@ -773,6 +777,8 @@ class RadarDataService:
                                                 except Exception as e:
                                                     logger.error(f"Error processing A+XXX data point: {str(e)}")
                                                     continue
+                                            else:
+                                                logger.debug(f"Radar {radar.id}: Filtered out zero value: {decoded_data}")
                             except serial.SerialException as e:
                                 if "device reports readiness to read but returned no data" in str(e):
                                     logger.debug(f"Radar {radar.id}: Device not ready, retrying...")
