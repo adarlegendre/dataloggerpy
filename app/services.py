@@ -633,6 +633,9 @@ class RadarDataService:
                 }
                 data_queue.put(error_message)
                 
+                # Small delay to ensure port is fully released
+                time.sleep(2)
+                
                 with serial.Serial(
                     port=radar.port,
                     baudrate=radar.baud_rate,
