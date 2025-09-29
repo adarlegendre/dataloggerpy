@@ -629,7 +629,7 @@ class RadarDataService:
                 with serial.Serial(
                     port=radar.port,
                     baudrate=radar.baud_rate,
-                    timeout=1.0  # Simplified timeout configuration
+                    timeout=0.01  # Match the working script timeout
                 ) as ser:
                     logger.info(f"Successfully connected to radar {radar.id} on {radar.port}")
                     
