@@ -618,6 +618,13 @@ class RadarDataService:
             try:
                 logger.info(f"Attempting to connect to radar {radar.id} on {radar.port} (Attempt {connection_attempts + 1}/{max_connection_attempts})")
                 
+                # Check if port exists before trying to connect
+                import os
+                if not os.path.exists(radar.port):
+                    logger.error(f"Port {radar.port} does not exist!")
+                    connection_attempts += 1
+                    continue
+                
                 # Create error message for serial terminal
                 error_message = {
                     'timestamp': int(time.time()),
@@ -633,8 +640,7 @@ class RadarDataService:
                 ) as ser:
                     logger.info(f"Successfully connected to radar {radar.id} on {radar.port}")
                     
-                    # Give some time for the serial connection to initialize
-                    time.sleep(2)
+                    # No sleep - start reading immediately like the working script
                     
                     # Send connection success message
                     success_message = {
@@ -671,6 +677,7 @@ class RadarDataService:
                                 data = ser.read(32)  # Smaller read for fast response
                                 
                                 if data:
+                                    logger.debug(f"Radar {radar.id}: Received {len(data)} bytes")
                                     # Add to buffer (exactly like the working script)
                                     if not hasattr(self, 'serial_buffers'):
                                         self.serial_buffers = {}
