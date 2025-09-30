@@ -612,7 +612,7 @@ class RadarDataService:
         last_was_zero = True
         last_save_time = time.time()
         last_valid_data_time = time.time()
-        data_timeout = 10  # seconds without valid data before reconnecting
+        data_timeout = 60  # seconds without valid data before reconnecting
 
         while not stop_event.is_set() and connection_attempts < max_connection_attempts:
             try:
@@ -647,6 +647,19 @@ class RadarDataService:
                     
                     # No sleep - start reading immediately like the working script
                     
+                    # Ensure exclusive access if supported and clear any stale buffers
+                    try:
+                        ser.exclusive = True
+                        logger.info("Enabled exclusive access on serial port")
+                    except Exception:
+                        pass
+                    try:
+                        ser.reset_input_buffer()
+                        ser.reset_output_buffer()
+                        logger.info("Serial buffers reset")
+                    except Exception:
+                        pass
+
                     # Send connection success message
                     success_message = {
                         'timestamp': int(time.time()),
@@ -682,6 +695,8 @@ class RadarDataService:
                                 data = ser.read(32)  # Smaller read for fast response
                                 
                                 if data:
+                                    # Any bytes received indicate device is active; refresh watchdog
+                                    last_valid_data_time = time.time()
                                     logger.debug(f"Radar {radar.id}: Received {len(data)} bytes")
                                     # Add to buffer (exactly like the working script)
                                     if not hasattr(self, 'serial_buffers'):
