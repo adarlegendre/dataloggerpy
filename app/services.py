@@ -699,7 +699,11 @@ class RadarDataService:
                                         if chunk.startswith(b'A') and len(chunk) == 5:
                                             decoded_data = chunk.decode('utf-8', errors='ignore')
                                             value = decoded_data[1:]  # "+123", "-005", etc.
-                                            
+
+                                            # Treat any well-formed A±XXX as activity to avoid false reconnects
+                                            # This updates the watchdog even for zero values (A+000 / A-000)
+                                            last_valid_data_time = time.time()
+
                                             # Log all received data for debugging
                                             logger.debug(f"Radar {radar.id}: Received chunk: {decoded_data}, value: {value}")
                                             
