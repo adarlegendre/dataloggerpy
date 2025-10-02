@@ -798,5 +798,7 @@ class SummaryStats(models.Model):
             stats.active_radars = active_radars
             stats.last_detection = last_detection
             stats.save()
+        
+        return stats
 
 
