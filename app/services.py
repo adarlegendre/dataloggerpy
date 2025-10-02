@@ -332,8 +332,40 @@ class RadarDataService:
             # First pass: count detections and process data
             for i, data_point in enumerate(data_to_process):
                 try:
-                    if data_point['raw_data'].startswith(('*+', '*-', '*?')):
-                        parts = data_point['raw_data'][1:].split(',')
+                    raw_data = data_point['raw_data']
+                    
+                    # Handle new format: A+XXX or A-XXX (speed only)
+                    if raw_data.startswith(('A+', 'A-')):
+                        try:
+                            # Parse new format: A+123 -> speed = 123, range = 0
+                            speed_val = int(raw_data[2:])  # Extract numeric part after A+
+                            range_val = 0  # New format doesn't have range
+                            
+                            # If we have a non-zero reading
+                            if speed_val != 0:
+                                current_detection.append(data_point)
+                                last_was_zero = False
+                            # If we have a zero reading and we were tracking a detection
+                            elif current_detection and not last_was_zero:
+                                # Count the detection
+                                detection_count += 1
+                                total_readings += len(current_detection)
+                                logger.debug(f"Counted detection #{detection_count} with {len(current_detection)} readings")
+                                current_detection = []
+                                last_was_zero = True
+                            
+                            # Process the last detection if this is the last data point
+                            if i == len(data_to_process) - 1 and current_detection and not last_was_zero:
+                                detection_count += 1
+                                total_readings += len(current_detection)
+                                logger.debug(f"Counted final detection #{detection_count} with {len(current_detection)} readings")
+                        except (ValueError, IndexError) as e:
+                            logger.warning(f"Error parsing new format data point {raw_data}: {str(e)}")
+                            continue
+                    
+                    # Handle old format: *+XXX,YYY or *-XXX,YYY (range and speed)
+                    elif raw_data.startswith(('*+', '*-', '*?')):
+                        parts = raw_data[1:].split(',')
                         if len(parts) == 2:
                             range_val = float(parts[0])
                             speed_val = float(parts[1])
@@ -385,8 +417,40 @@ class RadarDataService:
                     
                     for i, data_point in enumerate(data_to_process):
                         try:
-                            if data_point['raw_data'].startswith(('*+', '*-', '*?')):
-                                parts = data_point['raw_data'][1:].split(',')
+                            raw_data = data_point['raw_data']
+                            
+                            # Handle new format: A+XXX or A-XXX (speed only)
+                            if raw_data.startswith(('A+', 'A-')):
+                                try:
+                                    # Parse new format: A+123 -> speed = 123, range = 0
+                                    speed_val = int(raw_data[2:])  # Extract numeric part after A+
+                                    range_val = 0  # New format doesn't have range
+                                    
+                                    # If we have a non-zero reading
+                                    if speed_val != 0:
+                                        current_detection.append(data_point)
+                                        last_was_zero = False
+                                    # If we have a zero reading and we were tracking a detection
+                                    elif current_detection and not last_was_zero:
+                                        # Process and save the current detection
+                                        if self._process_and_save_detection(current_detection, f, detection_count + 1, radar):
+                                            detection_count += 1
+                                            logger.debug(f"Processed detection #{detection_count}")
+                                        current_detection = []
+                                        last_was_zero = True
+                                    
+                                    # Process the last detection if this is the last data point
+                                    if i == len(data_to_process) - 1 and current_detection and not last_was_zero:
+                                        if self._process_and_save_detection(current_detection, f, detection_count + 1, radar):
+                                            detection_count += 1
+                                            logger.debug(f"Processed final detection #{detection_count}")
+                                except (ValueError, IndexError) as e:
+                                    logger.warning(f"Error parsing new format data point {raw_data}: {str(e)}")
+                                    continue
+                            
+                            # Handle old format: *+XXX,YYY or *-XXX,YYY (range and speed)
+                            elif raw_data.startswith(('*+', '*-', '*?')):
+                                parts = raw_data[1:].split(',')
                                 if len(parts) == 2:
                                     range_val = float(parts[0])
                                     speed_val = float(parts[1])
@@ -465,20 +529,47 @@ class RadarDataService:
             # Process each reading
             direction_counts = {'positive': 0, 'negative': 0, 'unknown': 0}
             for i, data_point in enumerate(detection):
-                # Parse prefix and range/speed
-                prefix = data_point['raw_data'][:2]
-                parts = data_point['raw_data'][2:].split(',')
-                range_val = float(parts[0])
-                speed_val = float(parts[1])
+                raw_data = data_point['raw_data']
                 
-                # Determine direction name from prefix
-                if prefix == '*+':
-                    direction_name = radar.direction_positive_name
-                    direction_counts['positive'] += 1
-                elif prefix == '*-':
-                    direction_name = radar.direction_negative_name
-                    direction_counts['negative'] += 1
+                # Handle new format: A+XXX or A-XXX (speed only)
+                if raw_data.startswith(('A+', 'A-')):
+                    prefix = raw_data[:2]
+                    speed_val = int(raw_data[2:])  # Extract numeric part after A+
+                    range_val = 0  # New format doesn't have range
+                    
+                    # Determine direction name from prefix
+                    if prefix == 'A+':
+                        direction_name = radar.direction_positive_name
+                        direction_counts['positive'] += 1
+                    elif prefix == 'A-':
+                        direction_name = radar.direction_negative_name
+                        direction_counts['negative'] += 1
+                    else:
+                        direction_name = 'Unknown'
+                        direction_counts['unknown'] += 1
+                
+                # Handle old format: *+XXX,YYY or *-XXX,YYY (range and speed)
+                elif raw_data.startswith(('*+', '*-', '*?')):
+                    prefix = raw_data[:2]
+                    parts = raw_data[2:].split(',')
+                    range_val = float(parts[0])
+                    speed_val = float(parts[1])
+                    
+                    # Determine direction name from prefix
+                    if prefix == '*+':
+                        direction_name = radar.direction_positive_name
+                        direction_counts['positive'] += 1
+                    elif prefix == '*-':
+                        direction_name = radar.direction_negative_name
+                        direction_counts['negative'] += 1
+                    else:
+                        direction_name = 'Unknown'
+                        direction_counts['unknown'] += 1
+                
+                # Unknown format
                 else:
+                    range_val = 0
+                    speed_val = 0
                     direction_name = 'Unknown'
                     direction_counts['unknown'] += 1
                 
@@ -900,21 +991,50 @@ class RadarDataService:
             
             direction_counts = {'positive': 0, 'negative': 0, 'unknown': 0}
             for data_point in detection_data:
-                # Parse prefix and range/speed
-                prefix = data_point['raw_data'][:2]
-                parts = data_point['raw_data'][2:].split(',')
-                range_val = float(parts[0])
-                speed_val = float(parts[1])
-                # Determine direction name from prefix
-                if prefix == '*+':
-                    direction_name = radar.direction_positive_name
-                    direction_counts['positive'] += 1
-                elif prefix == '*-':
-                    direction_name = radar.direction_negative_name
-                    direction_counts['negative'] += 1
+                raw_data = data_point['raw_data']
+                
+                # Handle new format: A+XXX or A-XXX (speed only)
+                if raw_data.startswith(('A+', 'A-')):
+                    prefix = raw_data[:2]
+                    speed_val = int(raw_data[2:])  # Extract numeric part after A+
+                    range_val = 0  # New format doesn't have range
+                    
+                    # Determine direction name from prefix
+                    if prefix == 'A+':
+                        direction_name = radar.direction_positive_name
+                        direction_counts['positive'] += 1
+                    elif prefix == 'A-':
+                        direction_name = radar.direction_negative_name
+                        direction_counts['negative'] += 1
+                    else:
+                        direction_name = 'Unknown'
+                        direction_counts['unknown'] += 1
+                
+                # Handle old format: *+XXX,YYY or *-XXX,YYY (range and speed)
+                elif raw_data.startswith(('*+', '*-', '*?')):
+                    prefix = raw_data[:2]
+                    parts = raw_data[2:].split(',')
+                    range_val = float(parts[0])
+                    speed_val = float(parts[1])
+                    
+                    # Determine direction name from prefix
+                    if prefix == '*+':
+                        direction_name = radar.direction_positive_name
+                        direction_counts['positive'] += 1
+                    elif prefix == '*-':
+                        direction_name = radar.direction_negative_name
+                        direction_counts['negative'] += 1
+                    else:
+                        direction_name = 'Unknown'
+                        direction_counts['unknown'] += 1
+                
+                # Unknown format
                 else:
+                    range_val = 0
+                    speed_val = 0
                     direction_name = 'Unknown'
                     direction_counts['unknown'] += 1
+                
                 ranges.append(range_val)
                 speeds.append(speed_val)
                 # Convert timestamp to datetime string

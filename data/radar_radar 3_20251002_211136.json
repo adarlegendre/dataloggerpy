@@ -1,0 +1,9 @@
+[
+  [
+    {"comment": "Object Detection #1 - Start Time: 2025-10-02 21:11:36.172"},
+    {"timestamp": "2025-10-02 21:11:36.172", "raw_data": "A+045", "direction_name": "North"},
+    {"timestamp": "2025-10-02 21:11:37.172", "raw_data": "A+052", "direction_name": "North"},
+    {"timestamp": "2025-10-02 21:11:38.172", "raw_data": "A+048", "direction_name": "North"},
+    {"comment": "Object Detection #1 - End Time: 2025-10-02 21:11:38.172, Duration: 2.0s, Readings: 3, Range: 0.0-0.0m (avg: 0.0m), Speed: 45.0-52.0km/h (avg: 48.3km/h)"}
+  ]
+]
