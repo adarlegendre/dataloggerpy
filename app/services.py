@@ -179,8 +179,9 @@ class RadarDataService:
         self.radar_threads = {}
         self.data_queues = {}
         self.stop_events = {}
-        self.data_cache = {}  # Cache for storing radar data
+        self.data_cache = {}  # Cache for storing radar data (limited size)
         self.last_save_time = {}  # Track last save time for each radar
+        self.max_cache_size = 1000  # Maximum items per radar cache
         self.test_mode = False  # Flag for test mode
         self.test_data_index = 0  # Index for cycling through test data
         self.test_data = [
@@ -198,6 +199,85 @@ class RadarDataService:
             {'range': 16.6, 'speed': 0}
         ]
         logger.info("RadarDataService initialized")
+    
+    def get_memory_usage(self):
+        """Get current memory usage statistics"""
+        import psutil
+        import sys
+        
+        # Get system memory usage
+        memory = psutil.virtual_memory()
+        
+        # Get process memory usage
+        process = psutil.Process()
+        process_memory = process.memory_info()
+        
+        # Count cached data
+        total_cached_items = sum(len(cache) for cache in self.data_cache.values())
+        total_queue_items = sum(q.qsize() for q in self.data_queues.values())
+        
+        return {
+            'system_ram_percent': memory.percent,
+            'system_ram_available_gb': memory.available / (1024**3),
+            'process_memory_mb': process_memory.rss / (1024**2),
+            'cached_items': total_cached_items,
+            'queued_items': total_queue_items,
+            'active_radars': len(self.radar_threads)
+        }
+    
+    def cleanup_memory(self):
+        """Clean up memory by reducing cache sizes"""
+        logger.info("Performing memory cleanup...")
+        
+        for radar_id, cache in self.data_cache.items():
+            if len(cache) > self.max_cache_size:
+                # Reduce cache to 50% of max size
+                new_size = int(self.max_cache_size * 0.5)
+                self.data_cache[radar_id] = cache[-new_size:]
+                logger.info(f"Reduced cache for radar {radar_id} from {len(cache)} to {new_size} items")
+        
+        # Clear full queues
+        for radar_id, queue in self.data_queues.items():
+            if queue.qsize() > 400:  # 80% of max size
+                # Clear half the queue
+                cleared = 0
+                while not queue.empty() and cleared < 250:
+                    try:
+                        queue.get_nowait()
+                        cleared += 1
+                    except:
+                        break
+                logger.info(f"Cleared {cleared} items from queue for radar {radar_id}")
+    
+    def start_memory_monitor(self):
+        """Start periodic memory monitoring"""
+        def monitor():
+            while True:
+                try:
+                    usage = self.get_memory_usage()
+                    
+                    # Log memory usage every 5 minutes
+                    if hasattr(self, '_last_memory_log'):
+                        if time.time() - self._last_memory_log > 300:  # 5 minutes
+                            logger.info(f"Memory usage: {usage['system_ram_percent']:.1f}% system, "
+                                      f"{usage['process_memory_mb']:.1f}MB process, "
+                                      f"{usage['cached_items']} cached, {usage['queued_items']} queued")
+                            self._last_memory_log = time.time()
+                    else:
+                        self._last_memory_log = time.time()
+                    
+                    # Clean up if memory usage is high
+                    if usage['system_ram_percent'] > 85 or usage['process_memory_mb'] > 500:
+                        self.cleanup_memory()
+                    
+                    time.sleep(60)  # Check every minute
+                except Exception as e:
+                    logger.error(f"Error in memory monitor: {e}")
+                    time.sleep(60)
+        
+        monitor_thread = threading.Thread(target=monitor, daemon=True)
+        monitor_thread.start()
+        logger.info("Memory monitor started")
     
     def check_serial_ports(self):
         """Check available serial ports and their status"""
@@ -232,6 +312,10 @@ class RadarDataService:
     def start_service(self):
         """Start the radar data service"""
         logger.info("Starting radar data service")
+        
+        # Start memory monitoring
+        self.start_memory_monitor()
+        
         RadarConfig = apps.get_model('app', 'RadarConfig')
         radars = RadarConfig.objects.filter(is_active=True)
         
@@ -255,9 +339,9 @@ class RadarDataService:
             return
             
         logger.info(f"Initializing data structures for radar {radar_id}")
-        self.data_queues[radar_id] = Queue()
+        self.data_queues[radar_id] = Queue(maxsize=500)  # Limit queue size
         self.stop_events[radar_id] = threading.Event()
-        self.data_cache[radar_id] = []  # Removed maxlen limit
+        self.data_cache[radar_id] = []  # Limited size cache
         self.last_save_time[radar_id] = time.time()
         
         thread = threading.Thread(
@@ -852,9 +936,16 @@ class RadarDataService:
 
                                                     data_queue.put(display_data)
 
-                                                    # Add to data cache for periodic file saving
+                                                    # Add to data cache for periodic file saving (with memory limit)
                                                     if radar.id in self.data_cache:
-                                                        self.data_cache[radar.id].append(display_data)
+                                                        cache = self.data_cache[radar.id]
+                                                        cache.append(display_data)
+                                                        
+                                                        # Limit cache size to prevent memory issues
+                                                        if len(cache) > self.max_cache_size:
+                                                            # Remove oldest 20% of data
+                                                            remove_count = int(self.max_cache_size * 0.2)
+                                                            cache[:remove_count] = []
 
                                                     # Handle zero and non-zero readings
                                                     if speed_val == 0:

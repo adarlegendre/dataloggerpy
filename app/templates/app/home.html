@@ -547,7 +547,7 @@
     const radarCharts = {};
     const radarData = {};
     const MAX_DATA_POINTS = 30; // Show last 30 seconds of data
-    const UPDATE_INTERVAL = 100; // Update every 0.1 seconds
+    const UPDATE_INTERVAL = 1000; // Update every 1 second (reduced frequency to save memory)
 
     // Add time range configuration with persistence
     const timeRanges = {};
@@ -1155,7 +1155,7 @@
         {% for radar in radars %}
         const radarId = {{ radar.id }};
         const minutes = timeRanges[radarId] || 5;
-        const maxDataPoints = Math.ceil(minutes * 60 * 1000 / UPDATE_INTERVAL);
+        const maxDataPoints = Math.min(Math.ceil(minutes * 60 * 1000 / UPDATE_INTERVAL), 300); // Limit to 300 points max
         
         // Update time ranges for charts
         updateChartTimeRanges(radarId);

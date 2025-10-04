@@ -1,6 +1,8 @@
 # CP5200 Test Requirements
-# No external Python packages needed - uses only built-in modules
 # Requirements:
 # - Python 3.6+
 # - Compiled CP5200 library (libcp5200.so, libcp5200.dll, or similar)
-# - Network access to 192.168.1.222:5200 
+# - Network access to 192.168.1.222:5200
+
+# Memory monitoring
+psutil>=5.8.0 
