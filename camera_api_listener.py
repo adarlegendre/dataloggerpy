@@ -32,15 +32,18 @@ class CameraAPIListener:
             
             def do_POST(self):
                 """Handle POST requests from camera"""
-                if self.path == '/api/upark/capture':
+                print(f"\n📡 POST request received: {self.path}")
+                
+                if self.path == '/api/upark/capture' or self.path == '/NotificationInfo/TollgateInfo':
                     self.handle_camera_capture()
                 else:
+                    print(f"❌ Unknown endpoint: {self.path}")
                     self.send_response(404)
                     self.end_headers()
                     self.wfile.write(b'Not Found')
             
             def handle_camera_capture(self):
-                """Handle camera capture data"""
+                """Handle camera capture data - following the C# flow"""
                 try:
                     timestamp = datetime.now()
                     client_ip = self.client_address[0]
@@ -56,24 +59,72 @@ class CameraAPIListener:
                     if content_length > 0:
                         # Read POST data
                         post_data = self.rfile.read(content_length)
+                        request_body = post_data.decode('utf-8')
                         
-                        # Try to parse as JSON
+                        # Parse JSON
                         try:
-                            json_data = json.loads(post_data.decode('utf-8'))
+                            json_data = json.loads(request_body)
                             print(f"📋 JSON data received:")
                             print(json.dumps(json_data, indent=2))
                             
-                            # Extract vehicle information
-                            vehicle_info = self.extract_vehicle_info(json_data)
+                            # Extract data following the C# flow
+                            device_id = None
+                            plate_number = None
+                            vehicle_type = None
+                            picture_name = None
                             
-                            if vehicle_info:
-                                print(f"\n🚗 *** VEHICLE DETECTION DATA ***")
-                                print(f"🚗 *** VEHICLE DETECTION DATA ***")
-                                print(f"🚗 *** VEHICLE DETECTION DATA ***")
-                                for key, value in vehicle_info.items():
-                                    print(f"   {key}: {value}")
+                            # Extract device ID
+                            if 'deviceId' in json_data:
+                                device_id = json_data['deviceId']
+                            elif 'params' in json_data and 'deviceId' in json_data['params']:
+                                device_id = json_data['params']['deviceId']
+                            
+                            # Extract plate number (following the C# logic)
+                            if 'params' in json_data and 'plateNo' in json_data['params']:
+                                plate_number = json_data['params']['plateNo']
+                                if plate_number:
+                                    plate_number = str(plate_number).strip('{}')  # Remove curly braces
+                            
+                            # Extract vehicle type
+                            if 'params' in json_data and 'vehicleType' in json_data['params']:
+                                vehicle_type = json_data['params']['vehicleType']
+                            
+                            # Extract picture name
+                            if 'params' in json_data and 'picInfo' in json_data['params']:
+                                pic_info = json_data['params']['picInfo']
+                                if pic_info and len(pic_info) > 0:
+                                    picture_name = pic_info[0].get('url', '')
+                            
+                            # Extract other info
+                            confidence = json_data['params'].get('confidence') if 'params' in json_data else None
+                            pic_time = json_data['params'].get('picTime') if 'params' in json_data else None
+                            
+                            print(f"\n🚗 *** VEHICLE DETECTION DATA ***")
+                            print(f"🚗 *** VEHICLE DETECTION DATA ***")
+                            print(f"🚗 *** VEHICLE DETECTION DATA ***")
+                            print(f"   Device ID: {device_id}")
+                            print(f"   Plate Number: {plate_number}")
+                            print(f"   Vehicle Type: {vehicle_type}")
+                            print(f"   Confidence: {confidence}")
+                            print(f"   Picture Time: {pic_time}")
+                            print(f"   Picture Name: {picture_name}")
+                            
+                            # Process if we have a plate number (following C# logic)
+                            if plate_number and plate_number.strip():
+                                print("🚗 Calling processExitting...")
+                                # Here you would call your Django processing function
+                                # Task.Run(() => processExitting(serverUrl, plateNumber))
                                 
-                                # Store in listener
+                                # Store the detection
+                                vehicle_info = {
+                                    'device_id': device_id,
+                                    'plate_number': plate_number,
+                                    'vehicle_type': vehicle_type,
+                                    'confidence': confidence,
+                                    'pic_time': pic_time,
+                                    'picture_name': picture_name
+                                }
+                                
                                 self.listener.received_data.append({
                                     'timestamp': timestamp,
                                     'client_ip': client_ip,
@@ -84,10 +135,17 @@ class CameraAPIListener:
                                 })
                                 
                                 print(f"📊 Total detections: {len(self.listener.received_data)}")
+                            else:
+                                print("⚠️  No plate number found, skipping processing")
+                            
+                            # Show picture information if available
+                            if picture_name:
+                                print("📸 Picture Information:")
+                                print(f"   Picture Name: {picture_name}")
                             
                         except json.JSONDecodeError as e:
                             print(f"❌ JSON decode error: {e}")
-                            print(f"📄 Raw data: {post_data.decode('utf-8', errors='ignore')}")
+                            print(f"📄 Raw data: {request_body}")
                             
                             # Store raw data anyway
                             self.listener.received_data.append({
@@ -102,19 +160,14 @@ class CameraAPIListener:
                     else:
                         print("📦 No content received")
                     
-                    # Send response back to camera
+                    # Send response back to camera (following C# response format)
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
                     
-                    response = {
-                        'status': 'success',
-                        'message': 'Vehicle detection data received',
-                        'timestamp': timestamp.isoformat(),
-                        'server': 'Django Integration Server'
-                    }
-                    
-                    self.wfile.write(json.dumps(response).encode())
+                    response_message = {"Result": True, "Message": "Success"}
+                    json_response = json.dumps(response_message)
+                    self.wfile.write(json_response.encode())
                     
                 except Exception as e:
                     print(f"❌ Error handling camera capture: {e}")
@@ -122,40 +175,6 @@ class CameraAPIListener:
                     self.end_headers()
                     self.wfile.write(f'Error: {str(e)}'.encode())
             
-            def extract_vehicle_info(self, json_data):
-                """Extract vehicle information from JSON"""
-                vehicle_info = {}
-                
-                # Common field mappings for vehicle detection
-                field_mappings = {
-                    'plate_number': ['plate_number', 'plateNumber', 'license_plate', 'licensePlate', 'plate', 'number_plate', 'numberPlate'],
-                    'confidence': ['confidence', 'score', 'accuracy', 'detection_confidence'],
-                    'timestamp': ['timestamp', 'time', 'datetime', 'capture_time'],
-                    'speed': ['speed', 'velocity', 'vehicle_speed'],
-                    'direction': ['direction', 'bearing', 'vehicle_direction'],
-                    'location': ['location', 'position', 'coordinates', 'gps'],
-                    'vehicle_type': ['vehicle_type', 'vehicleType', 'type', 'class'],
-                    'color': ['color', 'vehicle_color', 'vehicleColor'],
-                    'make': ['make', 'brand', 'manufacturer'],
-                    'model': ['model', 'vehicle_model'],
-                    'image_url': ['image_url', 'imageUrl', 'image', 'photo', 'picture'],
-                    'camera_id': ['camera_id', 'cameraId', 'device_id', 'deviceId']
-                }
-                
-                def extract_nested_value(obj, keys):
-                    """Extract value from nested object using key list"""
-                    for key in keys:
-                        if key in obj:
-                            return obj[key]
-                    return None
-                
-                # Extract fields
-                for field, possible_keys in field_mappings.items():
-                    value = extract_nested_value(json_data, possible_keys)
-                    if value is not None:
-                        vehicle_info[field] = value
-                
-                return vehicle_info if vehicle_info else None
             
             def do_GET(self):
                 """Handle GET requests"""
