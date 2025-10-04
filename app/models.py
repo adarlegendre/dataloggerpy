@@ -755,10 +755,56 @@ class EmailNotification(models.Model):
             end_time__lte=self.end_date
         ).order_by('start_time')
 
+class CameraConfig(models.Model):
+    """Model to store camera configuration for vehicle detection"""
+    name = models.CharField(max_length=100, help_text="Camera name")
+    ip_address = models.GenericIPAddressField(help_text="Camera IP address")
+    port = models.IntegerField(default=5000, help_text="Camera port")
+    username = models.CharField(max_length=50, default="admin", help_text="Camera username")
+    password = models.CharField(max_length=100, help_text="Camera password")
+    protocol = models.CharField(max_length=20, default="VIID_2017", help_text="Protocol version")
+    is_active = models.BooleanField(default=True, help_text="Is camera active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Camera Configuration'
+        verbose_name_plural = 'Camera Configurations'
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.ip_address}:{self.port})"
+
+class CameraDetection(models.Model):
+    """Model to store camera vehicle detection data"""
+    camera = models.ForeignKey(CameraConfig, on_delete=models.CASCADE, related_name='detections')
+    plate_number = models.CharField(max_length=20, help_text="License plate number")
+    confidence = models.FloatField(help_text="Detection confidence (0-100)")
+    speed = models.FloatField(null=True, blank=True, help_text="Vehicle speed in km/h")
+    direction = models.CharField(max_length=50, blank=True, help_text="Vehicle direction")
+    vehicle_type = models.CharField(max_length=50, default="Motor Vehicle", help_text="Type of vehicle")
+    timestamp = models.DateTimeField(help_text="Detection timestamp")
+    raw_data = models.TextField(blank=True, help_text="Raw detection data")
+    data_format = models.CharField(max_length=20, default="unknown", help_text="Data format (xml, json, text)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Camera Detection'
+        verbose_name_plural = 'Camera Detections'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['camera', 'timestamp']),
+            models.Index(fields=['plate_number']),
+        ]
+
+    def __str__(self):
+        return f"{self.plate_number} - {self.camera.name} ({self.timestamp})"
+
 class SummaryStats(models.Model):
     """Model to store summary statistics for the dashboard"""
     total_objects = models.IntegerField(default=0, help_text="Total number of objects detected")
     active_radars = models.IntegerField(default=0, help_text="Number of active radars")
+    active_cameras = models.IntegerField(default=0, help_text="Number of active cameras")
     last_detection = models.DateTimeField(null=True, blank=True, help_text="Time of the last detection")
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -780,15 +826,31 @@ class SummaryStats(models.Model):
         """Update summary statistics"""
         total_objects = RadarObjectDetection.objects.count()
         active_radars = RadarConfig.objects.filter(is_active=True).count()
-        last_detection = RadarObjectDetection.objects.aggregate(
+        active_cameras = CameraConfig.objects.filter(is_active=True).count()
+        
+        # Get last detection from radar or camera
+        last_radar_detection = RadarObjectDetection.objects.aggregate(
             last=Max('start_time')
         )['last']
+        last_camera_detection = CameraDetection.objects.aggregate(
+            last=Max('timestamp')
+        )['last']
+        
+        # Use the most recent detection
+        last_detection = None
+        if last_radar_detection and last_camera_detection:
+            last_detection = max(last_radar_detection, last_camera_detection)
+        elif last_radar_detection:
+            last_detection = last_radar_detection
+        elif last_camera_detection:
+            last_detection = last_camera_detection
 
         stats, created = cls.objects.get_or_create(
             pk=1,
             defaults={
                 'total_objects': total_objects,
                 'active_radars': active_radars,
+                'active_cameras': active_cameras,
                 'last_detection': last_detection
             }
         )
@@ -796,6 +858,7 @@ class SummaryStats(models.Model):
         if not created:
             stats.total_objects = total_objects
             stats.active_radars = active_radars
+            stats.active_cameras = active_cameras
             stats.last_detection = last_detection
             stats.save()
         
