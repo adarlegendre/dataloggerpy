@@ -24,46 +24,62 @@ class SimpleCameraListener:
         
         try:
             # Create socket connection
+            print(f"📡 Creating socket...")
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(30)
+            
+            print(f"📡 Attempting connection to {self.camera_ip}:{self.camera_port}...")
             self.socket.connect((self.camera_ip, self.camera_port))
             
             print(f"✅ Connected to camera successfully!")
+            print(f"📡 Socket details: {self.socket.getsockname()} -> {self.socket.getpeername()}")
             
             # Try to login
-            self.try_login()
+            login_success = self.try_login()
             
             # Listen for data
-            print(f"🎧 Listening for data on port {self.camera_port}...")
-            print(f"⏱️  Timeout: {timeout} seconds")
+            print(f"\n🎧 Starting to listen for data on port {self.camera_port}...")
+            print(f"⏱️  Timeout: {timeout} seconds ({'infinite' if timeout == 0 else timeout})")
             print(f"📡 Press Ctrl+C to stop")
+            print(f"📊 Status updates every 10 seconds...")
+            print("=" * 60)
             
             self.running = True
             start_time = time.time()
+            last_status_time = start_time
+            no_data_count = 0
             
             while self.running and (timeout == 0 or time.time() - start_time < timeout):
                 try:
+                    # Set shorter timeout for receiving data
+                    self.socket.settimeout(5)
+                    
                     # Receive data
                     data = self.socket.recv(4096)
                     
                     if data:
                         timestamp = datetime.now()
-                        print(f"📄 [{timestamp.strftime('%H:%M:%S')}] Received {len(data)} bytes:")
+                        print(f"\n📄 [{timestamp.strftime('%H:%M:%S')}] *** DATA RECEIVED! ***")
+                        print(f"📦 Size: {len(data)} bytes")
                         
                         # Try to decode as text
                         try:
                             text_data = data.decode('utf-8', errors='ignore')
-                            print(f"📝 Text: {text_data}")
+                            print(f"📝 Text content: {text_data}")
                             
                             # Check for vehicle-related keywords
                             vehicle_keywords = ['plate', 'number', 'license', 'vehicle', 'detection', 'speed', 'direction']
                             if any(keyword in text_data.lower() for keyword in vehicle_keywords):
                                 print(f"🚗 *** VEHICLE DATA DETECTED! ***")
-                                print(f"   Data: {text_data}")
+                                print(f"🚗 *** VEHICLE DATA DETECTED! ***")
+                                print(f"🚗 *** VEHICLE DATA DETECTED! ***")
+                                print(f"   Vehicle Data: {text_data}")
+                            else:
+                                print(f"📋 Regular data: {text_data}")
                             
                         except:
                             # Show as hex if not text
-                            print(f"🔢 Hex: {data[:50].hex()}")
+                            print(f"🔢 Binary data (hex): {data[:50].hex()}")
                         
                         # Store data
                         self.received_data.append({
@@ -74,15 +90,25 @@ class SimpleCameraListener:
                         })
                         
                         print(f"📊 Total messages received: {len(self.received_data)}")
-                        print("-" * 50)
-                    
+                        no_data_count = 0  # Reset counter
+                        
                     else:
-                        print("📡 No data received")
-                        time.sleep(1)
+                        no_data_count += 1
+                        print(f"📡 No data received (count: {no_data_count})")
                         
                 except socket.timeout:
-                    print("⏱️  Timeout waiting for data")
+                    no_data_count += 1
+                    current_time = time.time()
+                    
+                    # Show status every 10 seconds
+                    if current_time - last_status_time >= 10:
+                        elapsed = int(current_time - start_time)
+                        remaining = timeout - elapsed if timeout > 0 else "∞"
+                        print(f"📊 Status: {elapsed}s elapsed, {remaining}s remaining, {len(self.received_data)} messages, {no_data_count} timeouts")
+                        last_status_time = current_time
+                    
                     continue
+                    
                 except Exception as e:
                     print(f"❌ Error receiving data: {e}")
                     break
@@ -97,45 +123,61 @@ class SimpleCameraListener:
     
     def try_login(self):
         """Try different login methods"""
-        print(f"🔐 Attempting to login with username: {self.username}")
+        print(f"\n🔐 Attempting to login with username: {self.username}")
+        print(f"🔐 Password: {'*' * len(self.password)}")
         
         # Try different login commands
         login_commands = [
             f"LOGIN {self.username} {self.password}\r\n",
-            f"AUTH {self.username}:{self.password}\r\n",
+            f"AUTH {self.username}:{self.password}\r\n", 
             f"USER {self.username}\r\nPASS {self.password}\r\n",
             f"admin:{self.password}\r\n",
-            f"{self.username}:{self.password}\r\n"
+            f"{self.username}:{self.password}\r\n",
+            f"HELLO\r\n",  # Simple greeting
+            f"STATUS\r\n",  # Check status
+            f"INFO\r\n"     # Get info
         ]
+        
+        successful_login = False
         
         for i, cmd in enumerate(login_commands, 1):
             try:
-                print(f"🔐 Trying login method {i}...")
+                print(f"\n🔐 Login method {i}: Sending '{cmd.strip()}'")
                 self.socket.send(cmd.encode('utf-8'))
                 
-                # Wait for response
-                time.sleep(1)
-                response = self.socket.recv(1024)
-                if response:
-                    text_response = response.decode('utf-8', errors='ignore')
-                    print(f"📄 Response: {text_response}")
-                    
-                    # Check if login was successful
-                    if any(success in text_response.lower() for success in ['success', 'ok', 'welcome', 'connected', 'authenticated']):
-                        print(f"✅ Login successful with method {i}")
-                        return True
-                    elif 'fail' in text_response.lower() or 'error' in text_response.lower():
-                        print(f"❌ Login failed with method {i}")
+                # Wait for response with timeout
+                self.socket.settimeout(3)
+                try:
+                    response = self.socket.recv(1024)
+                    if response:
+                        text_response = response.decode('utf-8', errors='ignore')
+                        print(f"📄 Response: {text_response}")
+                        
+                        # Check if login was successful
+                        if any(success in text_response.lower() for success in ['success', 'ok', 'welcome', 'connected', 'authenticated', 'ready']):
+                            print(f"✅ Login successful with method {i}!")
+                            successful_login = True
+                            break
+                        elif any(fail in text_response.lower() for fail in ['fail', 'error', 'invalid', 'denied', 'unauthorized']):
+                            print(f"❌ Login failed with method {i}")
+                        else:
+                            print(f"⚠️  Unclear response with method {i} - continuing...")
                     else:
-                        print(f"⚠️  Unclear response with method {i}")
-                else:
-                    print(f"⚠️  No response to method {i}")
+                        print(f"⚠️  No response to method {i}")
+                        
+                except socket.timeout:
+                    print(f"⏱️  No response to method {i} (timeout)")
                     
             except Exception as e:
                 print(f"❌ Login method {i} error: {e}")
         
-        print(f"⚠️  Login status unclear, continuing to monitor...")
-        return False
+        if successful_login:
+            print(f"🎉 Authentication successful!")
+        else:
+            print(f"⚠️  Authentication status unclear - continuing to monitor for data...")
+            print(f"💡 Camera might not require authentication or uses different method")
+        
+        return successful_login
     
     def get_received_data(self):
         """Get all received data"""
