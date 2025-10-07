@@ -211,6 +211,9 @@ class DisplayConfig(models.Model):
 class RadarConfig(models.Model):
     name = models.CharField(max_length=100, help_text="Name to identify this radar")
     imr_ad = models.CharField(max_length=50, blank=True, null=True, help_text="IMR_AD identifier (e.g., IMR_KD-BEKO)")
+    route = models.CharField(max_length=255, blank=True, null=True, help_text="Route identifier")
+    latitude = models.FloatField(blank=True, null=True, help_text="Latitude coordinate")
+    longitude = models.FloatField(blank=True, null=True, help_text="Longitude coordinate")
     port = models.CharField(max_length=50, help_text="Serial port (e.g., COM1, /dev/ttyUSB0)", unique=True)
     baud_rate = models.IntegerField(
         choices=[
