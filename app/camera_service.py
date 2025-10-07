@@ -233,3 +233,4 @@ class CameraDataService:
 
 # Global instance
 camera_service = CameraDataService()
+
