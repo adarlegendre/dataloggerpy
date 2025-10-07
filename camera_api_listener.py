@@ -56,27 +56,21 @@ class CameraAPIListener:
                 """Handle POST requests from camera"""
                 print(f"\n[POST] Request from {self.client_address[0]}: {self.path}")
                 
+                # Log all headers
+                print(f"[HEADERS]:")
+                for header, value in self.headers.items():
+                    print(f"  {header}: {value}")
+                
                 # Registration endpoint may not require auth initially
                 if self.path == '/VIID/System/Register':
                     print(f"[REGISTER] Camera registration request")
                     self.handle_camera_register()
                     return
                 
-                # Check authentication for other endpoints
-                if not self.check_auth():
-                    print(f"[AUTH FAILED] {self.client_address[0]}")
-                    self.send_auth_required()
-                    return
-                
-                print(f"[AUTH OK]")
-                
-                if self.path in ['/api/upark/capture', '/NotificationInfo/TollgateInfo']:
-                    self.handle_camera_capture()
-                else:
-                    print(f"[ERROR] Unknown endpoint: {self.path}")
-                    self.send_response(404)
-                    self.end_headers()
-                    self.wfile.write(b'Not Found')
+                # Accept ALL POST requests and log them (no auth required for debugging)
+                print(f"[ENDPOINT] {self.path}")
+                self.handle_any_request()
+                return
             
             def handle_camera_register(self):
                 """Handle camera registration request"""
@@ -114,6 +108,59 @@ class CameraAPIListener:
                     self.send_response(500)
                     self.end_headers()
                     self.wfile.write(f'Error: {str(e)}'.encode())
+            
+            def handle_any_request(self):
+                """Handle any POST request and log everything"""
+                try:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    print(f"[CONTENT-LENGTH] {content_length} bytes")
+                    
+                    if content_length > 0:
+                        post_data = self.rfile.read(content_length)
+                        request_body = post_data.decode('utf-8')
+                        
+                        # Log raw data from ANY endpoint
+                        print(f"\n[RAW DATA FROM {self.path}]")
+                        print("=" * 60)
+                        print(request_body)
+                        print("=" * 60)
+                        
+                        try:
+                            json_data = json.loads(request_body)
+                            print(f"[JSON PARSED]:")
+                            print(json.dumps(json_data, indent=2))
+                            
+                            # Try to find plate number anywhere in the JSON
+                            self.search_for_plate(json_data)
+                            
+                        except json.JSONDecodeError as e:
+                            print(f"[WARNING] Not JSON format: {e}")
+                    else:
+                        print(f"[INFO] Empty request body")
+                    
+                    # Always send success response
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = json.dumps({"Result": True, "ResultCode": 0, "Message": "Success"})
+                    self.wfile.write(response.encode())
+                    print(f"[RESPONSE] Success sent")
+                    
+                except Exception as e:
+                    print(f"[ERROR] {e}")
+                    self.send_response(200)  # Still send 200 to keep camera happy
+                    self.end_headers()
+            
+            def search_for_plate(self, data, path=""):
+                """Recursively search for plate number in JSON"""
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        if 'plate' in key.lower() or 'number' in key.lower():
+                            print(f"[FOUND] {path}.{key} = {value}")
+                        self.search_for_plate(value, f"{path}.{key}")
+                elif isinstance(data, list):
+                    for i, item in enumerate(data):
+                        self.search_for_plate(item, f"{path}[{i}]")
             
             def handle_camera_capture(self):
                 """Handle camera capture data"""
