@@ -56,7 +56,13 @@ class CameraAPIListener:
                 """Handle POST requests from camera"""
                 print(f"\n[POST] Request from {self.client_address[0]}: {self.path}")
                 
-                # Check authentication
+                # Registration endpoint may not require auth initially
+                if self.path == '/VIID/System/Register':
+                    print(f"[REGISTER] Camera registration request")
+                    self.handle_camera_register()
+                    return
+                
+                # Check authentication for other endpoints
                 if not self.check_auth():
                     print(f"[AUTH FAILED] {self.client_address[0]}")
                     self.send_auth_required()
@@ -71,6 +77,43 @@ class CameraAPIListener:
                     self.send_response(404)
                     self.end_headers()
                     self.wfile.write(b'Not Found')
+            
+            def handle_camera_register(self):
+                """Handle camera registration request"""
+                try:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    print(f"[CONTENT-LENGTH] {content_length} bytes")
+                    
+                    if content_length > 0:
+                        post_data = self.rfile.read(content_length)
+                        request_body = post_data.decode('utf-8')
+                        
+                        # Log raw registration data
+                        print(f"\n[RAW REGISTRATION DATA]")
+                        print("=" * 60)
+                        print(request_body)
+                        print("=" * 60)
+                        
+                        try:
+                            json_data = json.loads(request_body)
+                            print(f"[REGISTER JSON]:")
+                            print(json.dumps(json_data, indent=2))
+                        except json.JSONDecodeError as e:
+                            print(f"[ERROR] JSON decode error: {e}")
+                    
+                    # Send success response for registration
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = json.dumps({"ResultCode": 0, "Message": "Success"})
+                    self.wfile.write(response.encode())
+                    print(f"[REGISTER] Registration accepted")
+                    
+                except Exception as e:
+                    print(f"[ERROR] Registration error: {e}")
+                    self.send_response(500)
+                    self.end_headers()
+                    self.wfile.write(f'Error: {str(e)}'.encode())
             
             def handle_camera_capture(self):
                 """Handle camera capture data"""
