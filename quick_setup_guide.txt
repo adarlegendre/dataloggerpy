@@ -1,0 +1,46 @@
+QUICK SETUP TO GET EMAILS WORKING
+==================================
+
+ISSUE FOUND: Your notification settings are blocking emails!
+- Current Days: Monday,Sunday
+- Today: Wednesday
+- Result: No emails sent because Wednesday is not in the allowed days
+
+FIX FOR DAILY EMAILS AT MIDNIGHT:
+----------------------------------
+
+Option 1: Via Django Admin or Web Interface
+1. Go to Configuration -> Notification Settings
+2. Set "Days of the Week" to BLANK (or delete the content)
+3. Set "Notification Times" to: 00:00
+4. Save
+
+Option 2: Via Command Line
+python manage.py shell
+>>> from app.models import NotificationSettings
+>>> s = NotificationSettings.objects.first()
+>>> s.days_of_week = ''  # Empty = all days
+>>> s.notification_times = '00:00'  # Midnight
+>>> s.save()
+>>> exit()
+
+VERIFY IT WILL WORK:
+python manage.py check_notification_schedule
+
+If it says "Day check failed" - you need to fix the days setting!
+
+OBJECT DETECTION STATUS:
+- Working correctly! ✓
+- You have 5 detections in database from Oct 2
+- Logic groups non-zero values between zeros correctly
+
+WINDOWS TASK SCHEDULER:
+Run PowerShell as Administrator:
+.\setup_notification_scheduler.ps1
+
+LINUX CRON:
+python manage.py setup_cron_jobs
+
+TEST EMAIL:
+python -c "import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings'); import django; django.setup(); from app.models import NotificationSettings; from app.utils.notification_utils import send_daily_summary_email; from datetime import datetime, timedelta; from django.utils import timezone; yesterday = (timezone.now() - timedelta(days=1)).date(); start = timezone.make_aware(datetime.combine(yesterday, datetime.min.time())); end = timezone.make_aware(datetime.combine(yesterday, datetime.max.time())); send_daily_summary_email(start, end)"
+

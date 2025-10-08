@@ -18,3 +18,15 @@
 2025-07-20 20:28:11 - notification_service - INFO -    Enabled: True
 2025-07-20 20:28:11 - notification_service - INFO - Frequency check failed: 0:25:04.562388 < 1 day, 0:00:00 (daily)
 2025-07-20 20:28:11 - notification_service - INFO - Cron check completed
+2025-10-08 08:49:14 - notification_service - INFO - Cron check started - checking notification schedule
+2025-10-08 08:49:14 - notification_service - INFO - Checking settings for: adarzeph@gmail.com
+2025-10-08 08:49:14 - notification_service - INFO -    Frequency: daily
+2025-10-08 08:49:14 - notification_service - INFO -    Days: Monday,Sunday
+2025-10-08 08:49:14 - notification_service - INFO -    Times: Any time
+2025-10-08 08:49:14 - notification_service - INFO -    Enabled: True
+2025-10-08 08:49:14 - notification_service - INFO - Day check failed: Wednesday is not in allowed days Monday,Sunday
+2025-10-08 08:49:14 - notification_service - INFO - Cron check completed
+2025-10-08 08:55:28 - notification_service - ERROR - Cron setup failed
+2025-10-08 08:55:28 - notification_service - INFO -    Details: Email: adarzeph@gmail.com
+2025-10-08 08:55:28 - notification_service - INFO - Notification settings saved for adarzeph@gmail.com
+2025-10-08 08:55:28 - notification_service - WARNING -    Cron jobs not updated (check permissions)
