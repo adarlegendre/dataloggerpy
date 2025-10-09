@@ -196,85 +196,55 @@ def get_cron_schedule(settings):
 def setup_email_cron_jobs():
     """
     Set up cron jobs for email notifications.
-    Removes existing jobs and creates new ones based on notification settings.
+    Removes ALL existing notification jobs and creates ONE new job based on current settings.
+    This function runs automatically on server startup to ensure cron jobs are always correct.
     """
     try:
-        # Get notification settings
-        settings = NotificationSettings.objects.first()
-        if not settings:
-            logger.warning("No notification settings found. Using default daily schedule.")
-            settings = NotificationSettings(
-                frequency='daily',
-                enable_notifications=True
-            )
-        
-        if not settings.enable_notifications:
-            logger.info("Notifications are disabled in settings")
-            return False
-        
-        # Get project directory
-        project_dir = Path(__file__).resolve().parent.parent.parent
-        
-        # Get the Python interpreter path from the virtual environment
-        venv_python = os.path.join(project_dir, 'venv', 'bin', 'python')
-        if not os.path.exists(venv_python):
-            # Try Windows path
-            venv_python = os.path.join(project_dir, 'venv', 'Scripts', 'python.exe')
-        
-        if not os.path.exists(venv_python):
-            logger.error("Virtual environment Python interpreter not found")
-            return False
-
-        # Create logs directory if it doesn't exist
-        logs_dir = os.path.join(project_dir, 'logs')
-        os.makedirs(logs_dir, exist_ok=True)
-        
         # Check if we're on Windows
         if platform.system() == 'Windows':
             logger.info("Running on Windows - cron jobs will be handled by Windows Service")
             logger.info("Make sure the RadarNotificationService is installed and running")
             return True
         
-        # Unix/Linux cron setup
-        try:
-            # Initialize crontab
-            cron = CronTab(user=True)
-            
-            # Remove existing radar email jobs
-            cron.remove_all(comment='radar_email_job')
-            
-            # Create the base command
-            base_cmd = f'cd {project_dir} && {venv_python} manage.py send_json_reports >> {logs_dir}/email_reports.log 2>&1'
-            
-            # Get schedules based on notification settings
-            schedules = get_cron_schedule(settings)
-            
-            # Add jobs for each schedule
-            for schedule, description in schedules:
-                job = cron.new(command=base_cmd, comment=f'radar_email_job - {description}')
-                job.setall(schedule)
-                logger.info(f"Created cron job: {description} ({schedule})")
-            
-            # Write the crontab
-            cron.write()
-            
-            # Make log file writable
-            log_file = os.path.join(logs_dir, 'email_reports.log')
-            if not os.path.exists(log_file):
-                with open(log_file, 'a'):
-                    pass
-            os.chmod(log_file, 0o666)
-            
-            logger.info(f"Email cron jobs set up successfully with {len(schedules)} schedule(s)")
+        # Unix/Linux: Use the proper cron_manager
+        from .cron_manager import cron_manager
+        
+        # Get notification settings
+        settings = NotificationSettings.objects.first()
+        
+        if not settings:
+            logger.warning("No notification settings found. Cron job will not be created.")
+            logger.info("Please configure notification settings in the admin interface.")
+            # Remove any existing cron jobs
+            cron_manager.remove_notification_cron()
+            return False
+        
+        if not settings.enable_notifications:
+            logger.info("Notifications are disabled in settings. Removing cron jobs.")
+            cron_manager.remove_notification_cron()
+            return False
+        
+        # Setup the cron job (this automatically removes old ones and creates a new one)
+        logger.info(f"Setting up notification cron job for {settings.primary_email}")
+        logger.info(f"Schedule: {settings.frequency}, Days: {settings.days_of_week or 'All'}, Times: {settings.notification_times or 'Any'}")
+        
+        success = cron_manager.setup_notification_cron(settings)
+        
+        if success:
+            logger.info("✓ Email notification cron job configured successfully")
+            status = cron_manager.get_cron_status()
+            if status['installed']:
+                logger.info(f"Cron job: {status['cron_job']}")
+                logger.info(f"Log file: {status['log_file']}")
             return True
-            
-        except Exception as e:
-            logger.error(f"Failed to set up Unix cron jobs: {str(e)}")
-            logger.info("Falling back to Windows Service approach")
-            return True
+        else:
+            logger.error("✗ Failed to configure email notification cron job")
+            return False
         
     except Exception as e:
         logger.error(f"Failed to set up cron jobs: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False 
 
 def check_cron_status():

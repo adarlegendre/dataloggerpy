@@ -15,29 +15,49 @@ class AppConfig(AppConfig):
         """
         # Only run in main process
         import sys
-        if 'runserver' not in sys.argv and 'uwsgi' not in sys.argv:
+        import os
+        
+        # Check if this is the main process (not a reload or worker)
+        if 'runserver' not in sys.argv and 'uwsgi' not in sys.argv and 'gunicorn' not in sys.argv:
             return
+        
+        # Prevent running multiple times during development reload
+        if os.environ.get('RUN_MAIN') != 'true' and 'runserver' in sys.argv:
+            return
+
+        logger.info("=" * 60)
+        logger.info("Radar Data Logger - Server Startup")
+        logger.info("=" * 60)
 
         # Start radar data service
         try:
             from .services import RadarDataService
             service = RadarDataService()
             service.start_service()
-            logger.info("Radar data service started")
+            logger.info("✓ Radar data service started")
         except Exception as e:
-            logger.error(f"Failed to start radar data service: {str(e)}")
+            logger.error(f"✗ Failed to start radar data service: {str(e)}")
 
-        # Setup cron jobs
+        # Setup cron jobs (this clears ALL old jobs and creates a fresh one)
         try:
             from .utils.system_utils import setup_email_cron_jobs
-            setup_email_cron_jobs()
-            logger.info("Email cron jobs setup completed")
+            logger.info("Setting up email notification cron jobs...")
+            success = setup_email_cron_jobs()
+            if success:
+                logger.info("✓ Email cron jobs configured")
+            else:
+                logger.warning("⚠ Email cron jobs not configured (check notification settings)")
         except Exception as e:
-            logger.error(f"Failed to set up cron jobs during startup: {str(e)}")
+            logger.error(f"✗ Failed to set up cron jobs during startup: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
 
         # Start cron status monitor
         try:
             from .utils.system_utils import start_status_monitor
             start_status_monitor()
+            logger.info("✓ Cron status monitor started")
         except Exception as e:
-            logger.error(f"Failed to start cron status monitor: {str(e)}")
+            logger.error(f"✗ Failed to start cron status monitor: {str(e)}")
+        
+        logger.info("=" * 60)
