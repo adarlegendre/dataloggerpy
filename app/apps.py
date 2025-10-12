@@ -41,12 +41,24 @@ class AppConfig(AppConfig):
         # Setup cron jobs (this clears ALL old jobs and creates a fresh one)
         try:
             from .utils.system_utils import setup_email_cron_jobs
-            logger.info("Setting up email notification cron jobs...")
-            success = setup_email_cron_jobs()
-            if success:
-                logger.info("✓ Email cron jobs configured")
+            import platform
+            
+            if platform.system() != 'Windows':
+                logger.info("Configuring Linux cron jobs for email notifications...")
+                success = setup_email_cron_jobs()
+                if success:
+                    logger.info("✓ Email notification cron job configured")
+                    logger.info("  Cron job runs every minute and checks schedule")
+                    logger.info("  Emails sent based on notification settings")
+                else:
+                    logger.warning("⚠ Email cron job not configured")
+                    logger.warning("  Possible reasons:")
+                    logger.warning("  - Notification settings not found in database")
+                    logger.warning("  - Notifications are disabled")
+                    logger.warning("  Configure in Django admin: /admin/app/notificationsettings/")
             else:
-                logger.warning("⚠ Email cron jobs not configured (check notification settings)")
+                logger.info("Running on Windows - use Windows Task Scheduler for notifications")
+                logger.info("  Run: .\\setup_notification_scheduler.ps1")
         except Exception as e:
             logger.error(f"✗ Failed to set up cron jobs during startup: {str(e)}")
             import traceback

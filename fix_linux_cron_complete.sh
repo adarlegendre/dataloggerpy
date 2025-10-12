@@ -97,6 +97,7 @@ fi
 echo ""
 echo "5. Detecting virtual environment..."
 VENV_PATH=""
+# loggervenv checked first as it's the standard for this project
 for venv_name in loggervenv venv env .venv virtualenv; do
     if [ -f "$PROJECT_DIR/$venv_name/bin/activate" ]; then
         VENV_PATH="$venv_name"

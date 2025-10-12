@@ -111,6 +111,13 @@ class CronManager:
         Set up cron job based on notification settings.
         ALWAYS cleans ALL existing radar cron jobs first, then creates a fresh one.
         """
+        # STEP 0: Test cron access first
+        if not self.test_cron_access():
+            logger.error("✗ Cannot access crontab. Make sure cron is installed and accessible.")
+            logger.error("  On Linux/Raspberry Pi: sudo apt-get install cron")
+            logger.error("  Check service: sudo systemctl status cron")
+            return False
+        
         # STEP 1: ALWAYS remove ALL existing radar cron jobs first
         logger.info("Step 1: Cleaning up ALL existing radar notification cron jobs...")
         current_crontab = self.get_current_crontab()

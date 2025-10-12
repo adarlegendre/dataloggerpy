@@ -258,19 +258,25 @@ def check_cron_status():
                 print("Check notification_service.log for service status", flush=True)
                 print("===========================\n", flush=True)
             else:
-                cron = CronTab(user=True)
-                email_jobs = [job for job in cron if 'radar_email_job' in str(job.comment)]
+                # Use cron_manager to check status instead of looking for specific comment
+                from .cron_manager import cron_manager
+                status = cron_manager.get_cron_status()
                 
                 print("\n=== Email Cron Jobs Status ===", flush=True)
-                if not email_jobs:
-                    print("No email cron jobs found", flush=True)
+                if status['installed']:
+                    print(f"✓ Cron job installed", flush=True)
+                    print(f"Schedule: Every minute (* * * * *)", flush=True)
+                    print(f"Command: check_notification_schedule", flush=True)
+                    print(f"Log file: {status['log_file']}", flush=True)
+                    
+                    # Calculate next run (always within 60 seconds since it runs every minute)
+                    import time
+                    seconds_since_minute = int(time.time() % 60)
+                    next_run_seconds = 60 - seconds_since_minute
+                    print(f"Next run in: ~{next_run_seconds} seconds", flush=True)
                 else:
-                    now = datetime.now()
-                    for job in email_jobs:
-                        schedule = job.slices
-                        next_run = job.schedule(date_from=now).get_next()
-                        print(f"Schedule: {schedule}", flush=True)
-                        print(f"Next run in: {next_run} seconds", flush=True)
+                    print("⚠ No radar notification cron job found", flush=True)
+                    print("Cron jobs should auto-setup on application restart", flush=True)
                 print("===========================\n", flush=True)
             
         except Exception as e:
