@@ -897,11 +897,10 @@ class RadarDataService:
                                             # Log all received data for debugging
                                             logger.debug(f"Radar {radar.id}: Received chunk: {decoded_data}, value: {value}")
                                             
-                                            # Only process non-zero values (like the working script)
-                                            if value != '+000' and value != '-000':
-                                                logger.debug(f"Radar {radar.id}: Processing non-zero data: {decoded_data}")
-                                                # Process the A+XXX data
-                                                try:
+                                            # Process ALL values including zeros (needed for proper 0→peak→0 display)
+                                            logger.debug(f"Radar {radar.id}: Processing data: {decoded_data}")
+                                            # Process the A+XXX data
+                                            try:
                                                     # Parse A+XXX format
                                                     direction_sign = decoded_data[1]  # + or -
                                                     speed_str = decoded_data[2:]      # XXX (3 digits)
@@ -972,14 +971,12 @@ class RadarDataService:
                                                     # Log the received data
                                                     logger.debug(f"Radar {radar.id}: {decoded_data} -> {display_text}")
                                                     
-                                                except ValueError as e:
-                                                    logger.debug(f"Invalid numeric values in A+XXX data: {decoded_data}, error: {str(e)}")
-                                                    continue
-                                                except Exception as e:
-                                                    logger.error(f"Error processing A+XXX data point: {str(e)}")
-                                                    continue
-                                            else:
-                                                logger.debug(f"Radar {radar.id}: Filtered out zero value: {decoded_data}")
+                                            except ValueError as e:
+                                                logger.debug(f"Invalid numeric values in A+XXX data: {decoded_data}, error: {str(e)}")
+                                                continue
+                                            except Exception as e:
+                                                logger.error(f"Error processing A+XXX data point: {str(e)}")
+                                                continue
                             except serial.SerialException as e:
                                 if "device reports readiness to read but returned no data" in str(e):
                                     logger.debug(f"Radar {radar.id}: Device not ready, retrying...")
