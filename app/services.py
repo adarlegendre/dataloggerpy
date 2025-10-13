@@ -992,8 +992,9 @@ class RadarDataService:
                                 logger.error(f"Radar {radar.id}: Error reading data: {str(e)}")
                                 continue
                             
-                            # Small sleep to prevent CPU spinning
-                            time.sleep(0.001)
+                            # Sleep according to configured update interval (in milliseconds)
+                            # Convert ms to seconds: update_interval / 1000
+                            time.sleep(radar.update_interval / 1000.0)
                         except Exception as e:
                             error_msg = f"Error reading data: {str(e)}"
                             logger.error(f"Error reading from radar {radar.id}: {error_msg}")
