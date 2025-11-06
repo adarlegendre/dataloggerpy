@@ -22,10 +22,10 @@ logging.basicConfig(
 
 # Camera configuration
 username = 'admin'
-password = '@sh0Wroom'
-cameraIP = '192.168.1.192'
+password = 'kObliha12@'
+cameraIP = '192.168.2.13'
 cameraPort = 80
-receiveAlarmDataIP = "192.168.1.196"
+receiveAlarmDataIP = "192.168.2.13"
 receiveAlarmDataPort = 64073
 duration = 300
 suscribID = -1
