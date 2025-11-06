@@ -24,7 +24,7 @@ logging.basicConfig(
 username = 'admin'
 password = 'kObliha12@'
 cameraIP = '192.168.2.13'
-cameraPort = 80
+cameraPort = 5000
 receiveAlarmDataIP = "192.168.2.13"
 receiveAlarmDataPort = 64073
 duration = 300
