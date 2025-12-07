@@ -1,5 +1,5 @@
 from requests.auth import HTTPDigestAuth
-from threading import Thread
+from threading import Thread, Lock
 import requests
 import json
 import time
@@ -30,11 +30,14 @@ headers = {
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
 VMS_WINDOW = 0
-VMS_COLOR = 3
+# Color parameter (1-16): Controls display inversion
+# Try: 1 = Normal (ON LEDs show text), 3 = Inverted (OFF LEDs show text)
+# If currently inverted, try: 1, 2, 4, 5, 6, 7, 8, or 9-16
+VMS_COLOR = 1  # Changed from 3 to 1 for normal (ON LEDs) display
 VMS_FONT_SIZE = 18
 VMS_SPEED = 5
 VMS_EFFECT = 1
-VMS_STAY_TIME = 10
+VMS_STAY_TIME = 3  # Display for 3 seconds, then clear
 VMS_ALIGNMENT = 1
 
 # Possible paths for sendcp5200 executable
@@ -49,6 +52,12 @@ SENDCP5200_PATHS = [
 
 # Cache for sendcp5200 executable path
 _sendcp5200_executable_cache = None
+
+# VMS Display Queue Management (for handling tailgating/queued vehicles)
+_vms_lock = Lock()
+_pending_clear_thread = None
+_current_display_plate = None
+_display_start_time = None
 
 def keepalive():
     while True:
@@ -108,12 +117,65 @@ def find_sendcp5200_executable():
     _sendcp5200_executable_cache = None
     return None
 
+def clear_vms_display():
+    """Clear VMS display by sending empty string"""
+    executable = find_sendcp5200_executable()
+    if not executable:
+        return False
+    
+    # Build command to send empty string: sendcp5200 0 [IP] [port] 2 0 "" 1 18 5 1 10 1
+    cmd = [
+        executable,
+        "0",  # debug mode: 0 = no debug + network
+        VMS_IP,
+        str(VMS_PORT),
+        "2",  # function 2 = SendText
+        str(VMS_WINDOW),
+        "",   # empty string to clear display
+        "1",  # color
+        str(VMS_FONT_SIZE),
+        str(VMS_SPEED),
+        str(VMS_EFFECT),
+        "10",  # stay time (not critical for clear)
+        str(VMS_ALIGNMENT)
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        return result.returncode == 0
+    except:
+        return False
+
+def cancel_pending_clear():
+    """Cancel any pending clear operation"""
+    global _pending_clear_thread
+    with _vms_lock:
+        _pending_clear_thread = None
+
 def send_plate_to_vms(plate_number):
-    """Send plate number to VMS display using sendcp5200"""
+    """Send plate number to VMS display using sendcp5200, then clear after 3 seconds.
+    Handles tailgating/queued vehicles by canceling pending clears when new plate arrives."""
+    global _pending_clear_thread, _current_display_plate, _display_start_time
+    
     executable = find_sendcp5200_executable()
     if not executable:
         print(f"Warning: sendcp5200 executable not found. Plate '{plate_number}' not sent to VMS.")
         return False
+    
+    with _vms_lock:
+        # Cancel any pending clear operation (new vehicle detected - don't clear yet)
+        if _pending_clear_thread is not None:
+            _pending_clear_thread = None
+            print(f"  → New vehicle detected, canceling pending clear")
+        
+        # Check if we're interrupting a current display
+        if _current_display_plate is not None and _current_display_plate != plate_number:
+            elapsed = time.time() - _display_start_time if _display_start_time else 0
+            print(f"  → Interrupting display of '{_current_display_plate}' (was showing for {elapsed:.1f}s)")
+        
+        # Update current display state
+        _current_display_plate = plate_number
+        _display_start_time = time.time()
     
     # Build command: sendcp5200 [debug] [IP] [port] [function] [window] [text] [color] [font] [speed] [effect] [stay] [alignment]
     # Function 2 = SendText
@@ -136,18 +198,53 @@ def send_plate_to_vms(plate_number):
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
-            print(f"✓ Sent '{plate_number}' to VMS at {VMS_IP}:{VMS_PORT}")
+            print(f"✓ Sent '{plate_number}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
+            
+            # Schedule display clear after stay time (with cancellation support)
+            def clear_after_delay(plate_id):
+                """Clear display after delay, but only if this plate is still current"""
+                time.sleep(VMS_STAY_TIME)
+                
+                with _vms_lock:
+                    # Only clear if this is still the current plate (not interrupted by new vehicle)
+                    if _current_display_plate == plate_id and _pending_clear_thread is not None:
+                        if clear_vms_display():
+                            print(f"✓ Cleared VMS display (was showing '{plate_id}')")
+                        else:
+                            print(f"Warning: Failed to clear VMS display")
+                        _current_display_plate = None
+                        _display_start_time = None
+                        _pending_clear_thread = None
+                    else:
+                        # Another vehicle arrived, don't clear
+                        print(f"  → Skipped clear (new vehicle displayed)")
+            
+            # Start clear timer in background thread (non-blocking)
+            with _vms_lock:
+                _pending_clear_thread = Thread(target=clear_after_delay, args=(plate_number,))
+                _pending_clear_thread.daemon = True
+                _pending_clear_thread.start()
+            
             return True
         else:
             print(f"Warning: Failed to send '{plate_number}' to VMS. Return code: {result.returncode}")
             if result.stderr:
                 print(f"  Error: {result.stderr}")
+            with _vms_lock:
+                _current_display_plate = None
+                _display_start_time = None
             return False
     except subprocess.TimeoutExpired:
         print(f"Warning: Timeout sending '{plate_number}' to VMS")
+        with _vms_lock:
+            _current_display_plate = None
+            _display_start_time = None
         return False
     except Exception as e:
         print(f"Warning: Error sending '{plate_number}' to VMS: {e}")
+        with _vms_lock:
+            _current_display_plate = None
+            _display_start_time = None
         return False
 
 def extract_plate_number(data_json):
