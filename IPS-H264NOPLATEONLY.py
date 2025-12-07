@@ -33,7 +33,7 @@ VMS_WINDOW = 0
 # Color parameter (1-16): Controls display inversion
 # Try: 1 = Normal (ON LEDs show text), 3 = Inverted (OFF LEDs show text)
 # If currently inverted, try: 1, 2, 4, 5, 6, 7, 8, or 9-16
-VMS_COLOR = 1  # Changed from 3 to 1 for normal (ON LEDs) display
+VMS_COLOR = 3  # Changed from 3 to 1 for normal (ON LEDs) display
 VMS_FONT_SIZE = 18
 VMS_SPEED = 5
 VMS_EFFECT = 1
