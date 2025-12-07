@@ -5,6 +5,8 @@ import json
 import time
 import socket
 import re
+import subprocess
+import os
 
 # Camera configuration
 username = 'admin'
@@ -24,6 +26,30 @@ headers = {
     'Connection': 'Close',
 }
 
+# VMS Configuration (CP5200 Display)
+VMS_IP = "192.168.1.222"
+VMS_PORT = 5200
+VMS_WINDOW = 0
+VMS_COLOR = 3
+VMS_FONT_SIZE = 18
+VMS_SPEED = 5
+VMS_EFFECT = 1
+VMS_STAY_TIME = 10
+VMS_ALIGNMENT = 1
+
+# Possible paths for sendcp5200 executable
+SENDCP5200_PATHS = [
+    "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
+    "./sendcp5200/dist/Release/GNU-Linux/sendcp5200",
+    "/etc/1prog/sendcp5200k",
+    "sendcp5200",
+    "/usr/local/bin/sendcp5200",
+    "/usr/bin/sendcp5200"
+]
+
+# Cache for sendcp5200 executable path
+_sendcp5200_executable_cache = None
+
 def keepalive():
     while True:
         keepaliveUrl = f"{url}/{suscribID}"
@@ -41,6 +67,88 @@ def keepalive():
             raise SystemExit(0)
         
         time.sleep(duration / 2)
+
+def find_sendcp5200_executable():
+    """Find the sendcp5200 executable in common locations (cached)"""
+    global _sendcp5200_executable_cache
+    
+    # Return cached result if available
+    if _sendcp5200_executable_cache is not None:
+        return _sendcp5200_executable_cache
+    
+    # First check direct paths
+    for path in SENDCP5200_PATHS:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            _sendcp5200_executable_cache = path
+            return path
+    
+    # Check if it's in PATH (Unix/Linux)
+    try:
+        result = subprocess.run(['which', 'sendcp5200'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            found_path = result.stdout.strip()
+            if found_path:
+                _sendcp5200_executable_cache = found_path
+                return found_path
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Check if it's in PATH (Windows)
+    try:
+        result = subprocess.run(['where', 'sendcp5200'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            found_path = result.stdout.strip().split('\n')[0]
+            if found_path:
+                _sendcp5200_executable_cache = found_path
+                return found_path
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Cache None to avoid repeated searches
+    _sendcp5200_executable_cache = None
+    return None
+
+def send_plate_to_vms(plate_number):
+    """Send plate number to VMS display using sendcp5200"""
+    executable = find_sendcp5200_executable()
+    if not executable:
+        print(f"Warning: sendcp5200 executable not found. Plate '{plate_number}' not sent to VMS.")
+        return False
+    
+    # Build command: sendcp5200 [debug] [IP] [port] [function] [window] [text] [color] [font] [speed] [effect] [stay] [alignment]
+    # Function 2 = SendText
+    cmd = [
+        executable,
+        "0",  # debug mode: 0 = no debug + network
+        VMS_IP,
+        str(VMS_PORT),
+        "2",  # function 2 = SendText
+        str(VMS_WINDOW),
+        plate_number,  # text to display
+        str(VMS_COLOR),
+        str(VMS_FONT_SIZE),
+        str(VMS_SPEED),
+        str(VMS_EFFECT),
+        str(VMS_STAY_TIME),
+        str(VMS_ALIGNMENT)
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            print(f"✓ Sent '{plate_number}' to VMS at {VMS_IP}:{VMS_PORT}")
+            return True
+        else:
+            print(f"Warning: Failed to send '{plate_number}' to VMS. Return code: {result.returncode}")
+            if result.stderr:
+                print(f"  Error: {result.stderr}")
+            return False
+    except subprocess.TimeoutExpired:
+        print(f"Warning: Timeout sending '{plate_number}' to VMS")
+        return False
+    except Exception as e:
+        print(f"Warning: Error sending '{plate_number}' to VMS: {e}")
+        return False
 
 def extract_plate_number(data_json):
     """Extract plate number from event data"""
@@ -95,6 +203,8 @@ def listen():
                 plate_no = extract_plate_number(data_json)
                 if plate_no:
                     print(plate_no, flush=True)
+                    # Immediately send to VMS
+                    send_plate_to_vms(plate_no)
             
             except json.JSONDecodeError:
                 pass  # Silently ignore JSON decode errors
@@ -108,6 +218,18 @@ def listen():
 
 def main():
     print("Starting plate number capture...")
+    
+    # Check for sendcp5200 executable
+    executable = find_sendcp5200_executable()
+    if executable:
+        print(f"✓ Found sendcp5200: {executable}")
+        print(f"  VMS Target: {VMS_IP}:{VMS_PORT}")
+    else:
+        print("⚠ Warning: sendcp5200 executable not found. VMS sending will be disabled.")
+        print("  Searched paths:")
+        for path in SENDCP5200_PATHS:
+            print(f"    - {path}")
+    
     # Step 1: Subscribe
     data = {
         "AddressType": 0,
