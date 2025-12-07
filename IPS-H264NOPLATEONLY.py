@@ -203,6 +203,8 @@ def send_plate_to_vms(plate_number):
             # Schedule display clear after stay time (with cancellation support)
             def clear_after_delay(plate_id):
                 """Clear display after delay, but only if this plate is still current"""
+                global _current_display_plate, _display_start_time, _pending_clear_thread
+                
                 time.sleep(VMS_STAY_TIME)
                 
                 with _vms_lock:
