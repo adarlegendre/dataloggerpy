@@ -130,28 +130,43 @@ def load_daily_detections():
     return []
 
 def save_detection(detection_data: Dict[str, Any]):
-    """Save a detection to today's JSON file"""
+    """Save a detection to today's JSON file immediately (append-only to prevent memory clogging)"""
     global _current_date, _detections_file
     
     ensure_detections_folder()
     
-    # Check if date changed
+    # Check if date changed or file not initialized
     today = datetime.now().date()
-    if _current_date != today:
+    if _current_date != today or _detections_file is None:
         _current_date = today
         _detections_file = get_daily_json_path()
     
     with _detections_lock:
-        # Load existing detections
-        detections = load_daily_detections()
+        filepath = _detections_file
         
-        # Add new detection
-        detections.append(detection_data)
-        
-        # Save back to file
         try:
-            with open(_detections_file, 'w', encoding='utf-8') as f:
+            # Read existing detections (if file exists)
+            detections = []
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        detections = json.load(f)
+                        if not isinstance(detections, list):
+                            detections = []
+                except (json.JSONDecodeError, IOError):
+                    detections = []
+            
+            # Add new detection
+            detections.append(detection_data)
+            
+            # Write immediately and flush to disk
+            with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(detections, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())  # Force write to disk
+            
+            # Clear from memory immediately
+            del detections
         except Exception as e:
             print(f"Error saving detection: {e}")
 
@@ -530,11 +545,6 @@ def listen_camera_events():
                     should_display = True
                     if ONLY_POSITIVE_DIRECTION:
                         should_display = is_latest_detection_positive()
-                        if not should_display:
-                            if radar_detection:
-                                print(f"Plate '{plate_no}' detected but latest radar detection was {radar_detection['direction_name']} (skipping VMS)")
-                            else:
-                                print(f"Plate '{plate_no}' detected but no completed radar detection available (skipping VMS)")
                     
                     # Prepare detection data
                     if radar_detection:
@@ -563,19 +573,27 @@ def listen_camera_events():
                             'radar_detection_end': None
                         }
                     
-                    # Save detection
+                    # Save detection immediately (before displaying)
                     save_detection(detection_data)
-                    print(f"Plate: {plate_no} | Peak Speed: {detection_data['speed']}km/h | Direction: {detection_data['direction']} | VMS: {detection_data['vms_displayed']}")
+                    
+                    # Show plate detection prominently in console
+                    print("\n" + "=" * 60)
+                    print(f"🚗 PLATE DETECTED: {plate_no}")
+                    print(f"   Speed: {detection_data['speed']}km/h | Direction: {detection_data['direction']}")
+                    if radar_detection:
+                        print(f"   Radar: {radar_detection['direction_sign']} | Readings: {radar_detection['readings_count']}")
+                    print(f"   VMS Display: {detection_data['vms_displayed'].upper()}")
+                    print(f"   Saved to: {get_daily_json_path()}")
+                    print("=" * 60 + "\n")
                     
                     # Display on VMS if conditions met
                     if should_display:
-                        print(plate_no, flush=True)
                         send_plate_to_vms(plate_no)
                     else:
                         if radar_detection:
-                            print(f"  → Not displaying (radar direction: {radar_detection['direction_sign']}, only_positive: {ONLY_POSITIVE_DIRECTION})")
+                            print(f"   → Skipped VMS (direction: {radar_detection['direction_sign']}, only_positive: {ONLY_POSITIVE_DIRECTION})")
                         else:
-                            print(f"  → Not displaying (no radar detection available)")
+                            print(f"   → Skipped VMS (no completed radar detection available)")
             
             except json.JSONDecodeError:
                 pass
