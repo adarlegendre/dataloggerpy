@@ -147,8 +147,13 @@ def test_all_windows(text="TEST", stay_time=10):
     
     return results
 
-def clear_vms_display(window=None):
-    """Clear VMS display"""
+def clear_vms_display(window=None, method="empty"):
+    """
+    Clear VMS display using different methods:
+    - "empty": Send empty string via SendText (func2) - default
+    - "stay0": Send empty string with stay_time=0
+    - "reset": Reset window using SplitWindow (func1) then clear
+    """
     executable = find_sendcp5200_executable()
     if not executable:
         print("ERROR: sendcp5200 executable not found!")
@@ -157,20 +162,65 @@ def clear_vms_display(window=None):
     if window is None:
         window = VMS_WINDOW
     
+    if method == "reset":
+        # Method 1: Reset window using SplitWindow (func1) - creates a full-screen window
+        print(f"\nResetting window {window} using SplitWindow (func1)...")
+        # SplitWindow: func1(window_count, [x, y, width, height, ...])
+        # For full screen reset: 1 window covering entire display
+        # Typical full screen: x=0, y=0, width=256, height=64 (adjust based on your display)
+        reset_cmd = [
+            executable, "0", VMS_IP, str(VMS_PORT), "1",  # func1 = SplitWindow
+            "1",  # 1 window
+            "0", "0", "256", "64"  # x, y, width, height (adjust for your display size)
+        ]
+        
+        try:
+            result = subprocess.run(reset_cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("✓ Window reset successful!")
+                if result.stdout:
+                    print(f"Output: {result.stdout.strip()}")
+            else:
+                print(f"⚠ Window reset returned code: {result.returncode}")
+                if result.stdout:
+                    print(f"Output: {result.stdout.strip()}")
+        except Exception as e:
+            print(f"⚠ Window reset error: {e}")
+        
+        # Then clear with empty string
+        method = "empty"
+    
+    # Method 2: Send empty string via SendText (func2)
+    if method == "empty":
+        stay_time = 10
+        print(f"\nClearing VMS display (window {window}) using empty string (stay_time={stay_time})...")
+    elif method == "stay0":
+        stay_time = 0
+        print(f"\nClearing VMS display (window {window}) using empty string with stay_time=0...")
+    else:
+        stay_time = 10
+    
     cmd = [
-        executable, "0", VMS_IP, str(VMS_PORT), "2",
+        executable, "0", VMS_IP, str(VMS_PORT), "2",  # func2 = SendText
         str(window), "", "1", str(VMS_FONT_SIZE),
-        str(VMS_SPEED), str(VMS_EFFECT), "10", str(VMS_ALIGNMENT)
+        str(VMS_SPEED), str(VMS_EFFECT), str(stay_time), str(VMS_ALIGNMENT)
     ]
     
-    print(f"\nClearing VMS display (window {window})...")
+    print(f"Command: {' '.join(cmd)}")
+    
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             print("✓ VMS cleared!")
+            if result.stdout:
+                print(f"Output: {result.stdout.strip()}")
             return True
         else:
             print(f"✗ Failed to clear. Return code: {result.returncode}")
+            if result.stdout:
+                print(f"Output: {result.stdout.strip()}")
+            if result.stderr:
+                print(f"Error: {result.stderr.strip()}")
             return False
     except Exception as e:
         print(f"✗ Error: {e}")
@@ -180,15 +230,22 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage:")
         print(f"  python {sys.argv[0]} <text> [stay_time] [window]")
-        print(f"  python {sys.argv[0]} clear [window]")
+        print(f"  python {sys.argv[0]} clear [window] [method]")
         print(f"  python {sys.argv[0]} test")
         print(f"  python {sys.argv[0]} testall [text] [stay_time]")
+        print("\nClear methods:")
+        print(f"  empty  - Send empty string (default, stay_time=10)")
+        print(f"  stay0  - Send empty string with stay_time=0")
+        print(f"  reset  - Reset window using SplitWindow then clear")
         print("\nExamples:")
         print(f"  python {sys.argv[0]} TEST")
         print(f"  python {sys.argv[0]} \"NOPLATE\" 10")
         print(f"  python {sys.argv[0]} \"NOPLATE\" 10 1  # Window 1")
         print(f"  python {sys.argv[0]} \"zeph dusan\" 10  # Match working example")
         print(f"  python {sys.argv[0]} clear")
+        print(f"  python {sys.argv[0]} clear 0 empty  # Clear window 0 with empty string")
+        print(f"  python {sys.argv[0]} clear 0 stay0  # Clear window 0 with stay_time=0")
+        print(f"  python {sys.argv[0]} clear 0 reset   # Reset and clear window 0")
         print(f"  python {sys.argv[0]} test  # Test with working parameters")
         print(f"  python {sys.argv[0]} testall  # Test windows 0, 1, 2")
         print(f"  python {sys.argv[0]} testall \"NOPLATE\" 10  # Test all windows with custom text")
@@ -197,8 +254,9 @@ if __name__ == "__main__":
     text = sys.argv[1]
     
     if text.lower() == "clear":
-        window = int(sys.argv[2]) if len(sys.argv) > 2 else None
-        clear_vms_display(window)
+        window = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else None
+        method = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] in ["empty", "stay0", "reset"] else "empty"
+        clear_vms_display(window, method)
     elif text.lower() == "test":
         # Test with exact working parameters from README
         print("Testing with exact working command format...")
@@ -210,7 +268,7 @@ if __name__ == "__main__":
         test_all_windows(test_text, test_stay)
     else:
         # Optional stay_time and window parameters
-        stay_time = int(sys.argv[2]) if len(sys.argv) > 2 else None
-        window = int(sys.argv[3]) if len(sys.argv) > 3 else None
+        stay_time = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else None
+        window = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else None
         send_text_to_vms(text, window=window, stay_time=stay_time)
 
