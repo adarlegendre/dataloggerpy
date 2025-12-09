@@ -57,16 +57,16 @@ VMS_ALIGNMENT = 1
 
 # Data storage
 DETECTIONS_FOLDER = "detections"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Match the search order used in test_vms.py
 SENDCP5200_PATHS = [
-    # System-installed versions (preferred)
-    "/usr/local/bin/sendcp5200",
-    "/usr/bin/sendcp5200",
+    "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
+    "./sendcp5200/dist/Release/GNU-Linux/sendcp5200",
     "/etc/1prog/sendcp5200k",
     "sendcp5200",  # In PATH
-    # Local build versions (fallback)
-    "./sendcp5200/sendcp5200_local",  # Locally built executable
-    "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
-    "./sendcp5200/dist/Release/GNU-Linux/sendcp5200"
+    "/usr/local/bin/sendcp5200",
+    "/usr/bin/sendcp5200",
 ]
 
 # ============================================================================
@@ -185,12 +185,6 @@ def find_sendcp5200_executable():
             _sendcp5200_executable_cache = path
             return path
     
-    # Also check for sendcp5200_local in sendcp5200 directory
-    local_path = os.path.join("sendcp5200", "sendcp5200_local")
-    if os.path.exists(local_path) and os.access(local_path, os.X_OK):
-        _sendcp5200_executable_cache = local_path
-        return local_path
-    
     try:
         result = subprocess.run(['which', 'sendcp5200'], capture_output=True, text=True, timeout=2)
         if result.returncode == 0:
@@ -212,6 +206,9 @@ def find_sendcp5200_executable():
         pass
     
     _sendcp5200_executable_cache = None
+    print("sendcp5200 executable not found. Tried paths:")
+    for p in SENDCP5200_PATHS:
+        print(f"  - {p}")
     return None
 
 def get_ld_library_path():
@@ -219,7 +216,7 @@ def get_ld_library_path():
     executable = find_sendcp5200_executable()
     if executable and "sendcp5200_local" in executable:
         # If using sendcp5200_local, need to set LD_LIBRARY_PATH
-        lib_path = os.path.join("cp5200", "build", "lib")
+        lib_path = os.path.join(BASE_DIR, "cp5200", "build", "lib")
         if os.path.exists(lib_path):
             return os.path.abspath(lib_path)
     return None
@@ -402,6 +399,10 @@ def clear_vms_display():
     """Clear VMS display by sending empty string"""
     executable = find_sendcp5200_executable()
     if not executable:
+        print("ERROR: sendcp5200 executable not found!")
+        print("Paths tried:")
+        for p in SENDCP5200_PATHS:
+            print(f"  - {p}")
         return False
     
     cmd = [
@@ -437,6 +438,9 @@ def send_plate_to_vms(plate_number: str):
     executable = find_sendcp5200_executable()
     if not executable:
         print(f"Warning: sendcp5200 executable not found. Plate '{plate_number}' not sent to VMS.")
+        print("Paths tried:")
+        for p in SENDCP5200_PATHS:
+            print(f"  - {p}")
         return False
     
     # Handle empty or None plate number - send empty string to clear display
