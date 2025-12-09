@@ -15,6 +15,7 @@ import socket
 import re
 import subprocess
 import os
+import sys
 import serial
 from datetime import datetime
 from queue import Queue
@@ -44,20 +45,19 @@ POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 
-# VMS Configuration (CP5200 Display)
+# VMS Configuration (CP5200 Display) - matching test_vms.py
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
 VMS_WINDOW = 0
-VMS_COLOR = 0xFF0000  # Red color in hex format
+VMS_COLOR = 3  # Color value (matching test_vms.py)
 VMS_FONT_SIZE = 18
-VMS_SPEED = 0  # No animation speed
-VMS_EFFECT = 0  # No animation effect
+VMS_SPEED = 5  # Animation speed (matching test_vms.py)
+VMS_EFFECT = 1  # Animation effect (matching test_vms.py)
 VMS_STAY_TIME = 10  # Display for 10 seconds, then clear
 VMS_ALIGNMENT = 1
 
 # Data storage
 DETECTIONS_FOLDER = "detections"
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Match the search order used in test_vms.py
 SENDCP5200_PATHS = [
@@ -79,9 +79,6 @@ headers = {
     'Host': f'{CAMERA_IP}:{CAMERA_PORT}',
     'Connection': 'Close',
 }
-
-# Cache for sendcp5200 executable path
-_sendcp5200_executable_cache = None
 
 # VMS Display Queue Management
 _vms_lock = Lock()
@@ -174,51 +171,24 @@ def save_detection(detection_data: Dict[str, Any]):
             print(f"Error saving detection: {e}")
 
 def find_sendcp5200_executable():
-    """Find the sendcp5200 executable in common locations (cached)"""
-    global _sendcp5200_executable_cache
-    
-    if _sendcp5200_executable_cache is not None:
-        return _sendcp5200_executable_cache
-    
+    """Find the sendcp5200 executable - matching test_vms.py"""
     for path in SENDCP5200_PATHS:
         if os.path.exists(path) and os.access(path, os.X_OK):
-            _sendcp5200_executable_cache = path
             return path
     
+    # Try which/where command - matching test_vms.py
     try:
-        result = subprocess.run(['which', 'sendcp5200'], capture_output=True, text=True, timeout=2)
-        if result.returncode == 0:
-            found_path = result.stdout.strip()
-            if found_path:
-                _sendcp5200_executable_cache = found_path
-                return found_path
-    except:
-        pass
-    
-    try:
-        result = subprocess.run(['where', 'sendcp5200'], capture_output=True, text=True, timeout=2)
+        if sys.platform == "win32":
+            result = subprocess.run(['where', 'sendcp5200'], capture_output=True, text=True, timeout=2)
+        else:
+            result = subprocess.run(['which', 'sendcp5200'], capture_output=True, text=True, timeout=2)
         if result.returncode == 0:
             found_path = result.stdout.strip().split('\n')[0]
             if found_path:
-                _sendcp5200_executable_cache = found_path
                 return found_path
     except:
         pass
     
-    _sendcp5200_executable_cache = None
-    print("sendcp5200 executable not found. Tried paths:")
-    for p in SENDCP5200_PATHS:
-        print(f"  - {p}")
-    return None
-
-def get_ld_library_path():
-    """Get LD_LIBRARY_PATH for sendcp5200_local if needed"""
-    executable = find_sendcp5200_executable()
-    if executable and "sendcp5200_local" in executable:
-        # If using sendcp5200_local, need to set LD_LIBRARY_PATH
-        lib_path = os.path.join(BASE_DIR, "cp5200", "build", "lib")
-        if os.path.exists(lib_path):
-            return os.path.abspath(lib_path)
     return None
 
 # ============================================================================
@@ -411,22 +381,19 @@ def clear_vms_display():
         str(VMS_SPEED), str(VMS_EFFECT), "10", str(VMS_ALIGNMENT)
     ]
     
-    env = os.environ.copy()
-    ld_path = get_ld_library_path()
-    if ld_path:
-        env['LD_LIBRARY_PATH'] = ld_path
-    
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, env=env)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
-        # Display return code and output from sendcp5200
-        print(f"sendcp5200 (clear) return code: {result.returncode}")
-        if result.stdout:
-            print(f"sendcp5200 (clear) stdout: {result.stdout.strip()}")
-        if result.stderr:
-            print(f"sendcp5200 (clear) stderr: {result.stderr.strip()}")
-        
-        return result.returncode == 0
+        if result.returncode == 0:
+            if result.stdout:
+                print(f"sendcp5200 (clear) output: {result.stdout.strip()}")
+            return True
+        else:
+            if result.stdout:
+                print(f"sendcp5200 (clear) output: {result.stdout.strip()}")
+            if result.stderr:
+                print(f"sendcp5200 (clear) error: {result.stderr.strip()}")
+            return False
     except Exception as e:
         print(f"Error clearing VMS: {e}")
         return False
@@ -458,33 +425,20 @@ def send_plate_to_vms(plate_number: str):
         _current_display_plate = display_text
         _display_start_time = time.time()
     
-    # Format color as decimal string (atoi() doesn't parse hex, so use decimal)
-    # VMS_COLOR is already an integer (e.g., 0xFF0000 = 16711680), so just convert to string
-    color_str = str(VMS_COLOR)
-    
+    # Build command (matching test_vms.py format)
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
-        str(VMS_WINDOW), display_text, color_str,
+        str(VMS_WINDOW), display_text, str(VMS_COLOR),
         str(VMS_FONT_SIZE), str(VMS_SPEED), str(VMS_EFFECT),
         str(VMS_STAY_TIME), str(VMS_ALIGNMENT)
     ]
     
-    env = os.environ.copy()
-    ld_path = get_ld_library_path()
-    if ld_path:
-        env['LD_LIBRARY_PATH'] = ld_path
-    
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, env=env)
-        
-        # Always display return code and output from sendcp5200
-        print(f"sendcp5200 return code: {result.returncode}")
-        if result.stdout:
-            print(f"sendcp5200 stdout: {result.stdout.strip()}")
-        if result.stderr:
-            print(f"sendcp5200 stderr: {result.stderr.strip()}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
         if result.returncode == 0:
+            if result.stdout:
+                print(f"sendcp5200 output: {result.stdout.strip()}")
             print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
             
             def clear_after_delay(plate_id):
@@ -512,6 +466,10 @@ def send_plate_to_vms(plate_number: str):
             return True
         else:
             print(f"✗ Failed to send '{display_text}' to VMS. Return code: {result.returncode}")
+            if result.stderr:
+                print(f"Error: {result.stderr.strip()}")
+            if result.stdout:
+                print(f"Output: {result.stdout.strip()}")
             with _vms_lock:
                 _current_display_plate = None
                 _display_start_time = None
