@@ -48,22 +48,25 @@ CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
 VMS_WINDOW = 0
-VMS_COLOR = 3
+VMS_COLOR = 0xFF0000  # Red color in hex format
 VMS_FONT_SIZE = 18
-VMS_SPEED = 5
-VMS_EFFECT = 1
-VMS_STAY_TIME = 3  # Display for 3 seconds, then clear
+VMS_SPEED = 0  # No animation speed
+VMS_EFFECT = 0  # No animation effect
+VMS_STAY_TIME = 10  # Display for 10 seconds, then clear
 VMS_ALIGNMENT = 1
 
 # Data storage
 DETECTIONS_FOLDER = "detections"
 SENDCP5200_PATHS = [
-    "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
-    "./sendcp5200/dist/Release/GNU-Linux/sendcp5200",
-    "/etc/1prog/sendcp5200k",
-    "sendcp5200",
+    # System-installed versions (preferred)
     "/usr/local/bin/sendcp5200",
-    "/usr/bin/sendcp5200"
+    "/usr/bin/sendcp5200",
+    "/etc/1prog/sendcp5200k",
+    "sendcp5200",  # In PATH
+    # Local build versions (fallback)
+    "./sendcp5200/sendcp5200_local",  # Locally built executable
+    "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
+    "./sendcp5200/dist/Release/GNU-Linux/sendcp5200"
 ]
 
 # ============================================================================
@@ -182,6 +185,12 @@ def find_sendcp5200_executable():
             _sendcp5200_executable_cache = path
             return path
     
+    # Also check for sendcp5200_local in sendcp5200 directory
+    local_path = os.path.join("sendcp5200", "sendcp5200_local")
+    if os.path.exists(local_path) and os.access(local_path, os.X_OK):
+        _sendcp5200_executable_cache = local_path
+        return local_path
+    
     try:
         result = subprocess.run(['which', 'sendcp5200'], capture_output=True, text=True, timeout=2)
         if result.returncode == 0:
@@ -203,6 +212,16 @@ def find_sendcp5200_executable():
         pass
     
     _sendcp5200_executable_cache = None
+    return None
+
+def get_ld_library_path():
+    """Get LD_LIBRARY_PATH for sendcp5200_local if needed"""
+    executable = find_sendcp5200_executable()
+    if executable and "sendcp5200_local" in executable:
+        # If using sendcp5200_local, need to set LD_LIBRARY_PATH
+        lib_path = os.path.join("cp5200", "build", "lib")
+        if os.path.exists(lib_path):
+            return os.path.abspath(lib_path)
     return None
 
 # ============================================================================
@@ -387,18 +406,32 @@ def clear_vms_display():
     
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
-        str(VMS_WINDOW), "", "1", str(VMS_FONT_SIZE),
+        str(VMS_WINDOW), "", str(VMS_COLOR), str(VMS_FONT_SIZE),
         str(VMS_SPEED), str(VMS_EFFECT), "10", str(VMS_ALIGNMENT)
     ]
     
+    env = os.environ.copy()
+    ld_path = get_ld_library_path()
+    if ld_path:
+        env['LD_LIBRARY_PATH'] = ld_path
+    
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, env=env)
+        
+        # Display return code and output from sendcp5200
+        print(f"sendcp5200 (clear) return code: {result.returncode}")
+        if result.stdout:
+            print(f"sendcp5200 (clear) stdout: {result.stdout.strip()}")
+        if result.stderr:
+            print(f"sendcp5200 (clear) stderr: {result.stderr.strip()}")
+        
         return result.returncode == 0
-    except:
+    except Exception as e:
+        print(f"Error clearing VMS: {e}")
         return False
 
 def send_plate_to_vms(plate_number: str):
-    """Send plate number to VMS display, then clear after 3 seconds"""
+    """Send plate number to VMS display, then clear after stay time"""
     global _pending_clear_thread, _current_display_plate, _display_start_time
     
     executable = find_sendcp5200_executable()
@@ -406,29 +439,49 @@ def send_plate_to_vms(plate_number: str):
         print(f"Warning: sendcp5200 executable not found. Plate '{plate_number}' not sent to VMS.")
         return False
     
+    # Handle empty or None plate number - send empty string to clear display
+    display_text = plate_number if plate_number and plate_number.strip() else ""
+    
     with _vms_lock:
         if _pending_clear_thread is not None:
             _pending_clear_thread = None
             print(f"  → New vehicle detected, canceling pending clear")
         
-        if _current_display_plate is not None and _current_display_plate != plate_number:
+        if _current_display_plate is not None and _current_display_plate != display_text:
             elapsed = time.time() - _display_start_time if _display_start_time else 0
             print(f"  → Interrupting display of '{_current_display_plate}' (was showing for {elapsed:.1f}s)")
         
-        _current_display_plate = plate_number
+        _current_display_plate = display_text
         _display_start_time = time.time()
+    
+    # Format color as decimal string (atoi() doesn't parse hex, so use decimal)
+    # VMS_COLOR is already an integer (e.g., 0xFF0000 = 16711680), so just convert to string
+    color_str = str(VMS_COLOR)
     
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
-        str(VMS_WINDOW), plate_number, str(VMS_COLOR),
+        str(VMS_WINDOW), display_text, color_str,
         str(VMS_FONT_SIZE), str(VMS_SPEED), str(VMS_EFFECT),
         str(VMS_STAY_TIME), str(VMS_ALIGNMENT)
     ]
     
+    env = os.environ.copy()
+    ld_path = get_ld_library_path()
+    if ld_path:
+        env['LD_LIBRARY_PATH'] = ld_path
+    
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, env=env)
+        
+        # Always display return code and output from sendcp5200
+        print(f"sendcp5200 return code: {result.returncode}")
+        if result.stdout:
+            print(f"sendcp5200 stdout: {result.stdout.strip()}")
+        if result.stderr:
+            print(f"sendcp5200 stderr: {result.stderr.strip()}")
+        
         if result.returncode == 0:
-            print(f"✓ Sent '{plate_number}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
+            print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
             
             def clear_after_delay(plate_id):
                 global _current_display_plate, _display_start_time, _pending_clear_thread
@@ -448,19 +501,19 @@ def send_plate_to_vms(plate_number: str):
                         print(f"  → Skipped clear (new vehicle displayed)")
             
             with _vms_lock:
-                _pending_clear_thread = Thread(target=clear_after_delay, args=(plate_number,))
+                _pending_clear_thread = Thread(target=clear_after_delay, args=(display_text,))
                 _pending_clear_thread.daemon = True
                 _pending_clear_thread.start()
             
             return True
         else:
-            print(f"Warning: Failed to send '{plate_number}' to VMS. Return code: {result.returncode}")
+            print(f"✗ Failed to send '{display_text}' to VMS. Return code: {result.returncode}")
             with _vms_lock:
                 _current_display_plate = None
                 _display_start_time = None
             return False
     except Exception as e:
-        print(f"Warning: Error sending '{plate_number}' to VMS: {e}")
+        print(f"✗ Error sending '{display_text}' to VMS: {e}")
         with _vms_lock:
             _current_display_plate = None
             _display_start_time = None
@@ -594,6 +647,12 @@ def listen_camera_events():
                             print(f"   → Skipped VMS (direction: {radar_detection['direction_sign']}, only_positive: {ONLY_POSITIVE_DIRECTION})")
                         else:
                             print(f"   → Skipped VMS (no completed radar detection available)")
+                else:
+                    # Camera event received but no plate detected - clear display
+                    print("\n" + "=" * 60)
+                    print("⚠️  CAMERA EVENT: NO PLATE DETECTED")
+                    print("=" * 60 + "\n")
+                    send_plate_to_vms("")  # Empty string will clear the display
             
             except json.JSONDecodeError:
                 pass
