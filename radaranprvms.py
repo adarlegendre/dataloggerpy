@@ -403,26 +403,26 @@ def send_plate_to_vms(plate_number: str):
     """Send plate number to VMS display, then clear after stay time"""
     global _pending_clear_thread, _current_display_plate, _display_start_time
     
-    # Handle empty or None plate number - use "NOPLATE"
-    NOPLATE = plate_number if plate_number and plate_number.strip() else "NOPLATE"
+    # Handle empty or None plate number - use "." to switch off
+    display_text = plate_number if plate_number and plate_number.strip() else "."
     
     with _vms_lock:
         if _pending_clear_thread is not None:
             _pending_clear_thread = None
             print(f"  → New vehicle detected, canceling pending clear")
         
-        if _current_display_plate is not None and _current_display_plate != NOPLATE:
+        if _current_display_plate is not None and _current_display_plate != display_text:
             elapsed = time.time() - _display_start_time if _display_start_time else 0
             print(f"  → Interrupting display of '{_current_display_plate}' (was showing for {elapsed:.1f}s)")
         
-        _current_display_plate = NOPLATE
+        _current_display_plate = display_text
         _display_start_time = time.time()
     
-    # Use send_text_to_vms from test_vms.py with color "0xFF0000" without conversion
-    success = send_text_to_vms(NOPLATE, window=VMS_WINDOW, stay_time=VMS_STAY_TIME, color="0xFF0000")
+    # Use send_text_to_vms from test_vms.py (no color parameter - uses default from test_vms.py)
+    success = send_text_to_vms(display_text, window=VMS_WINDOW, stay_time=VMS_STAY_TIME)
     
     if success:
-        print(f"✓ Sent '{NOPLATE}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
+        print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
         
         def clear_after_delay(plate_id):
             global _current_display_plate, _display_start_time, _pending_clear_thread
@@ -431,7 +431,8 @@ def send_plate_to_vms(plate_number: str):
             
             with _vms_lock:
                 if _current_display_plate == plate_id and _pending_clear_thread is not None:
-                    if clear_vms_display():
+                    # Clear by sending "." with 3 seconds stay time
+                    if send_text_to_vms(".", window=VMS_WINDOW, stay_time=3):
                         print(f"✓ Cleared VMS display (was showing '{plate_id}')")
                     else:
                         print(f"Warning: Failed to clear VMS display")
@@ -442,13 +443,13 @@ def send_plate_to_vms(plate_number: str):
                     print(f"  → Skipped clear (new vehicle displayed)")
         
         with _vms_lock:
-            _pending_clear_thread = Thread(target=clear_after_delay, args=(NOPLATE,))
+            _pending_clear_thread = Thread(target=clear_after_delay, args=(display_text,))
             _pending_clear_thread.daemon = True
             _pending_clear_thread.start()
         
         return True
     else:
-        print(f"✗ Failed to send '{NOPLATE}' to VMS")
+        print(f"✗ Failed to send '{display_text}' to VMS")
         with _vms_lock:
             _current_display_plate = None
             _display_start_time = None
@@ -587,7 +588,7 @@ def listen_camera_events():
                     print("\n" + "=" * 60)
                     print("⚠️  CAMERA EVENT: NO PLATE DETECTED")
                     print("=" * 60 + "\n")
-                    send_plate_to_vms("")  # Empty string will clear the display
+                    send_plate_to_vms("")  # Empty string will send "." to clear the display
             
             except json.JSONDecodeError:
                 pass
