@@ -51,7 +51,7 @@ def find_sendcp5200_executable():
     
     return None
 
-def send_text_to_vms(text: str, window=None, stay_time=None):
+def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
     """Send text to VMS display"""
     executable = find_sendcp5200_executable()
     
@@ -73,11 +73,18 @@ def send_text_to_vms(text: str, window=None, stay_time=None):
     if stay_time is None:
         stay_time = VMS_STAY_TIME
     
+    # Use provided color or default (pass as string without conversion)
+    if color is None:
+        color = VMS_COLOR
+    else:
+        # Pass color as string without conversion
+        color = str(color)
+    
     print(f"Using executable: {executable}")
     
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
-        str(window), text, str(VMS_COLOR),
+        str(window), text, color,
         str(VMS_FONT_SIZE), str(VMS_SPEED), str(VMS_EFFECT),
         str(stay_time), str(VMS_ALIGNMENT)
     ]
@@ -85,10 +92,10 @@ def send_text_to_vms(text: str, window=None, stay_time=None):
     print(f"\nSending command:")
     print(f"  {' '.join(cmd)}")
     print(f"\nEquivalent shell command:")
-    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 {window} \"{text}\" {VMS_COLOR} {VMS_FONT_SIZE} {VMS_SPEED} {VMS_EFFECT} {stay_time} {VMS_ALIGNMENT}")
+    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 {window} \"{text}\" {color} {VMS_FONT_SIZE} {VMS_SPEED} {VMS_EFFECT} {stay_time} {VMS_ALIGNMENT}")
     print(f"\nText: '{text}'")
     print(f"VMS: {VMS_IP}:{VMS_PORT}")
-    print(f"Window: {window} | Color: {VMS_COLOR} | Font: {VMS_FONT_SIZE} | Speed: {VMS_SPEED} | Effect: {VMS_EFFECT} | Stay: {stay_time}s | Align: {VMS_ALIGNMENT}")
+    print(f"Window: {window} | Color: {color} | Font: {VMS_FONT_SIZE} | Speed: {VMS_SPEED} | Effect: {VMS_EFFECT} | Stay: {stay_time}s | Align: {VMS_ALIGNMENT}")
     print()
     
     try:
