@@ -54,7 +54,7 @@ VMS_COLOR = 3  # Color value (matching test_vms.py)
 VMS_FONT_SIZE = 18
 VMS_SPEED = 5  # Animation speed (matching test_vms.py)
 VMS_EFFECT = 1  # Animation effect (matching test_vms.py)
-VMS_STAY_TIME = 10  # Display for 10 seconds, then clear
+VMS_STAY_TIME = 5  # Display for 5 seconds, then clear
 VMS_ALIGNMENT = 1
 
 # Data storage
@@ -400,7 +400,7 @@ def clear_vms_display():
         return False
 
 def send_plate_to_vms(plate_number: str):
-    """Send plate number to VMS display, then clear after stay time"""
+    """Send plate number to VMS display for 5 seconds, then clear and repeat"""
     global _pending_clear_thread, _current_display_plate, _display_start_time
     
     # Handle empty or None plate number - use "." to switch off
@@ -427,12 +427,13 @@ def send_plate_to_vms(plate_number: str):
         def clear_after_delay(plate_id):
             global _current_display_plate, _display_start_time, _pending_clear_thread
             
+            # Wait 5 seconds before clearing
             time.sleep(VMS_STAY_TIME)
             
             with _vms_lock:
                 if _current_display_plate == plate_id and _pending_clear_thread is not None:
-                    # Clear by sending "." with 3 seconds stay time
-                    if send_text_to_vms(".", window=VMS_WINDOW, stay_time=3):
+                    # Clear by sending empty string
+                    if send_text_to_vms("", window=VMS_WINDOW, stay_time=VMS_STAY_TIME):
                         print(f"✓ Cleared VMS display (was showing '{plate_id}')")
                     else:
                         print(f"Warning: Failed to clear VMS display")

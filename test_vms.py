@@ -9,15 +9,16 @@ import os
 import sys
 import time
 
-# VMS Configuration (same as radaranprvms.py)
+# VMS Configuration
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
 VMS_WINDOW = 0
 VMS_COLOR = "0xFF0000"  # Red color
 VMS_FONT_SIZE = 18
-VMS_SPEED = 0
-VMS_EFFECT = 0
-VMS_STAY_TIME = 10
+# New command format parameters
+VMS_X = "0"
+VMS_Y = "0"
+VMS_WIDTH = "10"
 VMS_ALIGNMENT = 1
 
 # Possible paths for sendcp5200 executable
@@ -25,9 +26,9 @@ SENDCP5200_PATHS = [
     "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
     "./sendcp5200/dist/Release/GNU-Linux/sendcp5200",
     "/etc/1prog/sendcp5200k",
-    "sendcp5200",
+    "sendcp5200",  # In PATH
     "/usr/local/bin/sendcp5200",
-    "/usr/bin/sendcp5200"
+    "/usr/bin/sendcp5200",
 ]
 
 def find_sendcp5200_executable():
@@ -52,7 +53,7 @@ def find_sendcp5200_executable():
     return None
 
 def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
-    """Send text to VMS display"""
+    """Send text to VMS display using new command format"""
     executable = find_sendcp5200_executable()
     
     if not executable:
@@ -65,14 +66,6 @@ def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
         print("  make")
         return False
     
-    # Use provided window or default
-    if window is None:
-        window = VMS_WINDOW
-    
-    # Use provided stay_time or default
-    if stay_time is None:
-        stay_time = VMS_STAY_TIME
-    
     # Use provided color or default (pass as string without conversion)
     if color is None:
         color = VMS_COLOR
@@ -82,20 +75,20 @@ def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
     
     print(f"Using executable: {executable}")
     
+    # New command format: [executable, "0", IP, PORT, "2", "0", text, COLOR, FONT_SIZE, X, Y, WIDTH, ALIGN]
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
-        str(window), text, color,
-        str(VMS_FONT_SIZE), str(VMS_SPEED), str(VMS_EFFECT),
-        str(stay_time), str(VMS_ALIGNMENT)
+        "0", text, color,
+        str(VMS_FONT_SIZE), VMS_X, VMS_Y, VMS_WIDTH, str(VMS_ALIGNMENT)
     ]
     
     print(f"\nSending command:")
     print(f"  {' '.join(cmd)}")
     print(f"\nEquivalent shell command:")
-    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 {window} \"{text}\" {color} {VMS_FONT_SIZE} {VMS_SPEED} {VMS_EFFECT} {stay_time} {VMS_ALIGNMENT}")
+    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 0 \"{text}\" {color} {VMS_FONT_SIZE} {VMS_X} {VMS_Y} {VMS_WIDTH} {VMS_ALIGNMENT}")
     print(f"\nText: '{text}'")
     print(f"VMS: {VMS_IP}:{VMS_PORT}")
-    print(f"Window: {window} | Color: {color} | Font: {VMS_FONT_SIZE} | Speed: {VMS_SPEED} | Effect: {VMS_EFFECT} | Stay: {stay_time}s | Align: {VMS_ALIGNMENT}")
+    print(f"Color: {color} | Font: {VMS_FONT_SIZE} | X: {VMS_X} | Y: {VMS_Y} | Width: {VMS_WIDTH} | Align: {VMS_ALIGNMENT}")
     print()
     
     try:
@@ -156,61 +149,20 @@ def test_all_windows(text="TEST", stay_time=10):
 
 def clear_vms_display(window=None, method="empty"):
     """
-    Clear VMS display using different methods:
-    - "empty": Send empty string via SendText (func2) - default
-    - "stay0": Send empty string with stay_time=0
-    - "reset": Reset window using SplitWindow (func1) then clear
+    Clear VMS display by sending empty string using new command format
     """
     executable = find_sendcp5200_executable()
     if not executable:
         print("ERROR: sendcp5200 executable not found!")
         return False
     
-    if window is None:
-        window = VMS_WINDOW
+    print(f"\nClearing VMS display using empty string...")
     
-    if method == "reset":
-        # Method 1: Reset window using SplitWindow (func1) - creates a full-screen window
-        print(f"\nResetting window {window} using SplitWindow (func1)...")
-        # SplitWindow: func1(window_count, [x, y, width, height, ...])
-        # For full screen reset: 1 window covering entire display
-        # Typical full screen: x=0, y=0, width=256, height=64 (adjust based on your display)
-        reset_cmd = [
-            executable, "0", VMS_IP, str(VMS_PORT), "1",  # func1 = SplitWindow
-            "1",  # 1 window
-            "0", "0", "256", "64"  # x, y, width, height (adjust for your display size)
-        ]
-        
-        try:
-            result = subprocess.run(reset_cmd, capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                print("✓ Window reset successful!")
-                if result.stdout:
-                    print(f"Output: {result.stdout.strip()}")
-            else:
-                print(f"⚠ Window reset returned code: {result.returncode}")
-                if result.stdout:
-                    print(f"Output: {result.stdout.strip()}")
-        except Exception as e:
-            print(f"⚠ Window reset error: {e}")
-        
-        # Then clear with empty string
-        method = "empty"
-    
-    # Method 2: Send empty string via SendText (func2)
-    if method == "empty":
-        stay_time = 10
-        print(f"\nClearing VMS display (window {window}) using empty string (stay_time={stay_time})...")
-    elif method == "stay0":
-        stay_time = 0
-        print(f"\nClearing VMS display (window {window}) using empty string with stay_time=0...")
-    else:
-        stay_time = 10
-    
+    # New command format: [executable, "0", IP, PORT, "2", "0", "", COLOR, FONT_SIZE, X, Y, WIDTH, ALIGN]
     cmd = [
-        executable, "0", VMS_IP, str(VMS_PORT), "2",  # func2 = SendText
-        str(window), "", "1", str(VMS_FONT_SIZE),
-        str(VMS_SPEED), str(VMS_EFFECT), str(stay_time), str(VMS_ALIGNMENT)
+        executable, "0", VMS_IP, str(VMS_PORT), "2",
+        "0", "", VMS_COLOR,
+        str(VMS_FONT_SIZE), VMS_X, VMS_Y, VMS_WIDTH, str(VMS_ALIGNMENT)
     ]
     
     print(f"Command: {' '.join(cmd)}")
