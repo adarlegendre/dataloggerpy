@@ -73,22 +73,26 @@ def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
         # Pass color as string without conversion
         color = str(color)
     
-    # Handle empty text - use space instead to maintain command format
-    display_text = text if text and text.strip() else " "
-    
     print(f"Using executable: {executable}")
     
     # New command format: [executable, "0", IP, PORT, "2", "0", text, COLOR, FONT_SIZE, X, Y, WIDTH, ALIGN]
+    # Note: Empty string "" is valid for clearing display - subprocess.run() handles it correctly
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
-        "0", display_text, color,
+        "0", text, color,
         str(VMS_FONT_SIZE), VMS_X, VMS_Y, VMS_WIDTH, str(VMS_ALIGNMENT)
     ]
     
     print(f"\nSending command:")
-    print(f"  {' '.join(cmd)}")
+    # Show empty string as "" in the command display
+    cmd_display = cmd.copy()
+    if not text:
+        cmd_display[6] = '""'  # Replace empty string with quoted empty string for display
+    print(f"  {' '.join(cmd_display)}")
     print(f"\nEquivalent shell command:")
-    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 0 \"{display_text}\" {color} {VMS_FONT_SIZE} {VMS_X} {VMS_Y} {VMS_WIDTH} {VMS_ALIGNMENT}")
+    # For display, show empty string as "" in quotes
+    display_text_quoted = f'"{text}"' if text else '""'
+    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 0 {display_text_quoted} {color} {VMS_FONT_SIZE} {VMS_X} {VMS_Y} {VMS_WIDTH} {VMS_ALIGNMENT}")
     print(f"\nText: '{text}'")
     print(f"VMS: {VMS_IP}:{VMS_PORT}")
     print(f"Color: {color} | Font: {VMS_FONT_SIZE} | X: {VMS_X} | Y: {VMS_Y} | Width: {VMS_WIDTH} | Align: {VMS_ALIGNMENT}")

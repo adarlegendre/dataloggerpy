@@ -41,7 +41,7 @@ CAMERA_URL = f'http://{CAMERA_IP}:{CAMERA_PORT}/LAPI/V1.0/System/Event/Subscript
 RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
 RADAR_TIMEOUT = 0.01
-ONLY_POSITIVE_DIRECTION = True  # Set to False to display all directions
+ONLY_POSITIVE_DIRECTION = False  # Set to False to display all directions
 POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
@@ -531,10 +531,8 @@ def listen_camera_events():
                     # Get latest completed radar detection (with peak speed)
                     radar_detection = get_latest_completed_detection()
                     
-                    # Check if we should display (only A+ direction if enabled)
+                    # Display all detected plates (removed positive direction only constraint)
                     should_display = True
-                    if ONLY_POSITIVE_DIRECTION:
-                        should_display = is_latest_detection_positive()
                     
                     # Prepare detection data
                     if radar_detection:
@@ -544,7 +542,7 @@ def listen_camera_events():
                             'speed': radar_detection['peak_speed'],  # Use peak speed from complete detection
                             'direction': radar_detection['direction_name'],  # Use proper direction name
                             'radar_direction_sign': radar_detection['direction_sign'],
-                            'vms_displayed': 'yes' if should_display else 'no',
+                            'vms_displayed': 'yes',
                             'radar_readings_count': radar_detection['readings_count'],
                             'radar_detection_start': radar_detection['start_time'],
                             'radar_detection_end': radar_detection['end_time']
@@ -557,7 +555,7 @@ def listen_camera_events():
                             'speed': 0,
                             'direction': 'Unknown',
                             'radar_direction_sign': None,
-                            'vms_displayed': 'no',
+                            'vms_displayed': 'yes',
                             'radar_readings_count': 0,
                             'radar_detection_start': None,
                             'radar_detection_end': None
@@ -576,14 +574,8 @@ def listen_camera_events():
                     print(f"   Saved to: {get_daily_json_path()}")
                     print("=" * 60 + "\n")
                     
-                    # Display on VMS if conditions met
-                    if should_display:
-                        send_plate_to_vms(plate_no)
-                    else:
-                        if radar_detection:
-                            print(f"   → Skipped VMS (direction: {radar_detection['direction_sign']}, only_positive: {ONLY_POSITIVE_DIRECTION})")
-                        else:
-                            print(f"   → Skipped VMS (no completed radar detection available)")
+                    # Display on VMS - all plates are displayed
+                    send_plate_to_vms(plate_no)
                 else:
                     # Camera event received but no plate detected - clear display
                     print("\n" + "=" * 60)
