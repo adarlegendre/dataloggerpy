@@ -15,10 +15,10 @@ VMS_PORT = 5200
 VMS_WINDOW = 0
 VMS_COLOR = "0xFF0000"  # Red color
 VMS_FONT_SIZE = 18
-# New command format parameters
-VMS_X = "0"
-VMS_Y = "0"
-VMS_WIDTH = "10"
+# Function 2 (SendText) parameters: speed, effect, stay_time, alignment
+VMS_SPEED = 0
+VMS_EFFECT = 0
+VMS_STAY_TIME = 10
 VMS_ALIGNMENT = 1
 
 # Possible paths for sendcp5200 executable
@@ -75,12 +75,12 @@ def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
     
     print(f"Using executable: {executable}")
     
-    # New command format: [executable, "0", IP, PORT, "2", "0", text, COLOR, FONT_SIZE, X, Y, WIDTH, ALIGN]
+    # Function 2 (SendText) format: [executable, "0", IP, PORT, "2", window, text, COLOR, FONT_SIZE, SPEED, EFFECT, STAY_TIME, ALIGN]
     # Note: Empty string "" is valid for clearing display - subprocess.run() handles it correctly
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
         "0", text, color,
-        str(VMS_FONT_SIZE), VMS_X, VMS_Y, VMS_WIDTH, str(VMS_ALIGNMENT)
+        str(VMS_FONT_SIZE), str(VMS_SPEED), str(VMS_EFFECT), str(VMS_STAY_TIME), str(VMS_ALIGNMENT)
     ]
     
     print(f"\nSending command:")
@@ -92,10 +92,10 @@ def send_text_to_vms(text: str, window=None, stay_time=None, color=None):
     print(f"\nEquivalent shell command:")
     # For display, show empty string as "" in quotes
     display_text_quoted = f'"{text}"' if text else '""'
-    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 0 {display_text_quoted} {color} {VMS_FONT_SIZE} {VMS_X} {VMS_Y} {VMS_WIDTH} {VMS_ALIGNMENT}")
+    print(f"  {executable} 0 {VMS_IP} {VMS_PORT} 2 0 {display_text_quoted} {color} {VMS_FONT_SIZE} {VMS_SPEED} {VMS_EFFECT} {VMS_STAY_TIME} {VMS_ALIGNMENT}")
     print(f"\nText: '{text}'")
     print(f"VMS: {VMS_IP}:{VMS_PORT}")
-    print(f"Color: {color} | Font: {VMS_FONT_SIZE} | X: {VMS_X} | Y: {VMS_Y} | Width: {VMS_WIDTH} | Align: {VMS_ALIGNMENT}")
+    print(f"Color: {color} | Font: {VMS_FONT_SIZE} | Speed: {VMS_SPEED} | Effect: {VMS_EFFECT} | Stay: {VMS_STAY_TIME}s | Align: {VMS_ALIGNMENT}")
     print()
     
     try:
@@ -165,11 +165,11 @@ def clear_vms_display(window=None, method="empty"):
     
     print(f"\nClearing VMS display using empty string...")
     
-    # New command format: [executable, "0", IP, PORT, "2", "0", "", COLOR, FONT_SIZE, X, Y, WIDTH, ALIGN]
+    # Function 2 (SendText) format: [executable, "0", IP, PORT, "2", window, "", COLOR, FONT_SIZE, SPEED, EFFECT, STAY_TIME, ALIGN]
     cmd = [
         executable, "0", VMS_IP, str(VMS_PORT), "2",
         "0", "", VMS_COLOR,
-        str(VMS_FONT_SIZE), VMS_X, VMS_Y, VMS_WIDTH, str(VMS_ALIGNMENT)
+        str(VMS_FONT_SIZE), str(VMS_SPEED), str(VMS_EFFECT), str(VMS_STAY_TIME), str(VMS_ALIGNMENT)
     ]
     
     print(f"Command: {' '.join(cmd)}")
