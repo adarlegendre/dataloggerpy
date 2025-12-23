@@ -43,7 +43,7 @@ CFLAGS=
 
 # CC Compiler Flags
 CCFLAGS=
-CXXFLAGS=
+CXXFLAGS=-I../cp5200/cp5200
 
 # Fortran Compiler Flags
 FFLAGS=
