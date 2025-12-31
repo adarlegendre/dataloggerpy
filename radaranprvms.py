@@ -42,6 +42,7 @@ ONLY_POSITIVE_DIRECTION = False  # Set to False to display all directions
 POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
+MIN_SPEED_FOR_DISPLAY = 20  # Minimum speed (km/h) to display plate on VMS
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -307,7 +308,7 @@ def send_plate_to_vms(plate_number: str):
     # Use empty string for clearing, otherwise use the plate number
     display_text = plate_number if plate_number and plate_number.strip() else ""
     
-    # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 "PLATE" 0xFF0000 18 0 0 10 1
+    # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 NOPLATE 3 20 0 0 10 1
     cmd = [
         SENDCP5200_PATH,
         "0",
@@ -316,8 +317,8 @@ def send_plate_to_vms(plate_number: str):
         "2",
         "0",
         display_text,  # Plate number or empty string
-        "0xFF0000",    # Red color
-        "18",          # Font size
+        "3",           # Color
+        "20",          # Font size
         "0",           # Speed
         "0",           # Effect
         "10",          # Stay time
@@ -434,26 +435,28 @@ def listen_camera_events():
                     
                     # Prepare detection data
                     if radar_detection:
+                        speed = radar_detection['peak_speed']
                         detection_data = {
                             'timestamp': datetime.now().isoformat(),
                             'plate_number': plate_no,
-                            'speed': radar_detection['peak_speed'],  # Use peak speed from complete detection
+                            'speed': speed,  # Use peak speed from complete detection
                             'direction': radar_detection['direction_name'],  # Use proper direction name
                             'radar_direction_sign': radar_detection['direction_sign'],
-                            'vms_displayed': 'yes',
+                            'vms_displayed': 'yes' if speed > MIN_SPEED_FOR_DISPLAY else 'no',
                             'radar_readings_count': radar_detection['readings_count'],
                             'radar_detection_start': radar_detection['start_time'],
                             'radar_detection_end': radar_detection['end_time']
                         }
                     else:
-                        # No radar detection available
+                        # No radar detection available - speed is 0, so don't display
+                        speed = 0
                         detection_data = {
                             'timestamp': datetime.now().isoformat(),
                             'plate_number': plate_no,
-                            'speed': 0,
+                            'speed': speed,
                             'direction': 'Unknown',
                             'radar_direction_sign': None,
-                            'vms_displayed': 'yes',
+                            'vms_displayed': 'no',
                             'radar_readings_count': 0,
                             'radar_detection_start': None,
                             'radar_detection_end': None
@@ -472,8 +475,12 @@ def listen_camera_events():
                     print(f"   Saved to: {get_daily_json_path()}")
                     print("=" * 60 + "\n")
                     
-                    # Display on VMS - all plates are displayed
-                    send_plate_to_vms(plate_no)
+                    # Display on VMS only if speed is above threshold
+                    if speed > MIN_SPEED_FOR_DISPLAY:
+                        send_plate_to_vms(plate_no)
+                    else:
+                        print(f"⚠️  Speed {speed}km/h is below {MIN_SPEED_FOR_DISPLAY}km/h threshold - not displaying on VMS")
+                        send_plate_to_vms("")  # Clear display
                 else:
                     # Camera event received but no plate detected - clear display
                     print("\n" + "=" * 60)
