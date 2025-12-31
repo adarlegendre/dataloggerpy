@@ -48,6 +48,7 @@ MIN_SPEED_FOR_DISPLAY = 20  # Minimum speed (km/h) to display plate on VMS
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
 SENDCP5200_PATH = "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200"
+VMS_DISPLAY_TIME = 3  # Time in seconds to display plate before clearing
 
 # Data storage
 DETECTIONS_FOLDER = "detections"
@@ -74,6 +75,10 @@ _max_completed_detections = 10  # Keep last 10 completed detections
 _detections_lock = Lock()
 _current_date = None
 _detections_file = None
+
+# VMS display state
+_vms_clear_thread = None
+_vms_lock = Lock()
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -305,8 +310,16 @@ def read_radar_data():
 
 def send_plate_to_vms(plate_number: str):
     """Send plate number to VMS display using direct command execution"""
+    global _vms_clear_thread
+    
     # Use empty string for clearing, otherwise use the plate number
     display_text = plate_number if plate_number and plate_number.strip() else ""
+    
+    # Cancel any pending clear thread if new plate is being displayed
+    with _vms_lock:
+        if _vms_clear_thread is not None and display_text:
+            _vms_clear_thread = None
+            print(f"  → New plate detected, canceling pending clear")
     
     # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 NOPLATE 3 20 0 0 10 1
     cmd = [
@@ -341,7 +354,44 @@ def send_plate_to_vms(plate_number: str):
         
         if result.returncode == 0:
             if display_text:
-                print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT}")
+                print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_DISPLAY_TIME}s)")
+                
+                # Schedule auto-clear after display time
+                def clear_after_delay(plate_id):
+                    global _vms_clear_thread
+                    time.sleep(VMS_DISPLAY_TIME)
+                    
+                    with _vms_lock:
+                        # Only clear if this thread is still the active one (no new plate displayed)
+                        if _vms_clear_thread is not None:
+                            # Clear the display
+                            clear_cmd = [
+                                SENDCP5200_PATH,
+                                "0",
+                                VMS_IP,
+                                str(VMS_PORT),
+                                "2",
+                                "0",
+                                "",  # Empty string to clear
+                                "3",
+                                "20",
+                                "0",
+                                "0",
+                                "10",
+                                "1"
+                            ]
+                            try:
+                                subprocess.run(clear_cmd, capture_output=True, text=True, timeout=5)
+                                print(f"✓ Cleared VMS display (was showing '{plate_id}')")
+                            except Exception as e:
+                                print(f"Warning: Failed to clear VMS display: {e}")
+                            _vms_clear_thread = None
+                        else:
+                            print(f"  → Skipped clear (new plate displayed)")
+                
+                with _vms_lock:
+                    _vms_clear_thread = Thread(target=clear_after_delay, args=(display_text,), daemon=True)
+                    _vms_clear_thread.start()
             else:
                 print(f"✓ Cleared VMS display")
             if result.stdout:
