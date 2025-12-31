@@ -2,7 +2,7 @@
 """
 Radar-ANPR-VMS Integration System
 Combines radar detection, ANPR (camera plate recognition), and VMS display.
-Only displays plates when radar detects vehicles moving in positive direction (A+).
+Displays all detected license plates on VMS display.
 Stores all detections in daily JSON files.
 """
 
@@ -15,12 +15,9 @@ import socket
 import re
 import subprocess
 import os
-import sys
 import serial
 from datetime import datetime
-from queue import Queue
 from typing import Optional, Dict, Any
-from test_vms import send_text_to_vms
 
 # ============================================================================
 # CONFIGURATION
@@ -46,29 +43,13 @@ POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 
-# VMS Configuration (CP5200 Display) - matching test_vms.py
+# VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
-VMS_WINDOW = 0
-VMS_COLOR = 3  # Color value (matching test_vms.py)
-VMS_FONT_SIZE = 18
-VMS_SPEED = 5  # Animation speed (matching test_vms.py)
-VMS_EFFECT = 1  # Animation effect (matching test_vms.py)
-VMS_STAY_TIME = 5  # Display for 5 seconds, then clear
-VMS_ALIGNMENT = 1
+SENDCP5200_PATH = "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200"
 
 # Data storage
 DETECTIONS_FOLDER = "detections"
-
-# Match the search order used in test_vms.py
-SENDCP5200_PATHS = [
-    "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200",
-    "./sendcp5200/dist/Release/GNU-Linux/sendcp5200",
-    "/etc/1prog/sendcp5200k",
-    "sendcp5200",  # In PATH
-    "/usr/local/bin/sendcp5200",
-    "/usr/bin/sendcp5200",
-]
 
 # ============================================================================
 # GLOBAL STATE
@@ -81,17 +62,10 @@ headers = {
     'Connection': 'Close',
 }
 
-# VMS Display Queue Management
-_vms_lock = Lock()
-_pending_clear_thread = None
-_current_display_plate = None
-_display_start_time = None
-
 # Radar state - Vehicle detection tracking
 _radar_lock = Lock()
 _current_detection = []  # List of readings for current vehicle (0 -> peak -> 0)
 _current_direction = None  # '+' or '-' for current detection
-_last_speed = 0  # Last speed reading
 _completed_detections = []  # Queue of completed detections with peak speed
 _max_completed_detections = 10  # Keep last 10 completed detections
 
@@ -118,17 +92,6 @@ def get_daily_json_path():
     """Get full path for today's detection JSON file"""
     filename = get_daily_json_filename()
     return os.path.join(DETECTIONS_FOLDER, filename)
-
-def load_daily_detections():
-    """Load today's detections from JSON file"""
-    filepath = get_daily_json_path()
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return []
-    return []
 
 def save_detection(detection_data: Dict[str, Any]):
     """Save a detection to today's JSON file immediately (append-only to prevent memory clogging)"""
@@ -171,27 +134,6 @@ def save_detection(detection_data: Dict[str, Any]):
         except Exception as e:
             print(f"Error saving detection: {e}")
 
-def find_sendcp5200_executable():
-    """Find the sendcp5200 executable - matching test_vms.py"""
-    for path in SENDCP5200_PATHS:
-        if os.path.exists(path) and os.access(path, os.X_OK):
-            return path
-    
-    # Try which/where command - matching test_vms.py
-    try:
-        if sys.platform == "win32":
-            result = subprocess.run(['where', 'sendcp5200'], capture_output=True, text=True, timeout=2)
-        else:
-            result = subprocess.run(['which', 'sendcp5200'], capture_output=True, text=True, timeout=2)
-        if result.returncode == 0:
-            found_path = result.stdout.strip().split('\n')[0]
-            if found_path:
-                return found_path
-    except:
-        pass
-    
-    return None
-
 # ============================================================================
 # RADAR FUNCTIONS - Vehicle Detection Tracking
 # ============================================================================
@@ -202,7 +144,7 @@ def process_radar_reading(direction_sign: str, speed: int):
     Detects when a vehicle passes: 0 -> rising -> peak -> falling -> 0
     Tracks Gaussian-like pattern and extracts peak speed
     """
-    global _current_detection, _current_direction, _last_speed, _completed_detections
+    global _current_detection, _current_direction, _completed_detections
     
     with _radar_lock:
         # Add current reading to detection (always, even if 0)
@@ -216,7 +158,6 @@ def process_radar_reading(direction_sign: str, speed: int):
         if speed == 0:
             if not _current_detection:
                 # No active detection, just ignore zeros
-                _last_speed = 0
                 return
             
             # We have an active detection - add the zero reading
@@ -235,16 +176,11 @@ def process_radar_reading(direction_sign: str, speed: int):
                     
                     if vehicle_readings:
                         peak_speed = max(r['speed'] for r in vehicle_readings)
-                        
-                        completed = {
-                            'direction_sign': _current_direction,
-                            'direction_name': POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME,
-                            'peak_speed': peak_speed,
-                            'readings_count': len(_current_detection),
-                            'start_time': _current_detection[0]['timestamp'],
-                            'end_time': datetime.now().isoformat(),
-                            'timestamp': datetime.now().isoformat()
-                        }
+                        direction_name = POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME
+                        completed = _create_completed_detection(
+                            _current_direction, direction_name, peak_speed,
+                            _current_detection, _current_detection[0]['timestamp']
+                        )
                         
                         _completed_detections.append(completed)
                         if len(_completed_detections) > _max_completed_detections:
@@ -256,7 +192,6 @@ def process_radar_reading(direction_sign: str, speed: int):
                     _current_detection = []
                     _current_direction = None
             
-            _last_speed = 0
             return
         
         # Non-zero speed - we have a vehicle
@@ -264,28 +199,22 @@ def process_radar_reading(direction_sign: str, speed: int):
             # Start new detection (transition from 0 to non-zero)
             _current_detection = [reading]
             _current_direction = direction_sign
-            _last_speed = speed
             print(f"→ Vehicle detection started: {POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME} | Speed: {speed}km/h")
         else:
             # Continue current detection
             if _current_direction == direction_sign:
                 # Same direction - add to current detection
                 _current_detection.append(reading)
-                _last_speed = speed
             else:
                 # Direction changed - complete old detection and start new
                 vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
                 if vehicle_readings:
                     peak_speed = max(r['speed'] for r in vehicle_readings)
-                    completed = {
-                        'direction_sign': _current_direction,
-                        'direction_name': POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME,
-                        'peak_speed': peak_speed,
-                        'readings_count': len(_current_detection),
-                        'start_time': _current_detection[0]['timestamp'],
-                        'end_time': datetime.now().isoformat(),
-                        'timestamp': datetime.now().isoformat()
-                    }
+                    direction_name = POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME
+                    completed = _create_completed_detection(
+                        _current_direction, direction_name, peak_speed,
+                        _current_detection, _current_detection[0]['timestamp']
+                    )
                     _completed_detections.append(completed)
                     if len(_completed_detections) > _max_completed_detections:
                         _completed_detections.pop(0)
@@ -294,8 +223,20 @@ def process_radar_reading(direction_sign: str, speed: int):
                 # Start new detection with new direction
                 _current_detection = [reading]
                 _current_direction = direction_sign
-                _last_speed = speed
                 print(f"→ Vehicle detection started: {POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME} | Speed: {speed}km/h")
+
+def _create_completed_detection(direction_sign: str, direction_name: str, peak_speed: int, 
+                                detection_readings: list, start_time: str) -> Dict[str, Any]:
+    """Create a completed detection dictionary"""
+    return {
+        'direction_sign': direction_sign,
+        'direction_name': direction_name,
+        'peak_speed': peak_speed,
+        'readings_count': len(detection_readings),
+        'start_time': start_time,
+        'end_time': datetime.now().isoformat(),
+        'timestamp': datetime.now().isoformat()
+    }
 
 def get_latest_completed_detection() -> Optional[Dict[str, Any]]:
     """Get the most recent completed vehicle detection (thread-safe)"""
@@ -305,11 +246,6 @@ def get_latest_completed_detection() -> Optional[Dict[str, Any]]:
         if _completed_detections:
             return _completed_detections[-1].copy()
         return None
-
-def is_latest_detection_positive() -> bool:
-    """Check if the most recent completed detection was positive direction (A+)"""
-    detection = get_latest_completed_detection()
-    return detection is not None and detection['direction_sign'] == '+'
 
 def read_radar_data():
     """Read radar data from serial port in background thread"""
@@ -366,94 +302,59 @@ def read_radar_data():
 # VMS FUNCTIONS
 # ============================================================================
 
-def clear_vms_display():
-    """Clear VMS display by sending empty string"""
-    executable = find_sendcp5200_executable()
-    if not executable:
-        print("ERROR: sendcp5200 executable not found!")
-        print("Paths tried:")
-        for p in SENDCP5200_PATHS:
-            print(f"  - {p}")
-        return False
+def send_plate_to_vms(plate_number: str):
+    """Send plate number to VMS display using direct command execution"""
+    # Use empty string for clearing, otherwise use the plate number
+    display_text = plate_number if plate_number and plate_number.strip() else ""
     
+    # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 "PLATE" 0xFF0000 18 0 0 10 1
     cmd = [
-        executable, "0", VMS_IP, str(VMS_PORT), "2",
-        str(VMS_WINDOW), "", str(VMS_COLOR), str(VMS_FONT_SIZE),
-        str(VMS_SPEED), str(VMS_EFFECT), "10", str(VMS_ALIGNMENT)
+        SENDCP5200_PATH,
+        "0",
+        VMS_IP,
+        str(VMS_PORT),
+        "2",
+        "0",
+        display_text,  # Plate number or empty string
+        "0xFF0000",    # Red color
+        "18",          # Font size
+        "0",           # Speed
+        "0",           # Effect
+        "10",          # Stay time
+        "1"            # Alignment
     ]
+    
+    # Print the command being executed
+    cmd_parts = []
+    for arg in cmd:
+        if arg == "":
+            cmd_parts.append('""')
+        elif ' ' in str(arg):
+            cmd_parts.append(f'"{arg}"')
+        else:
+            cmd_parts.append(str(arg))
+    print(f"→ Executing VMS command: {' '.join(cmd_parts)}")
     
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
         if result.returncode == 0:
+            if display_text:
+                print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT}")
+            else:
+                print(f"✓ Cleared VMS display")
             if result.stdout:
-                print(f"sendcp5200 (clear) output: {result.stdout.strip()}")
+                print(f"  sendcp5200 output: {result.stdout.strip()}")
             return True
         else:
             if result.stdout:
-                print(f"sendcp5200 (clear) output: {result.stdout.strip()}")
+                print(f"  sendcp5200 output: {result.stdout.strip()}")
             if result.stderr:
-                print(f"sendcp5200 (clear) error: {result.stderr.strip()}")
+                print(f"  sendcp5200 error: {result.stderr.strip()}")
+            print(f"✗ Failed to send to VMS")
             return False
     except Exception as e:
-        print(f"Error clearing VMS: {e}")
-        return False
-
-def send_plate_to_vms(plate_number: str):
-    """Send plate number to VMS display for 5 seconds, then clear and repeat"""
-    global _pending_clear_thread, _current_display_plate, _display_start_time
-    
-    # Handle empty or None plate number - use "." to switch off
-    display_text = plate_number if plate_number and plate_number.strip() else "."
-    
-    with _vms_lock:
-        if _pending_clear_thread is not None:
-            _pending_clear_thread = None
-            print(f"  → New vehicle detected, canceling pending clear")
-        
-        if _current_display_plate is not None and _current_display_plate != display_text:
-            elapsed = time.time() - _display_start_time if _display_start_time else 0
-            print(f"  → Interrupting display of '{_current_display_plate}' (was showing for {elapsed:.1f}s)")
-        
-        _current_display_plate = display_text
-        _display_start_time = time.time()
-    
-    # Use send_text_to_vms from test_vms.py (no color parameter - uses default from test_vms.py)
-    success = send_text_to_vms(display_text, window=VMS_WINDOW, stay_time=VMS_STAY_TIME)
-    
-    if success:
-        print(f"✓ Sent '{display_text}' to VMS at {VMS_IP}:{VMS_PORT} (will clear in {VMS_STAY_TIME}s)")
-        
-        def clear_after_delay(plate_id):
-            global _current_display_plate, _display_start_time, _pending_clear_thread
-            
-            # Wait 5 seconds before clearing
-            time.sleep(VMS_STAY_TIME)
-            
-            with _vms_lock:
-                if _current_display_plate == plate_id and _pending_clear_thread is not None:
-                    # Clear by sending empty string
-                    if send_text_to_vms("", window=VMS_WINDOW, stay_time=VMS_STAY_TIME):
-                        print(f"✓ Cleared VMS display (was showing '{plate_id}')")
-                    else:
-                        print(f"Warning: Failed to clear VMS display")
-                    _current_display_plate = None
-                    _display_start_time = None
-                    _pending_clear_thread = None
-                else:
-                    print(f"  → Skipped clear (new vehicle displayed)")
-        
-        with _vms_lock:
-            _pending_clear_thread = Thread(target=clear_after_delay, args=(display_text,))
-            _pending_clear_thread.daemon = True
-            _pending_clear_thread.start()
-        
-        return True
-    else:
-        print(f"✗ Failed to send '{display_text}' to VMS")
-        with _vms_lock:
-            _current_display_plate = None
-            _display_start_time = None
+        print(f"Error sending to VMS: {e}")
         return False
 
 # ============================================================================
@@ -474,18 +375,18 @@ def extract_plate_number(data_json):
                 if plate_no and plate_no != "Unknown" and plate_no.strip():
                     return plate_no
         return None
-    except Exception:
+    except (KeyError, TypeError, AttributeError):
         return None
 
 def keepalive():
     """Keep camera subscription alive"""
     while True:
-        keepaliveUrl = f"{CAMERA_URL}/{SUBSCRIPTION_ID}"
+        keepalive_url = f"{CAMERA_URL}/{SUBSCRIPTION_ID}"
         data = {'Duration': DURATION}
-        jsonStr = json.dumps(data)
+        json_str = json.dumps(data)
         
         try:
-            response = requests.put(url=keepaliveUrl, headers=headers, data=jsonStr, 
+            response = requests.put(url=keepalive_url, headers=headers, data=json_str, 
                                   auth=HTTPDigestAuth(CAMERA_USERNAME, CAMERA_PASSWORD), timeout=5)
             if response.status_code != 200:
                 print(f'Keepalive failure: {response.status_code}')
@@ -530,9 +431,6 @@ def listen_camera_events():
                 if plate_no:
                     # Get latest completed radar detection (with peak speed)
                     radar_detection = get_latest_completed_detection()
-                    
-                    # Display all detected plates (removed positive direction only constraint)
-                    should_display = True
                     
                     # Prepare detection data
                     if radar_detection:
@@ -581,7 +479,7 @@ def listen_camera_events():
                     print("\n" + "=" * 60)
                     print("⚠️  CAMERA EVENT: NO PLATE DETECTED")
                     print("=" * 60 + "\n")
-                    send_plate_to_vms("")  # Empty string will send "." to clear the display
+                    send_plate_to_vms("")  # Empty string to clear the display
             
             except json.JSONDecodeError:
                 pass
@@ -614,13 +512,6 @@ def main():
     ensure_detections_folder()
     print(f"✓ Detections will be saved to: {get_daily_json_path()}")
     
-    # Check for sendcp5200 executable
-    executable = find_sendcp5200_executable()
-    if executable:
-        print(f"✓ Found sendcp5200: {executable}")
-    else:
-        print("⚠ Warning: sendcp5200 executable not found. VMS sending will be disabled.")
-    
     # Step 1: Start radar reader thread
     print("\nStarting radar reader...")
     radar_thread = Thread(target=read_radar_data, daemon=True)
@@ -635,15 +526,15 @@ def main():
         "Port": RECEIVE_ALARM_DATA_PORT,
         "Duration": DURATION
     }
-    jsonStr = json.dumps(data)
+    json_str = json.dumps(data)
     
     try:
-        response = requests.post(url=CAMERA_URL, headers=headers, data=jsonStr, 
+        response = requests.post(url=CAMERA_URL, headers=headers, data=json_str, 
                                auth=HTTPDigestAuth(CAMERA_USERNAME, CAMERA_PASSWORD), timeout=5)
         if response.status_code == 200:
-            suscribeResJson = json.loads(response.text)
+            subscribe_res_json = json.loads(response.text)
             global SUBSCRIPTION_ID
-            SUBSCRIPTION_ID = suscribeResJson['Response']['Data']['ID']
+            SUBSCRIPTION_ID = subscribe_res_json['Response']['Data']['ID']
             print(f'✓ Subscribed successfully (ID: {SUBSCRIPTION_ID})')
             
             # Step 3: Start keepalive thread
