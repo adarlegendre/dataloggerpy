@@ -43,7 +43,7 @@ POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 20  # Minimum speed (km/h) to display plate on VMS
-RADAR_CAMERA_TIME_WINDOW = 10  # Maximum seconds between radar detection and camera detection to consider them matched
+RADAR_CAMERA_TIME_WINDOW = 15  # Maximum seconds between radar detection and camera detection to consider them matched
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -263,11 +263,11 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
                     latest_reading_time = datetime.fromisoformat(_current_detection[-1]['timestamp'])
                     time_diff = (datetime.now() - latest_reading_time).total_seconds()
                     
-                    # If current detection is very recent (within 2 seconds), use it
-                    if time_diff <= 2:
+                    # If current detection is very recent (within 5 seconds), use it
+                    if time_diff <= 5:
                         peak_speed = max(r['speed'] for r in vehicle_readings)
                         direction_name = POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME
-                        return {
+                        in_progress_detection = {
                             'direction_sign': _current_direction,
                             'direction_name': direction_name,
                             'peak_speed': peak_speed,
@@ -277,30 +277,49 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
                             'timestamp': datetime.now().isoformat(),
                             'in_progress': True
                         }
+                        print(f"  ✓ Using in-progress radar detection: {peak_speed}km/h, {direction_name} ({time_diff:.1f}s ago)")
+                        return in_progress_detection
                 except (ValueError, KeyError):
                     pass
         
-        # Check completed detections
+        # Check completed detections - check from most recent to oldest
         if not _completed_detections:
             return None
         
-        # Get the most recent detection
-        latest = _completed_detections[-1].copy()
+        # Check recent detections (most recent first)
+        now = datetime.now()
+        for detection in reversed(_completed_detections):
+            try:
+                # Check both start_time and end_time to see if detection is within window
+                detection_start = datetime.fromisoformat(detection['start_time'])
+                detection_end = datetime.fromisoformat(detection['end_time'])
+                
+                # Calculate time differences
+                time_since_start = (now - detection_start).total_seconds()
+                time_since_end = (now - detection_end).total_seconds()
+                
+                # Accept if detection ended recently OR started recently (within window)
+                # This handles cases where camera detects during or shortly after radar detection
+                if time_since_end <= max_age_seconds or time_since_start <= max_age_seconds:
+                    # Return the most recent matching detection
+                    matched = detection.copy()
+                    print(f"  ✓ Matched radar detection: {matched.get('peak_speed', 0)}km/h, {matched.get('direction_name', 'Unknown')} (start: {time_since_start:.1f}s ago, end: {time_since_end:.1f}s ago)")
+                    return matched
+                    
+            except (ValueError, KeyError) as e:
+                # Skip this detection if timestamp parsing fails
+                continue
         
-        # Check if detection is recent enough (within time window)
-        try:
-            detection_end_time = datetime.fromisoformat(latest['end_time'])
-            time_diff = (datetime.now() - detection_end_time).total_seconds()
-            
-            if time_diff <= max_age_seconds:
-                return latest
-            else:
-                # Detection is too old, return None
-                print(f"  ⚠️  Radar detection too old ({time_diff:.1f}s ago, max {max_age_seconds}s)")
-                return None
-        except (ValueError, KeyError):
-            # If timestamp parsing fails, return the detection anyway (better than nothing)
-            return latest
+        # No recent detections found
+        if _completed_detections:
+            latest = _completed_detections[-1]
+            try:
+                detection_end_time = datetime.fromisoformat(latest['end_time'])
+                time_diff = (now - detection_end_time).total_seconds()
+                print(f"  ⚠️  All radar detections too old (latest: {time_diff:.1f}s ago, max {max_age_seconds}s)")
+            except:
+                pass
+        return None
 
 def read_radar_data():
     """Read radar data from serial port in background thread"""
@@ -539,7 +558,16 @@ def listen_camera_events():
                         with _radar_lock:
                             has_completed = len(_completed_detections) > 0
                             has_in_progress = len(_current_detection) > 0
-                            print(f"  ⚠️  No matching radar detection found (completed: {has_completed}, in_progress: {has_in_progress})")
+                            if has_completed:
+                                latest = _completed_detections[-1]
+                                try:
+                                    end_time = datetime.fromisoformat(latest['end_time'])
+                                    age = (datetime.now() - end_time).total_seconds()
+                                    print(f"  ⚠️  No matching radar detection (latest completed: {age:.1f}s ago, peak: {latest.get('peak_speed', 0)}km/h)")
+                                except:
+                                    print(f"  ⚠️  No matching radar detection (completed: {has_completed}, in_progress: {has_in_progress})")
+                            else:
+                                print(f"  ⚠️  No radar detections available (in_progress: {has_in_progress})")
                     
                     # Prepare detection data
                     if radar_detection:
