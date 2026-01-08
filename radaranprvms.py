@@ -43,6 +43,7 @@ POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 20  # Minimum speed (km/h) to display plate on VMS
+RADAR_CAMERA_TIME_WINDOW = 5  # Maximum seconds between radar detection and camera detection to consider them matched
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -244,14 +245,33 @@ def _create_completed_detection(direction_sign: str, direction_name: str, peak_s
         'timestamp': datetime.now().isoformat()
     }
 
-def get_latest_completed_detection() -> Optional[Dict[str, Any]]:
-    """Get the most recent completed vehicle detection (thread-safe)"""
+def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
+    """
+    Get the most recent completed vehicle detection (thread-safe)
+    Only returns detections that are within max_age_seconds of current time
+    """
     global _completed_detections
     
     with _radar_lock:
-        if _completed_detections:
-            return _completed_detections[-1].copy()
-        return None
+        if not _completed_detections:
+            return None
+        
+        # Get the most recent detection
+        latest = _completed_detections[-1].copy()
+        
+        # Check if detection is recent enough (within time window)
+        try:
+            detection_end_time = datetime.fromisoformat(latest['end_time'])
+            time_diff = (datetime.now() - detection_end_time).total_seconds()
+            
+            if time_diff <= max_age_seconds:
+                return latest
+            else:
+                # Detection is too old, return None
+                return None
+        except (ValueError, KeyError):
+            # If timestamp parsing fails, return the detection anyway (better than nothing)
+            return latest
 
 def read_radar_data():
     """Read radar data from serial port in background thread"""
@@ -321,7 +341,7 @@ def send_plate_to_vms(plate_number: str):
             _vms_clear_thread = None
             print(f"  → New plate detected, canceling pending clear")
     
-    # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 NOPLATE 3 20 0 0 10 1
+    # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 AHOJ -1 22 0 0 10 1
     cmd = [
         SENDCP5200_PATH,
         "0",
@@ -330,8 +350,8 @@ def send_plate_to_vms(plate_number: str):
         "2",
         "0",
         display_text,  # Plate number or empty string
-        "3",           # Color
-        "20",          # Font size
+        "-1",          # Color
+        "22",          # Font size
         "0",           # Speed
         "0",           # Effect
         "10",          # Stay time
@@ -373,8 +393,8 @@ def send_plate_to_vms(plate_number: str):
                                 "2",
                                 "0",
                                 "",  # Empty string to clear
-                                "3",
-                                "20",
+                                "-1",
+                                "22",
                                 "0",
                                 "0",
                                 "10",
