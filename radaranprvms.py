@@ -42,7 +42,7 @@ ONLY_POSITIVE_DIRECTION = False  # Set to False to display all directions
 POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
-MIN_SPEED_FOR_DISPLAY = 20  # Minimum speed (km/h) to display plate on VMS
+MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_CAMERA_TIME_WINDOW = 15  # Maximum seconds between radar detection and camera detection to consider them matched
 
@@ -205,6 +205,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                         # Run in background thread to avoid blocking radar processing
                         try:
                             if peak_speed > SPEED_LIMIT:
+                                print(f"  → Starting speed violation check for {peak_speed}km/h")
                                 Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
                         except Exception as e:
                             print(f"Warning: Error starting speed violation check: {e}")
@@ -245,6 +246,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                     # Run in background thread to avoid blocking radar processing
                     try:
                         if peak_speed > SPEED_LIMIT:
+                            print(f"  → Starting speed violation check for {peak_speed}km/h")
                             Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
                     except Exception as e:
                         print(f"Warning: Error starting speed violation check: {e}")
@@ -278,24 +280,26 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     if peak_speed <= SPEED_LIMIT:
         return
     
+    detection_id = radar_detection['end_time']
+    print(f"  → Checking speed violation for {peak_speed}km/h (detection ID: {detection_id[:19]}...)")
+    
     # Wait a short time to see if camera detects a plate for this vehicle
     # This gives camera time to send plate detection if it's coming
-    time.sleep(1.5)  # Reduced wait time for faster response
-    
-    # Check if a plate was detected for this radar detection by checking if it's still recent
-    # and hasn't been matched with a plate
-    detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
-    time_since_detection = (datetime.now() - detection_end_time).total_seconds()
+    time.sleep(1.0)  # Reduced wait time for faster response
     
     # Check if this detection was already matched with a plate
-    detection_id = radar_detection['end_time']
     with _matched_detections_lock:
         if detection_id in _matched_radar_detections:
             # Plate was detected for this vehicle, don't show violation
+            print(f"  → Plate detected for this vehicle, skipping speed violation")
             return
     
-    # Only display if still within reasonable time window
-    if time_since_detection <= 4:
+    # Check if detection is still recent
+    detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
+    time_since_detection = (datetime.now() - detection_end_time).total_seconds()
+    
+    # Display violation if still within reasonable time window
+    if time_since_detection <= 5:
         with _speed_violation_lock:
             # Only display if not already showing a violation
             if not _speed_violation_active:
@@ -314,6 +318,10 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
                 time.sleep(VMS_DISPLAY_TIME)
                 with _speed_violation_lock:
                     _speed_violation_active = False
+            else:
+                print(f"  → Speed violation already displaying, skipping")
+    else:
+        print(f"  → Detection too old ({time_since_detection:.1f}s), skipping speed violation")
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
