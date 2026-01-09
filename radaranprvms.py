@@ -43,6 +43,7 @@ POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 20  # Minimum speed (km/h) to display plate on VMS
+SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_CAMERA_TIME_WINDOW = 15  # Maximum seconds between radar detection and camera detection to consider them matched
 
 # VMS Configuration (CP5200 Display)
@@ -80,6 +81,10 @@ _detections_file = None
 # VMS display state
 _vms_clear_thread = None
 _vms_lock = Lock()
+_speed_violation_active = False  # Track if speed violation is currently displayed
+_speed_violation_lock = Lock()
+_matched_radar_detections = set()  # Track radar detection end_times that have been matched with plates
+_matched_detections_lock = Lock()
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -194,6 +199,11 @@ def process_radar_reading(direction_sign: str, speed: int):
                             _completed_detections.pop(0)
                         
                         print(f"✓ Vehicle detection complete: {completed['direction_name']} | Peak Speed: {peak_speed}km/h | Readings: {len(_current_detection)}")
+                        
+                        # Check for speed violation (no plate detected, speed > limit)
+                        # This runs immediately when radar detection completes for fast response
+                        if peak_speed > SPEED_LIMIT:
+                            Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
                     
                     # Reset for next detection
                     _current_detection = []
@@ -226,6 +236,10 @@ def process_radar_reading(direction_sign: str, speed: int):
                     if len(_completed_detections) > _max_completed_detections:
                         _completed_detections.pop(0)
                     print(f"✓ Vehicle detection complete: {completed['direction_name']} | Peak Speed: {peak_speed}km/h")
+                    
+                    # Check for speed violation (no plate detected, speed > limit)
+                    if peak_speed > SPEED_LIMIT:
+                        Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
                 
                 # Start new detection with new direction
                 _current_detection = [reading]
@@ -244,6 +258,54 @@ def _create_completed_detection(direction_sign: str, direction_name: str, peak_s
         'end_time': datetime.now().isoformat(),
         'timestamp': datetime.now().isoformat()
     }
+
+def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
+    """
+    Check if speed violation should be displayed (no plate detected, speed > limit)
+    Runs in background thread for fast response
+    """
+    global _speed_violation_active
+    
+    peak_speed = radar_detection['peak_speed']
+    if peak_speed <= SPEED_LIMIT:
+        return
+    
+    # Wait a short time to see if camera detects a plate for this vehicle
+    # This gives camera time to send plate detection if it's coming
+    time.sleep(1.5)  # Reduced wait time for faster response
+    
+    # Check if a plate was detected for this radar detection by checking if it's still recent
+    # and hasn't been matched with a plate
+    detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
+    time_since_detection = (datetime.now() - detection_end_time).total_seconds()
+    
+    # Check if this detection was already matched with a plate
+    detection_id = radar_detection['end_time']
+    with _matched_detections_lock:
+        if detection_id in _matched_radar_detections:
+            # Plate was detected for this vehicle, don't show violation
+            return
+    
+    # Only display if still within reasonable time window
+    if time_since_detection <= 4:
+        with _speed_violation_lock:
+            # Only display if not already showing a violation
+            if not _speed_violation_active:
+                _speed_violation_active = True
+                
+                print(f"\n" + "=" * 60)
+                print(f"⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h (No plate detected)")
+                print(f"   Direction: {radar_detection['direction_name']}")
+                print(f"   Displaying 'ZPOMAL!' on VMS")
+                print("=" * 60 + "\n")
+                
+                # Display speed violation warning
+                send_plate_to_vms("ZPOMAL!")
+                
+                # Reset flag after display time
+                time.sleep(VMS_DISPLAY_TIME)
+                with _speed_violation_lock:
+                    _speed_violation_active = False
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
@@ -386,10 +448,16 @@ def send_plate_to_vms(plate_number: str):
     display_text = plate_number if plate_number and plate_number.strip() else ""
     
     # Cancel any pending clear thread if new plate is being displayed
+    # Also cancel speed violation if displaying a plate
     with _vms_lock:
         if _vms_clear_thread is not None and display_text:
             _vms_clear_thread = None
             print(f"  → New plate detected, canceling pending clear")
+        
+        # If displaying a plate, cancel any speed violation
+        if display_text and display_text != "ZPOMAL!":
+            with _speed_violation_lock:
+                _speed_violation_active = False
     
     # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 AHOJ -1 22 0 0 10 1
     cmd = [
@@ -571,6 +639,14 @@ def listen_camera_events():
                     
                     # Prepare detection data
                     if radar_detection:
+                        # Mark this radar detection as matched with a plate
+                        with _matched_detections_lock:
+                            _matched_radar_detections.add(radar_detection['end_time'])
+                            # Keep only recent matches (last 100)
+                            if len(_matched_radar_detections) > 100:
+                                # Remove oldest entries (simple cleanup)
+                                _matched_radar_detections = set(list(_matched_radar_detections)[-50:])
+                        
                         speed = radar_detection['peak_speed']
                         detection_data = {
                             'timestamp': datetime.now().isoformat(),
