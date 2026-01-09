@@ -202,8 +202,12 @@ def process_radar_reading(direction_sign: str, speed: int):
                         
                         # Check for speed violation (no plate detected, speed > limit)
                         # This runs immediately when radar detection completes for fast response
-                        if peak_speed > SPEED_LIMIT:
-                            Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
+                        # Run in background thread to avoid blocking radar processing
+                        try:
+                            if peak_speed > SPEED_LIMIT:
+                                Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
+                        except Exception as e:
+                            print(f"Warning: Error starting speed violation check: {e}")
                     
                     # Reset for next detection
                     _current_detection = []
@@ -238,8 +242,12 @@ def process_radar_reading(direction_sign: str, speed: int):
                     print(f"✓ Vehicle detection complete: {completed['direction_name']} | Peak Speed: {peak_speed}km/h")
                     
                     # Check for speed violation (no plate detected, speed > limit)
-                    if peak_speed > SPEED_LIMIT:
-                        Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
+                    # Run in background thread to avoid blocking radar processing
+                    try:
+                        if peak_speed > SPEED_LIMIT:
+                            Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
+                    except Exception as e:
+                        print(f"Warning: Error starting speed violation check: {e}")
                 
                 # Start new detection with new direction
                 _current_detection = [reading]
