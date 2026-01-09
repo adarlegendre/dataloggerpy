@@ -264,7 +264,7 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     Check if speed violation should be displayed (no plate detected, speed > limit)
     Runs in background thread for fast response
     """
-    global _speed_violation_active
+    global _speed_violation_active, _matched_radar_detections
     
     peak_speed = radar_detection['peak_speed']
     if peak_speed <= SPEED_LIMIT:
@@ -640,6 +640,7 @@ def listen_camera_events():
                     # Prepare detection data
                     if radar_detection:
                         # Mark this radar detection as matched with a plate
+                        global _matched_radar_detections
                         with _matched_detections_lock:
                             _matched_radar_detections.add(radar_detection['end_time'])
                             # Keep only recent matches (last 100)
