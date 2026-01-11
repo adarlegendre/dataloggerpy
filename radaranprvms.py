@@ -105,8 +105,8 @@ def get_daily_json_path():
     filename = get_daily_json_filename()
     return os.path.join(DETECTIONS_FOLDER, filename)
 
-def save_detection(detection_data: Dict[str, Any]):
-    """Save a detection to today's JSON file immediately (append-only to prevent memory clogging)"""
+def _save_detection_worker(detection_data: Dict[str, Any]):
+    """Worker function to save detection in background thread (non-blocking)"""
     global _current_date, _detections_file
     
     ensure_detections_folder()
@@ -143,8 +143,17 @@ def save_detection(detection_data: Dict[str, Any]):
             
             # Clear from memory immediately
             del detections
+            
+            # Show save confirmation
+            plate = detection_data.get('plate_number', 'N/A')
+            speed = detection_data.get('speed', 0)
+            print(f"💾 Saved: {plate} ({speed}km/h) → {os.path.basename(filepath)}")
         except Exception as e:
             print(f"Error saving detection: {e}")
+
+def save_detection(detection_data: Dict[str, Any]):
+    """Save a detection to today's JSON file in background thread (non-blocking)"""
+    Thread(target=_save_detection_worker, args=(detection_data,), daemon=True).start()
 
 # ============================================================================
 # RADAR FUNCTIONS - Vehicle Detection Tracking
@@ -198,7 +207,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                         if len(_completed_detections) > _max_completed_detections:
                             _completed_detections.pop(0)
                         
-                        print(f"✓ Radar: {completed['direction_name']} | {peak_speed}km/h")
+                        print(f"\n✓ Detection: {completed['direction_name']} {peak_speed}km/h")
                         
                         # Check for speed violation (no plate detected, speed > limit)
                         try:
@@ -237,7 +246,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                     _completed_detections.append(completed)
                     if len(_completed_detections) > _max_completed_detections:
                         _completed_detections.pop(0)
-                    print(f"✓ Radar: {completed['direction_name']} | {peak_speed}km/h")
+                    print(f"\n✓ Detection: {completed['direction_name']} {peak_speed}km/h")
                     
                     # Check for speed violation (no plate detected, speed > limit)
                     try:
@@ -298,7 +307,7 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
             if not _speed_violation_active:
                 _speed_violation_active = True
                 
-                print(f"\n⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h | {radar_detection['direction_name']} | Displaying 'ZPOMAL!'\n")
+                print(f"⚠️  Speed violation: {peak_speed}km/h > {SPEED_LIMIT}km/h ({radar_detection['direction_name']})")
                 
                 try:
                     send_plate_to_vms("ZPOMAL!")
@@ -419,6 +428,10 @@ def read_radar_data():
                                 speed_str = decoded[2:]
                                 speed = int(speed_str)
                                 
+                                # Stream radar data continuously
+                                direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+                                print(f"📡 {direction_name}: {speed}km/h", end='\r', flush=True)
+                                
                                 # Process radar reading (tracks complete vehicle detections)
                                 process_radar_reading(direction_sign, speed)
                         except (ValueError, IndexError):
@@ -455,22 +468,21 @@ def read_radar_data():
 # ============================================================================
 
 def send_plate_to_vms(plate_number: str):
-    """Send plate number to VMS display using direct command execution"""
+    """Send plate number to VMS display using direct command execution (non-blocking)"""
     global _vms_clear_thread
     
     # Use empty string for clearing, otherwise use the plate number
     display_text = plate_number if plate_number and plate_number.strip() else ""
     
     # Cancel any pending clear thread if new plate is being displayed
-    # Also cancel speed violation if displaying a plate
     with _vms_lock:
         if _vms_clear_thread is not None and display_text:
             _vms_clear_thread = None
-        
-        # If displaying a plate, cancel any speed violation
-        if display_text and display_text != "ZPOMAL!":
-            with _speed_violation_lock:
-                _speed_violation_active = False
+    
+    # Cancel speed violation if displaying a plate (outside vms_lock to avoid nested locks)
+    if display_text and display_text != "ZPOMAL!":
+        with _speed_violation_lock:
+            _speed_violation_active = False
     
     # Build command: ./sendcp5200/dist/Debug/GNU-Linux/sendcp5200 0 192.168.1.222 5200 2 0 AHOJ -1 22 0 0 10 1
     cmd = [
@@ -489,12 +501,14 @@ def send_plate_to_vms(plate_number: str):
         "1"            # Alignment
     ]
     
+    # Run subprocess in non-blocking way (with timeout protection)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
         if result.returncode == 0:
             if display_text:
-                print(f"✓ VMS: '{display_text}' → {VMS_IP}:{VMS_PORT}")
+                cmd_str = ' '.join(cmd)
+                print(f"📺 VMS: '{display_text}' | CMD: {cmd_str}")
                 
                 # Schedule auto-clear after display time
                 def clear_after_delay(plate_id):
@@ -521,8 +535,8 @@ def send_plate_to_vms(plate_number: str):
                                 "1"
                             ]
                             try:
-                                subprocess.run(clear_cmd, capture_output=True, text=True, timeout=5)
-                            except:
+                                subprocess.run(clear_cmd, capture_output=True, text=True, timeout=5, check=False)
+                            except Exception:
                                 pass
                             _vms_clear_thread = None
                 
@@ -530,9 +544,8 @@ def send_plate_to_vms(plate_number: str):
                     _vms_clear_thread = Thread(target=clear_after_delay, args=(display_text,), daemon=True)
                     _vms_clear_thread.start()
             else:
-                print(f"✓ Cleared VMS display")
-            if result.stdout:
-                print(f"  sendcp5200 output: {result.stdout.strip()}")
+                cmd_str = ' '.join(cmd)
+                print(f"📺 VMS: Cleared | CMD: {cmd_str}")
             return True
         else:
             if result.stdout:
@@ -585,13 +598,112 @@ def keepalive():
         
         time.sleep(DURATION / 2)
 
-def listen_camera_events():
-    """Listen for camera ANPR events"""
+def _handle_camera_client(client_socket, client_address):
+    """Handle individual camera client connection in separate thread (non-blocking)"""
     global _matched_radar_detections
     
     try:
+        data = b''
+        client_socket.settimeout(5.0)  # Set timeout to prevent indefinite blocking
+        while True:
+            try:
+                tmp = client_socket.recv(1024)
+                if not tmp:
+                    break
+                data += tmp
+            except socket.timeout:
+                break
+            except Exception as e:
+                print(f"⚠️ Camera recv error: {e}")
+                break
+        
+        if not data:
+            client_socket.close()
+            return
+        
+        print(f"📷 Camera event")
+        
+        try:
+            raw_data_str = data.decode('utf-8', errors='ignore')
+            body = raw_data_str.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in raw_data_str else raw_data_str
+            body = re.sub(r'[\x00-\x1F\x7F]', '', body)
+            data_json = json.loads(body)
+            
+            # Extract plate number
+            plate_no = extract_plate_number(data_json)
+            if plate_no:
+                # Get latest completed radar detection (with peak speed)
+                radar_detection = get_latest_completed_detection()
+                
+                # Prepare detection data
+                if radar_detection:
+                    # Mark this radar detection as matched with a plate
+                    with _matched_detections_lock:
+                        _matched_radar_detections.add(radar_detection['end_time'])
+                        # Keep only recent matches (last 100)
+                        if len(_matched_radar_detections) > 100:
+                            # Remove oldest entries (simple cleanup)
+                            _matched_radar_detections = set(list(_matched_radar_detections)[-50:])
+                    
+                    speed = radar_detection['peak_speed']
+                    detection_data = {
+                        'timestamp': datetime.now().isoformat(),
+                        'plate_number': plate_no,
+                        'speed': speed,  # Use peak speed from complete detection
+                        'direction': radar_detection['direction_name'],  # Use proper direction name
+                        'radar_direction_sign': radar_detection['direction_sign'],
+                        'vms_displayed': 'yes' if speed > MIN_SPEED_FOR_DISPLAY else 'no',
+                        'radar_readings_count': radar_detection['readings_count'],
+                        'radar_detection_start': radar_detection['start_time'],
+                        'radar_detection_end': radar_detection['end_time']
+                    }
+                else:
+                    # No radar detection available - speed is 0, so don't display
+                    speed = 0
+                    detection_data = {
+                        'timestamp': datetime.now().isoformat(),
+                        'plate_number': plate_no,
+                        'speed': speed,
+                        'direction': 'Unknown',
+                        'radar_direction_sign': None,
+                        'vms_displayed': 'no',
+                        'radar_readings_count': 0,
+                        'radar_detection_start': None,
+                        'radar_detection_end': None
+                    }
+                
+                # Save detection immediately (before displaying) - non-blocking
+                save_detection(detection_data)
+                
+                # Show plate detection
+                print(f"🚗 Plate: {plate_no} | {detection_data['speed']}km/h | {detection_data['direction']} | VMS: {detection_data['vms_displayed'].upper()}")
+                
+                # Display on VMS only if speed is above threshold
+                if speed > MIN_SPEED_FOR_DISPLAY:
+                    send_plate_to_vms(plate_no)
+                else:
+                    send_plate_to_vms("")  # Clear display
+            else:
+                # Camera event received but no plate detected - clear display
+                send_plate_to_vms("")
+        
+        except json.JSONDecodeError:
+            pass
+        except Exception as e:
+            print(f"⚠️ Camera error: {e}")
+    
+    finally:
+        try:
+            client_socket.close()
+        except:
+            pass
+
+def listen_camera_events():
+    """Listen for camera ANPR events (non-blocking - each client handled in separate thread)"""
+    try:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.settimeout(1.0)  # Set timeout to make accept() non-blocking
         server_address = ('', RECEIVE_ALARM_DATA_PORT)
         server_socket.bind(server_address)
         server_socket.listen(99)
@@ -603,107 +715,11 @@ def listen_camera_events():
     while True:
         try:
             client_socket, client_address = server_socket.accept()
-            data = b''
-            while True:
-                tmp = client_socket.recv(1024)
-                if not tmp:
-                    break
-                data += tmp
-            
-            if not data:
-                client_socket.close()
-                continue
-            
-            # Debug: Show that camera event was received
-            print(f"📷 Camera event received from {client_address[0]}")
-            
-            try:
-                raw_data_str = data.decode('utf-8', errors='ignore')
-                body = raw_data_str.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in raw_data_str else raw_data_str
-                body = re.sub(r'[\x00-\x1F\x7F]', '', body)
-                data_json = json.loads(body)
-                
-                # Extract plate number
-                plate_no = extract_plate_number(data_json)
-                if plate_no:
-                    # Get latest completed radar detection (with peak speed)
-                    radar_detection = get_latest_completed_detection()
-                    
-                    # Debug: Check if radar is working
-                    if not radar_detection:
-                        with _radar_lock:
-                            has_completed = len(_completed_detections) > 0
-                            has_in_progress = len(_current_detection) > 0
-                            if has_completed:
-                                latest = _completed_detections[-1]
-                                try:
-                                    end_time = datetime.fromisoformat(latest['end_time'])
-                                    age = (datetime.now() - end_time).total_seconds()
-                                    print(f"  ⚠️  No matching radar detection (latest completed: {age:.1f}s ago, peak: {latest.get('peak_speed', 0)}km/h)")
-                                except:
-                                    print(f"  ⚠️  No matching radar detection (completed: {has_completed}, in_progress: {has_in_progress})")
-                            else:
-                                print(f"  ⚠️  No radar detections available (in_progress: {has_in_progress})")
-                    
-                    # Prepare detection data
-                    if radar_detection:
-                        # Mark this radar detection as matched with a plate
-                        with _matched_detections_lock:
-                            _matched_radar_detections.add(radar_detection['end_time'])
-                            # Keep only recent matches (last 100)
-                            if len(_matched_radar_detections) > 100:
-                                # Remove oldest entries (simple cleanup)
-                                _matched_radar_detections = set(list(_matched_radar_detections)[-50:])
-                        
-                        speed = radar_detection['peak_speed']
-                        detection_data = {
-                            'timestamp': datetime.now().isoformat(),
-                            'plate_number': plate_no,
-                            'speed': speed,  # Use peak speed from complete detection
-                            'direction': radar_detection['direction_name'],  # Use proper direction name
-                            'radar_direction_sign': radar_detection['direction_sign'],
-                            'vms_displayed': 'yes' if speed > MIN_SPEED_FOR_DISPLAY else 'no',
-                            'radar_readings_count': radar_detection['readings_count'],
-                            'radar_detection_start': radar_detection['start_time'],
-                            'radar_detection_end': radar_detection['end_time']
-                        }
-                    else:
-                        # No radar detection available - speed is 0, so don't display
-                        speed = 0
-                        detection_data = {
-                            'timestamp': datetime.now().isoformat(),
-                            'plate_number': plate_no,
-                            'speed': speed,
-                            'direction': 'Unknown',
-                            'radar_direction_sign': None,
-                            'vms_displayed': 'no',
-                            'radar_readings_count': 0,
-                            'radar_detection_start': None,
-                            'radar_detection_end': None
-                        }
-                    
-                    # Save detection immediately (before displaying)
-                    save_detection(detection_data)
-                    
-                    # Show plate detection
-                    print(f"\n🚗 PLATE: {plate_no} | {detection_data['speed']}km/h | {detection_data['direction']} | VMS: {detection_data['vms_displayed'].upper()}\n")
-                    
-                    # Display on VMS only if speed is above threshold
-                    if speed > MIN_SPEED_FOR_DISPLAY:
-                        send_plate_to_vms(plate_no)
-                    else:
-                        send_plate_to_vms("")  # Clear display
-                else:
-                    # Camera event received but no plate detected - clear display
-                    send_plate_to_vms("")
-            
-            except json.JSONDecodeError as e:
-                print(f"⚠️ Camera JSON decode error: {str(e)[:100]}")
-            except Exception as e:
-                print(f"⚠️ Error processing camera data: {e}")
-            
-            client_socket.close()
-        
+            # Handle each client in separate thread to prevent blocking
+            client_thread = Thread(target=_handle_camera_client, args=(client_socket, client_address), daemon=True)
+            client_thread.start()
+        except socket.timeout:
+            continue  # Timeout is expected, continue loop
         except Exception as e:
             print(f"Socket accept error: {e}")
             continue
