@@ -385,54 +385,70 @@ def read_radar_data():
     """Read radar data from serial port in background thread"""
     print(f"Starting radar reader on {RADAR_PORT}...")
     
-    try:
-        ser = serial.Serial(
-            port=RADAR_PORT,
-            baudrate=RADAR_BAUDRATE,
-            timeout=RADAR_TIMEOUT
-        )
-        print(f"✓ Connected to radar on {RADAR_PORT}")
-        
-        buffer = b''
-        
-        while True:
-            try:
-                data = ser.read(32)
-                if data:
-                    buffer += data
+    ser = None
+    retry_count = 0
+    max_retries = 5
+    
+    while True:
+        try:
+            if ser is None or not ser.is_open:
+                print(f"Connecting to radar on {RADAR_PORT}...")
+                ser = serial.Serial(
+                    port=RADAR_PORT,
+                    baudrate=RADAR_BAUDRATE,
+                    timeout=RADAR_TIMEOUT
+                )
+                print(f"✓ Connected to radar on {RADAR_PORT}")
+                retry_count = 0  # Reset retry count on successful connection
+                buffer = b''
+            
+            data = ser.read(32)
+            if data:
+                buffer += data
+                
+                # Process complete messages (5 bytes: A+XXX or A-XXX)
+                while len(buffer) >= 5:
+                    chunk = buffer[:5]
+                    buffer = buffer[5:]
                     
-                    # Process complete messages (5 bytes: A+XXX or A-XXX)
-                    while len(buffer) >= 5:
-                        chunk = buffer[:5]
-                        buffer = buffer[5:]
-                        
-                        if chunk.startswith(b'A') and len(chunk) == 5:
-                            try:
-                                decoded = chunk.decode('utf-8', errors='ignore')
-                                if decoded[1] in '+-':
-                                    direction_sign = decoded[1]
-                                    speed_str = decoded[2:]
-                                    speed = int(speed_str)
-                                    
-                                    # Process radar reading (tracks complete vehicle detections)
-                                    process_radar_reading(direction_sign, speed)
-                                    # Debug: Print raw radar readings (can be removed later)
-                                    # print(f"  Radar: {direction_sign} {speed}km/h")
-                            except (ValueError, IndexError):
-                                pass
+                    if chunk.startswith(b'A') and len(chunk) == 5:
+                        try:
+                            decoded = chunk.decode('utf-8', errors='ignore')
+                            if decoded[1] in '+-':
+                                direction_sign = decoded[1]
+                                speed_str = decoded[2:]
+                                speed = int(speed_str)
+                                
+                                # Process radar reading (tracks complete vehicle detections)
+                                process_radar_reading(direction_sign, speed)
+                        except (ValueError, IndexError):
+                            pass
+            
+            time.sleep(0.01)  # Small delay to prevent CPU spinning
                 
-                time.sleep(0.01)  # Small delay to prevent CPU spinning
-                
-            except Exception as e:
-                print(f"Radar read error: {e}")
-                time.sleep(1)
-                
-    except serial.SerialException as e:
-        print(f"Radar connection error: {e}")
-        print("Radar reading disabled. Continuing without radar data...")
-    except Exception as e:
-        print(f"Radar error: {e}")
-        print("Radar reading disabled. Continuing without radar data...")
+        except serial.SerialException as e:
+            if ser and ser.is_open:
+                try:
+                    ser.close()
+                except:
+                    pass
+            ser = None
+            retry_count += 1
+            if retry_count <= max_retries:
+                print(f"⚠️ Radar connection error (attempt {retry_count}/{max_retries}): {e}")
+                print(f"   Retrying in 2 seconds...")
+                time.sleep(2)
+            else:
+                print(f"✗ Radar connection failed after {max_retries} attempts")
+                print(f"   Error: {e}")
+                print("   Radar reading disabled. Continuing without radar data...")
+                # Keep thread alive but don't retry anymore
+                while True:
+                    time.sleep(60)  # Check every minute if port becomes available
+                    retry_count = 0  # Reset to allow retry
+        except Exception as e:
+            print(f"⚠️ Radar read error: {e}")
+            time.sleep(1)
 
 # ============================================================================
 # VMS FUNCTIONS
