@@ -256,10 +256,19 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         print(f"  🔄 [DEBUG] Step 2: Adding to completed_detections...", flush=True)
         
         # Thread-safe append to completed detections
-        with _radar_lock:
-            _completed_detections.append(completed)
-            if len(_completed_detections) > _max_completed_detections:
-                _completed_detections.pop(0)
+        # Use timeout to avoid deadlock if lock is held elsewhere
+        import threading
+        lock_acquired = _radar_lock.acquire(timeout=1.0)
+        if lock_acquired:
+            try:
+                _completed_detections.append(completed)
+                if len(_completed_detections) > _max_completed_detections:
+                    _completed_detections.pop(0)
+                print(f"  🔄 [DEBUG] Step 2.1: Added to completed_detections (len={len(_completed_detections)})", flush=True)
+            finally:
+                _radar_lock.release()
+        else:
+            print(f"  ⚠️  [DEBUG] Could not acquire lock, skipping completed_detections append", flush=True)
         
         print(f"  🔄 [DEBUG] Step 3: Checking if should save: peak_speed={peak_speed} >= 10", flush=True)
         # Save radar detection even without plate (for vehicles 10km/h and above)
@@ -373,6 +382,7 @@ def process_radar_reading(direction_sign: str, speed: int):
             _current_detection.append(reading)
         else:
             # Direction changed - complete old detection and start new
+            print(f"  🔄 [DEBUG] Direction changed: {_current_direction} -> {direction_sign}", flush=True)
             vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
             if vehicle_readings:
                 peak_speed = max(r['speed'] for r in vehicle_readings)
