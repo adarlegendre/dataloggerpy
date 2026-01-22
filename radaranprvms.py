@@ -17,6 +17,7 @@ import re
 import subprocess
 import os
 import serial
+import sys
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -504,23 +505,23 @@ def read_radar_data():
                                 # Get current time for each reading (important for accurate throttling)
                                 current_time = time.time()
                                 
-                                # Process radar reading immediately (non-blocking)
+                                # Update live streaming display FIRST (before processing) to ensure it's never blocked
+                                # This ensures radar display continues even if processing blocks
+                                if current_time - last_print_time >= print_interval:
+                                    direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+                                    # Use sys.stdout.write for guaranteed non-blocking output
+                                    sys.stdout.write(f"📡 Live: {direction_name} {speed:3d}km/h\n")
+                                    sys.stdout.flush()
+                                    last_print_time = current_time
+                                
+                                # Process radar reading AFTER display (non-blocking)
                                 # Wrap in try-except to prevent any errors from blocking the thread
                                 try:
                                     process_radar_reading(direction_sign, speed)
                                 except Exception as e:
-                                    # Log error but continue processing
-                                    print(f"\n⚠️ Radar processing error: {e}")
-                                
-                                # Update live streaming display - show ALL values including zeros
-                                # Check time for each reading to ensure continuous display
-                                try:
-                                    if current_time - last_print_time >= print_interval:
-                                        direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                        print(f"📡 Live: {direction_name} {speed:3d}km/h", flush=True)
-                                        last_print_time = current_time
-                                except Exception:
-                                    pass  # Don't let print errors block radar reading
+                                    # Log error but continue processing - use stdout directly
+                                    sys.stdout.write(f"\n⚠️ Radar processing error: {e}\n")
+                                    sys.stdout.flush()
                         except (ValueError, IndexError):
                             pass  # Skip invalid radar data
                     else:
@@ -541,7 +542,8 @@ def read_radar_data():
             if current_time - last_data_time > watchdog_interval:
                 # No data for a while - show watchdog to indicate thread is alive
                 if current_time - last_print_time > watchdog_interval:
-                    print(f"📡 Radar: Waiting for data... (thread alive)", flush=True)
+                    sys.stdout.write(f"📡 Radar: Waiting for data... (thread alive)\n")
+                    sys.stdout.flush()
                     last_print_time = current_time
                 last_data_time = current_time  # Reset to prevent spam
             
