@@ -240,8 +240,10 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
     
     # Debug: confirm function is called
     print(f"  🔄 [DEBUG] _complete_detection called: {direction_name} {peak_speed}km/h", flush=True)
+    print(f"  🔄 [DEBUG] About to enter try block...", flush=True)
     
     try:
+        print(f"  🔄 [DEBUG] Step 1: Creating completed dict...", flush=True)
         completed = {
             'direction_sign': direction_sign,
             'direction_name': direction_name,
@@ -251,6 +253,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             'end_time': datetime.now().isoformat(),
             'timestamp': datetime.now().isoformat()
         }
+        print(f"  🔄 [DEBUG] Step 2: Adding to completed_detections...", flush=True)
         
         # Thread-safe append to completed detections
         with _radar_lock:
@@ -258,10 +261,10 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             if len(_completed_detections) > _max_completed_detections:
                 _completed_detections.pop(0)
         
+        print(f"  🔄 [DEBUG] Step 3: Checking if should save: peak_speed={peak_speed} >= 10", flush=True)
         # Save radar detection even without plate (for vehicles 10km/h and above)
-        print(f"  🔄 [DEBUG] Checking if should save: peak_speed={peak_speed} >= 10", flush=True)
         if peak_speed >= 10:  # Save all vehicle detections 10km/h and above
-            print(f"  🔄 [DEBUG] Creating radar_only_data...", flush=True)
+            print(f"  🔄 [DEBUG] Step 4: Creating radar_only_data...", flush=True)
             radar_only_data = {
                 'timestamp': datetime.now().isoformat(),
                 'plate_number': None,
@@ -273,12 +276,13 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
                 'radar_detection_start': start_time,
                 'radar_detection_end': completed['end_time']
             }
-            print(f"  🔄 [DEBUG] Calling save_detection...", flush=True)
+            print(f"  🔄 [DEBUG] Step 5: Calling save_detection...", flush=True)
             save_detection(radar_only_data)
             print(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...", flush=True)
         else:
             print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)", flush=True)
         
+        print(f"  🔄 [DEBUG] Step 6: Checking speed violation: {peak_speed} > {SPEED_LIMIT}", flush=True)
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
         if peak_speed > SPEED_LIMIT:
             print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)
@@ -286,10 +290,12 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         else:
             print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)
         
+        print(f"  🔄 [DEBUG] Step 7: Returning completed", flush=True)
         return completed
     except Exception as e:
         print(f"  ❌ Error in _complete_detection: {e}", flush=True)
         import traceback
+        print(f"  ❌ Traceback:", flush=True)
         traceback.print_exc()
         return None
 
@@ -552,12 +558,10 @@ def read_radar_data():
                     if last_a > 0 and last_a < len(buffer) - 4:
                         buffer = buffer[last_a:]
                         print(f"📡 [Buffer cleared] Size exceeded, kept last {len(buffer)} bytes", flush=True)
-                        sys.stdout.flush()
                     else:
                         # No valid start found, clear buffer
                         buffer = b''
                         print(f"📡 [Buffer cleared] No valid data found", flush=True)
-                        sys.stdout.flush()
                 
                 # Process messages - limit iterations to prevent getting stuck
                 max_iterations = 50
@@ -586,6 +590,8 @@ def read_radar_data():
                                         process_radar_reading(direction, spd)
                                     except Exception as e:
                                         print(f"  ❌ Error processing radar reading: {e}", flush=True)
+                                        import traceback
+                                        traceback.print_exc()
                                 
                                 Thread(target=process_async, args=(direction_sign, speed), daemon=True).start()
                             except (ValueError, UnicodeDecodeError):
