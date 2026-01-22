@@ -489,9 +489,11 @@ def read_radar_data():
                                 process_radar_reading(direction_sign, speed)
                                 
                                 # Update display at controlled rate for smooth streaming
-                                if current_time - last_print_time >= print_interval:
+                                # Only display non-zero speeds to reduce clutter
+                                if speed > 0 and current_time - last_print_time >= print_interval:
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                    print(f"📡 {direction_name}: {speed}km/h", end='\r', flush=True)
+                                    # Use fixed width to prevent display artifacts
+                                    print(f"📡 {direction_name}: {speed:3d}km/h", end='\r', flush=True)
                                     last_print_time = current_time
                         except (ValueError, IndexError):
                             pass  # Skip invalid radar data
@@ -884,9 +886,17 @@ def main():
             print("Press Ctrl+C to stop")
             print("=" * 60 + "\n")
             
-            # Keep main thread alive
+            # Keep main thread alive - show periodic status
+            last_status_time = time.time()
+            status_interval = 30  # Show status every 30 seconds
+            
             while True:
                 time.sleep(1)
+                # Show periodic status to indicate system is alive
+                current_time = time.time()
+                if current_time - last_status_time >= status_interval:
+                    print(f"\n[System active - {datetime.now().strftime('%H:%M:%S')}]")
+                    last_status_time = current_time
         else:
             print(f'Subscription Failure: {response.status_code} {response.text}')
             raise SystemExit(1)
