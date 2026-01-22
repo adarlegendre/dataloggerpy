@@ -213,6 +213,39 @@ def _start_file_writer():
 # RADAR FUNCTIONS - Vehicle Detection Tracking
 # ============================================================================
 
+def parse_radar_line(line):
+    """Parse a single line of radar data"""
+    try:
+        # Remove any non-printable characters
+        line = ''.join(char for char in line if char.isprintable())
+        
+        # Check for radar message pattern
+        if len(line) >= 5 and line[0] == 'A' and (line[1] == '+' or line[1] == '-'):
+            try:
+                # Extract speed (characters 2-4)
+                speed_str = line[2:5]
+                speed = int(speed_str)
+                direction_sign = line[1]
+                return direction_sign, speed, True
+            except ValueError:
+                # Not a valid speed number
+                return None, None, False
+        else:
+            # Try alternative patterns
+            # Pattern like "A+045" or "A-123" without newlines
+            match = re.match(r'^A([+-])(\d{3})', line)
+            if match:
+                try:
+                    direction_sign = match.group(1)
+                    speed = int(match.group(2))
+                    return direction_sign, speed, True
+                except ValueError:
+                    return None, None, False
+            return None, None, False
+            
+    except Exception as e:
+        return None, None, False
+
 def _complete_detection(direction_sign: str, direction_name: str, peak_speed: int, 
                         detection_readings: list, start_time: str) -> Dict[str, Any]:
     """Helper to complete a detection and add to queue - thread-safe"""
@@ -456,15 +489,12 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
         return None
 
 def read_radar_data():
-    """Read radar data from serial port - simplified for continuous reliable streaming"""
+    """Read radar data from serial port - robust version for continuous reliable streaming"""
     print(f"Starting radar reader on {RADAR_PORT}...")
     
     ser = None
-    retry_count = 0
-    max_retries = 5
-    buffer = b''
-    last_data_time = time.time()
-    watchdog_interval = 3.0
+    buffer = ''
+    last_valid_data_time = time.time()
     
     while True:
         try:
@@ -473,63 +503,92 @@ def read_radar_data():
                 ser = serial.Serial(
                     port=RADAR_PORT,
                     baudrate=RADAR_BAUDRATE,
-                    timeout=RADAR_TIMEOUT
+                    timeout=RADAR_TIMEOUT,
+                    bytesize=serial.EIGHTBITS,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_ONE
                 )
+                ser.flushInput()  # Clear any buffered data
+                ser.flushOutput()
                 print(f"✓ Connected to radar on {RADAR_PORT}")
-                retry_count = 0
-                buffer = b''
+                buffer = ''
             
-            # Simple read
-            data = ser.read(32)
-            current_time = time.time()
-            
-            # Watchdog check
-            if current_time - last_data_time > watchdog_interval:
-                sys.stdout.write(f"📡 [Watchdog] Thread alive\n")
-                sys.stdout.flush()
-                last_data_time = current_time
-            
-            if data:
-                last_data_time = current_time
-                buffer += data
-                
-                # Process one message at a time - simple and reliable
-                while len(buffer) >= 5:
-                    chunk = buffer[:5]
-                    buffer = buffer[5:]
+            # Read all available data
+            if ser.in_waiting > 0:
+                try:
+                    # Read as text
+                    data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                    buffer += data
+                    last_valid_data_time = time.time()
                     
-                    # Check if valid: A+XXX or A-XXX
-                    if chunk[0] == ord('A') and len(chunk) == 5:
-                        if chunk[1] == ord('+') or chunk[1] == ord('-'):
-                            try:
-                                direction_sign = '+' if chunk[1] == ord('+') else '-'
-                                speed = int(chunk[2:].decode('utf-8'))
-                                direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                
-                                # Display immediately - simple format
-                                sys.stdout.write(f"📡 {direction_name} {speed:3d}km/h\n")
-                                sys.stdout.flush()
-                                
-                                # Process (non-blocking, errors ignored)
-                                try:
-                                    process_radar_reading(direction_sign, speed)
-                                except:
-                                    pass
-                            except:
-                                pass
+                    # Process complete messages (separated by newlines or carriage returns)
+                    while '\n' in buffer or '\r' in buffer:
+                        # Find the first complete line
+                        if '\n' in buffer:
+                            line_end = buffer.find('\n')
+                        elif '\r' in buffer:
+                            line_end = buffer.find('\r')
                         else:
-                            # Look for 'A' to realign
-                            if b'A' in chunk:
-                                idx = chunk.index(b'A')
-                                buffer = chunk[idx:] + buffer
                             break
-                    else:
-                        # Look for 'A' to realign
-                        if b'A' in chunk:
-                            idx = chunk.index(b'A')
-                            buffer = chunk[idx:] + buffer
-                        break
+                        
+                        line = buffer[:line_end].strip()
+                        buffer = buffer[line_end+1:]  # Remove processed line
+                        
+                        if not line:
+                            continue
+                        
+                        # Parse radar line
+                        direction_sign, speed, success = parse_radar_line(line)
+                        
+                        if success:
+                            direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+                            
+                            # Display immediately
+                            sys.stdout.write(f"📡 {direction_name} {speed:3d}km/h\n")
+                            sys.stdout.flush()
+                            
+                            # Process reading
+                            process_radar_reading(direction_sign, speed)
+                        else:
+                            # Try to parse as raw data without newlines
+                            if len(buffer) >= 5:
+                                # Process any remaining data that might be a complete message
+                                for i in range(0, len(buffer) - 4):
+                                    if buffer[i] == 'A' and (buffer[i+1] == '+' or buffer[i+1] == '-'):
+                                        if i + 5 <= len(buffer):
+                                            potential_msg = buffer[i:i+5]
+                                            direction_sign, speed, success = parse_radar_line(potential_msg)
+                                            if success:
+                                                direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+                                                sys.stdout.write(f"📡 {direction_name} {speed:3d}km/h\n")
+                                                sys.stdout.flush()
+                                                process_radar_reading(direction_sign, speed)
+                                                buffer = buffer[i+5:]  # Remove processed message
+                                                break
+                    
+                    # If buffer is getting too long, truncate it
+                    if len(buffer) > 1000:
+                        # Look for last 'A' to keep partial message
+                        last_a = buffer.rfind('A')
+                        if last_a > 0 and last_a < len(buffer) - 1:
+                            buffer = buffer[last_a:]
+                        else:
+                            buffer = buffer[-100:]  # Just keep last 100 chars
+                            
+                except Exception as e:
+                    print(f"⚠️ Error processing radar data: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    buffer = ''
             
+            # Watchdog - check if we're getting data
+            current_time = time.time()
+            if current_time - last_valid_data_time > 5.0:
+                sys.stdout.write("📡 [No data for 5s, thread alive]\n")
+                sys.stdout.flush()
+                last_valid_data_time = current_time
+                
+            # Small sleep to prevent CPU spinning
             time.sleep(0.01)
                 
         except serial.SerialException as e:
@@ -539,25 +598,16 @@ def read_radar_data():
                 except:
                     pass
             ser = None
-            retry_count += 1
-            if retry_count <= max_retries:
-                print(f"\n⚠️ Radar connection error (attempt {retry_count}/{max_retries}): {e}")
-                print(f"   Retrying in 2 seconds...")
-                time.sleep(2)
-            else:
-                print(f"\n✗ Radar connection failed after {max_retries} attempts")
-                print(f"   Error: {e}")
-                print("   Radar reading disabled. Continuing without radar data...")
-                while True:
-                    time.sleep(60)
-                    retry_count = 0
+            print(f"\n⚠️ Radar connection error: {e}")
+            print(f"   Retrying in 2 seconds...")
+            time.sleep(2)
+            buffer = ''
         except Exception as e:
-            print(f"\n⚠️ Radar read error: {e}")
+            print(f"\n⚠️ Unexpected radar error: {e}")
             import traceback
-            print(f"   Traceback: {traceback.format_exc()}")
+            traceback.print_exc()
             time.sleep(1)
-            # Reset buffer on error to prevent getting stuck
-            buffer = b''
+            buffer = ''
 
 # ============================================================================
 # VMS FUNCTIONS
