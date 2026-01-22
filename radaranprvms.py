@@ -464,9 +464,10 @@ def read_radar_data():
     max_retries = 5
     buffer = b''
     last_print_time = 0
-    print_interval = 0.1  # Update display every 100ms for continuous streaming
+    print_interval = 0.05  # Update display every 50ms for very responsive streaming
     last_data_time = time.time()
-    watchdog_interval = 5.0  # Show watchdog message if no data for 5 seconds
+    watchdog_interval = 2.0  # Show watchdog message if no data for 2 seconds
+    readings_count = 0  # Track total readings processed
     
     while True:
         try:
@@ -502,17 +503,18 @@ def read_radar_data():
                                 direction_sign = decoded[1]
                                 speed = int(decoded[2:])
                                 
-                                # Get current time for each reading (important for accurate throttling)
+                                # Get current time for each reading
                                 current_time = time.time()
+                                readings_count += 1
                                 
                                 # Update live streaming display FIRST (before processing) to ensure it's never blocked
-                                # This ensures radar display continues even if processing blocks
-                                if current_time - last_print_time >= print_interval:
-                                    direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                    # Use sys.stdout.write for guaranteed non-blocking output
-                                    sys.stdout.write(f"📡 Live: {direction_name} {speed:3d}km/h\n")
-                                    sys.stdout.flush()
-                                    last_print_time = current_time
+                                # Display every reading immediately - no throttling to prevent getting stuck
+                                direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+                                # Use sys.stdout.write for guaranteed non-blocking output
+                                sys.stdout.write(f"📡 Live: {direction_name} {speed:3d}km/h\n")
+                                sys.stdout.flush()
+                                last_print_time = current_time
+                                last_data_time = current_time  # Update data time on every reading
                                 
                                 # Process radar reading AFTER display (non-blocking)
                                 # Wrap in try-except to prevent any errors from blocking the thread
@@ -541,10 +543,9 @@ def read_radar_data():
             current_time = time.time()
             if current_time - last_data_time > watchdog_interval:
                 # No data for a while - show watchdog to indicate thread is alive
-                if current_time - last_print_time > watchdog_interval:
-                    sys.stdout.write(f"📡 Radar: Waiting for data... (thread alive)\n")
-                    sys.stdout.flush()
-                    last_print_time = current_time
+                sys.stdout.write(f"📡 Radar: Waiting for data... (thread alive, processed {readings_count} readings)\n")
+                sys.stdout.flush()
+                last_print_time = current_time
                 last_data_time = current_time  # Reset to prevent spam
             
             time.sleep(0.005)  # Reduced delay for faster response (5ms)
