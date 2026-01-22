@@ -324,10 +324,13 @@ def process_radar_reading(direction_sign: str, speed: int):
                 return  # No active detection, ignore zeros
             
             _current_detection.append(reading)
+            print(f"  🔄 [DEBUG] Zero speed: detection_len={len(_current_detection)}", flush=True)
             
             # Check for consecutive zeros to complete detection
             if len(_current_detection) >= CONSECUTIVE_ZEROS_THRESHOLD:
                 recent_readings = _current_detection[-CONSECUTIVE_ZEROS_THRESHOLD:]
+                zeros_count = sum(1 for r in recent_readings if r['speed'] == 0)
+                print(f"  🔄 [DEBUG] Checking zeros: len={len(_current_detection)}, recent_zeros={zeros_count}/{CONSECUTIVE_ZEROS_THRESHOLD}", flush=True)
                 if all(r['speed'] == 0 for r in recent_readings):
                     # Complete the detection
                     vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
@@ -353,6 +356,8 @@ def process_radar_reading(direction_sign: str, speed: int):
                             print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)
                         else:
                             print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)
+                    else:
+                        print(f"  ⚠️  [DEBUG] No vehicle readings found in detection", flush=True)
                     else:
                         # Reset for next detection
                         _current_detection = []
@@ -888,6 +893,7 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  ⚠️  No plate: JSON structure issue", flush=True)
             
             if plate_no:
+                print(f"  🔄 [DEBUG] Plate found, getting radar detection...", flush=True)
                 # Get latest completed radar detection (fast lookup)
                 radar_detection = get_latest_completed_detection()
                 
@@ -896,6 +902,8 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  🔗 Found radar match: {radar_detection['peak_speed']}km/h | {radar_detection['direction_name']}", flush=True)
                 else:
                     print(f"  ⚠️  No radar match found for plate {plate_no}", flush=True)
+            else:
+                print(f"  🔄 [DEBUG] No plate found, skipping radar match", flush=True)
                 
                 # Create timestamp once
                 timestamp = datetime.now().isoformat()
