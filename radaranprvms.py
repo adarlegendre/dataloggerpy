@@ -464,6 +464,8 @@ def read_radar_data():
     buffer = b''
     last_print_time = 0
     print_interval = 0.1  # Update display every 100ms for continuous streaming
+    last_data_time = time.time()
+    watchdog_interval = 5.0  # Show watchdog message if no data for 5 seconds
     
     while True:
         try:
@@ -480,10 +482,15 @@ def read_radar_data():
             
             data = ser.read(32)
             if data:
+                last_data_time = time.time()  # Update last data time
                 buffer += data
                 
                 # Process complete messages (5 bytes: A+XXX or A-XXX)
-                while len(buffer) >= 5:
+                # Limit processing to prevent infinite loop if buffer gets corrupted
+                max_iterations = 100
+                iteration = 0
+                while len(buffer) >= 5 and iteration < max_iterations:
+                    iteration += 1
                     chunk = buffer[:5]
                     buffer = buffer[5:]
                     
@@ -498,14 +505,22 @@ def read_radar_data():
                                 current_time = time.time()
                                 
                                 # Process radar reading immediately (non-blocking)
-                                process_radar_reading(direction_sign, speed)
+                                # Wrap in try-except to prevent any errors from blocking the thread
+                                try:
+                                    process_radar_reading(direction_sign, speed)
+                                except Exception as e:
+                                    # Log error but continue processing
+                                    print(f"\n⚠️ Radar processing error: {e}")
                                 
                                 # Update live streaming display - show ALL values including zeros
                                 # Check time for each reading to ensure continuous display
-                                if current_time - last_print_time >= print_interval:
-                                    direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                    print(f"📡 Live: {direction_name} {speed:3d}km/h")
-                                    last_print_time = current_time
+                                try:
+                                    if current_time - last_print_time >= print_interval:
+                                        direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+                                        print(f"📡 Live: {direction_name} {speed:3d}km/h", flush=True)
+                                        last_print_time = current_time
+                                except Exception:
+                                    pass  # Don't let print errors block radar reading
                         except (ValueError, IndexError):
                             pass  # Skip invalid radar data
                     else:
@@ -513,7 +528,22 @@ def read_radar_data():
                         if len(chunk) > 0 and b'A' in chunk:
                             idx = chunk.index(b'A')
                             buffer = chunk[idx:] + buffer
-            # No data received - continue silently (radar may be idle)
+                        else:
+                            # Invalid chunk, skip it to prevent infinite loop
+                            break
+                
+                # If we hit max iterations, clear buffer to prevent getting stuck
+                if iteration >= max_iterations:
+                    print(f"\n⚠️ Radar buffer processing limit reached, clearing buffer")
+                    buffer = b''
+            # No data received - check watchdog
+            current_time = time.time()
+            if current_time - last_data_time > watchdog_interval:
+                # No data for a while - show watchdog to indicate thread is alive
+                if current_time - last_print_time > watchdog_interval:
+                    print(f"📡 Radar: Waiting for data... (thread alive)", flush=True)
+                    last_print_time = current_time
+                last_data_time = current_time  # Reset to prevent spam
             
             time.sleep(0.005)  # Reduced delay for faster response (5ms)
                 
@@ -526,19 +556,23 @@ def read_radar_data():
             ser = None
             retry_count += 1
             if retry_count <= max_retries:
-                print(f"⚠️ Radar connection error (attempt {retry_count}/{max_retries}): {e}")
+                print(f"\n⚠️ Radar connection error (attempt {retry_count}/{max_retries}): {e}")
                 print(f"   Retrying in 2 seconds...")
                 time.sleep(2)
             else:
-                print(f"✗ Radar connection failed after {max_retries} attempts")
+                print(f"\n✗ Radar connection failed after {max_retries} attempts")
                 print(f"   Error: {e}")
                 print("   Radar reading disabled. Continuing without radar data...")
                 while True:
                     time.sleep(60)
                     retry_count = 0
         except Exception as e:
-            print(f"⚠️ Radar read error: {e}")
+            print(f"\n⚠️ Radar read error: {e}")
+            import traceback
+            print(f"   Traceback: {traceback.format_exc()}")
             time.sleep(1)
+            # Reset buffer on error to prevent getting stuck
+            buffer = b''
 
 # ============================================================================
 # VMS FUNCTIONS
