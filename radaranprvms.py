@@ -557,11 +557,16 @@ def _send_vms_command(display_text: str) -> bool:
     cmd = _VMS_BASE_CMD.copy()
     cmd[6] = display_text  # Insert text at position 6
     
+    # Show the exact command being sent
+    cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd)
+    print(f"  📤 VMS Command: {cmd_str}")
+    
     try:
         # Use Popen for truly non-blocking execution
-        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
-    except Exception:
+    except Exception as e:
+        print(f"  ❌ VMS Command failed: {e}")
         return False
 
 def send_plate_to_vms(plate_number: str):
@@ -581,13 +586,18 @@ def send_plate_to_vms(plate_number: str):
             _speed_violation_active = False
     
     # Send command immediately (non-blocking)
+    if display_text:
+        print(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s")
+    else:
+        print(f"  📺 VMS: Clearing display")
+    
     success = _send_vms_command(display_text)
     
     if display_text:
         if success:
-            print(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s")
+            print(f"  ✅ VMS: Command sent successfully")
         else:
-            print(f"  ❌ VMS: Failed to send '{display_text}'")
+            print(f"  ❌ VMS: Command failed")
         
         # Schedule auto-clear after display time
         def clear_after_delay():
@@ -596,16 +606,14 @@ def send_plate_to_vms(plate_number: str):
             
             with _vms_lock:
                 if _vms_clear_thread is not None:
+                    print(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s")
                     _send_vms_command("")  # Clear display
-                    print(f"  📺 VMS: Cleared display")
                     _vms_clear_thread = None
-        
+    
+    if display_text:
         with _vms_lock:
             _vms_clear_thread = Thread(target=clear_after_delay, daemon=True)
             _vms_clear_thread.start()
-    elif not display_text:
-        if success:
-            print(f"  📺 VMS: Cleared")
     
     return success
 
