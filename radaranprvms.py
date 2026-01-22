@@ -480,9 +480,9 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
             else:
                 # print(f"  ⏭️  [Speed Violation] Already active, skipping", flush=True)  # Reduced verbosity
                 pass
-        else:
-            # print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)  # Reduced verbosity
-            pass
+    else:
+        # print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)  # Reduced verbosity
+        pass
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
