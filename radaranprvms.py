@@ -456,18 +456,15 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
         return None
 
 def read_radar_data():
-    """Read radar data from serial port in background thread - optimized for real-time streaming"""
+    """Read radar data from serial port - simplified for continuous reliable streaming"""
     print(f"Starting radar reader on {RADAR_PORT}...")
     
     ser = None
     retry_count = 0
     max_retries = 5
     buffer = b''
-    last_print_time = 0
-    print_interval = 0.05  # Update display every 50ms for very responsive streaming
     last_data_time = time.time()
-    watchdog_interval = 2.0  # Show watchdog message if no data for 2 seconds
-    readings_count = 0  # Track total readings processed
+    watchdog_interval = 3.0
     
     while True:
         try:
@@ -482,74 +479,58 @@ def read_radar_data():
                 retry_count = 0
                 buffer = b''
             
-            # Read with timeout to prevent indefinite blocking
+            # Simple read
             data = ser.read(32)
-            current_loop_time = time.time()
+            current_time = time.time()
             
-            # Check watchdog BEFORE processing to ensure it always runs
-            if current_loop_time - last_data_time > watchdog_interval:
-                sys.stdout.write(f"📡 Radar: No data for {current_loop_time - last_data_time:.1f}s (processed {readings_count} readings, thread alive)\n")
+            # Watchdog check
+            if current_time - last_data_time > watchdog_interval:
+                sys.stdout.write(f"📡 [Watchdog] Thread alive\n")
                 sys.stdout.flush()
-                last_data_time = current_loop_time  # Reset to prevent spam
+                last_data_time = current_time
             
             if data:
-                last_data_time = current_loop_time  # Update last data time
+                last_data_time = current_time
                 buffer += data
                 
-                # Process complete messages (5 bytes: A+XXX or A-XXX)
-                # Limit processing to prevent infinite loop if buffer gets corrupted
-                max_iterations = 100
-                iteration = 0
-                while len(buffer) >= 5 and iteration < max_iterations:
-                    iteration += 1
+                # Process one message at a time - simple and reliable
+                while len(buffer) >= 5:
                     chunk = buffer[:5]
                     buffer = buffer[5:]
                     
-                    if chunk.startswith(b'A') and len(chunk) == 5:
-                        try:
-                            decoded = chunk.decode('utf-8', errors='ignore')
-                            if decoded[1] in '+-':
-                                direction_sign = decoded[1]
-                                speed = int(decoded[2:])
-                                
-                                # Get current time for each reading
-                                current_time = time.time()
-                                readings_count += 1
-                                
-                                # Update live streaming display FIRST (before processing) to ensure it's never blocked
-                                # Display every reading immediately - no throttling to prevent getting stuck
+                    # Check if valid: A+XXX or A-XXX
+                    if chunk[0] == ord('A') and len(chunk) == 5:
+                        if chunk[1] == ord('+') or chunk[1] == ord('-'):
+                            try:
+                                direction_sign = '+' if chunk[1] == ord('+') else '-'
+                                speed = int(chunk[2:].decode('utf-8'))
                                 direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                # Use sys.stdout.write for guaranteed non-blocking output
-                                sys.stdout.write(f"📡 Live: {direction_name} {speed:3d}km/h\n")
-                                sys.stdout.flush()
-                                last_print_time = current_time
-                                last_data_time = current_time  # Update data time on every reading
                                 
-                                # Process radar reading AFTER display (non-blocking)
-                                # Wrap in try-except to prevent any errors from blocking the thread
+                                # Display immediately - simple format
+                                sys.stdout.write(f"📡 {direction_name} {speed:3d}km/h\n")
+                                sys.stdout.flush()
+                                
+                                # Process (non-blocking, errors ignored)
                                 try:
                                     process_radar_reading(direction_sign, speed)
-                                except Exception as e:
-                                    # Log error but continue processing - use stdout directly
-                                    sys.stdout.write(f"\n⚠️ Radar processing error: {e}\n")
-                                    sys.stdout.flush()
-                        except (ValueError, IndexError):
-                            pass  # Skip invalid radar data
+                                except:
+                                    pass
+                            except:
+                                pass
+                        else:
+                            # Look for 'A' to realign
+                            if b'A' in chunk:
+                                idx = chunk.index(b'A')
+                                buffer = chunk[idx:] + buffer
+                            break
                     else:
-                        # Try to find 'A' and realign buffer if needed
-                        if len(chunk) > 0 and b'A' in chunk:
+                        # Look for 'A' to realign
+                        if b'A' in chunk:
                             idx = chunk.index(b'A')
                             buffer = chunk[idx:] + buffer
-                        else:
-                            # Invalid chunk, skip it to prevent infinite loop
-                            break
-                
-                # If we hit max iterations, clear buffer to prevent getting stuck
-                if iteration >= max_iterations:
-                    print(f"\n⚠️ Radar buffer processing limit reached, clearing buffer")
-                    buffer = b''
-            # Small delay to prevent CPU spinning, but keep it minimal
-            time.sleep(0.001)  # 1ms delay - very small to maintain responsiveness
+                        break
+            
+            time.sleep(0.01)
                 
         except serial.SerialException as e:
             if ser and ser.is_open:
