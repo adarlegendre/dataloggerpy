@@ -295,17 +295,27 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             }
             # print(f"  🔄 [DEBUG] Step 5: Calling save_detection...", flush=True)  # Debug message commented out
             save_detection(radar_only_data)
-            print(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...", flush=True)
+            print(f"\n{'='*60}", flush=True)
+            print(f"🚨 RADAR DETECTION - NO PLATE", flush=True)
+            print(f"   Direction: {direction_name}", flush=True)
+            print(f"   Speed: {peak_speed}km/h", flush=True)
+            print(f"   Status: 💾 Saving to queue...", flush=True)
+            print(f"{'='*60}\n", flush=True)
         else:
-            print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)", flush=True)
+            print(f"\n{'='*60}", flush=True)
+            print(f"📡 RADAR DETECTION - TOO SLOW", flush=True)
+            print(f"   Direction: {direction_name}", flush=True)
+            print(f"   Speed: {peak_speed}km/h", flush=True)
+            print(f"   Status: ⏭️  Not saved (<10km/h)", flush=True)
+            print(f"{'='*60}\n", flush=True)
         
         # print(f"  🔄 [DEBUG] Step 6: Checking speed violation: {peak_speed} > {SPEED_LIMIT}", flush=True)  # Debug message commented out
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
         if peak_speed > SPEED_LIMIT:
-            print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)
+            # print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)  # Reduced verbosity
             Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
-        else:
-            print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)
+        # else:
+        #     print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)  # Reduced verbosity
         
         # print(f"  🔄 [DEBUG] Step 7: Returning completed", flush=True)  # Debug message commented out
         return completed
@@ -363,7 +373,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                         _current_direction = None
                         
                         # Complete detection outside lock to minimize blocking
-                        print(f"  ✓ Detection completing (zeros): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
+                        # print(f"  ✓ Detection completing (zeros): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)  # Reduced verbosity
                         # print(f"  🔄 [DEBUG] About to call _complete_detection...", flush=True)  # Debug message commented out
                         result = _complete_detection(
                             direction_copy, direction_name, peak_speed,
@@ -404,7 +414,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                 _current_direction = direction_sign
                 
                 # Complete old detection outside lock
-                print(f"  ✓ Detection completing (direction change): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
+                # print(f"  ✓ Detection completing (direction change): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)  # Reduced verbosity
                 # print(f"  🔄 [DEBUG] About to call _complete_detection (direction change)...", flush=True)  # Debug message commented out
                 result = _complete_detection(
                     direction_copy, direction_name, peak_speed,
@@ -430,14 +440,14 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     direction_name = radar_detection['direction_name']
     detection_id = radar_detection['end_time']
     
-    print(f"  ⏳ [Speed Violation Check] Waiting 1s to see if plate will be detected...", flush=True)
+    # print(f"  ⏳ [Speed Violation Check] Waiting 1s to see if plate will be detected...", flush=True)  # Reduced verbosity
     time.sleep(1.0)
     
     # Check if this detection was already matched with a plate
     with _matched_detections_lock:
         is_matched = detection_id in _matched_radar_detections
         if is_matched:
-            print(f"  ✅ [Speed Violation Check] Plate detected for this vehicle - skipping ZPOMAL!", flush=True)
+            # print(f"  ✅ [Speed Violation Check] Plate detected for this vehicle - skipping ZPOMAL!", flush=True)  # Reduced verbosity
             return  # Plate detected, skip violation
     
     # Check if detection is still recent
@@ -454,18 +464,25 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
             if not _speed_violation_active:
                 _speed_violation_active = True
                 
-                print(f"  🚨 [Speed Violation] No plate detected - Displaying ZPOMAL!", flush=True)
+                print(f"\n{'='*60}", flush=True)
+                print(f"🚨 SPEED VIOLATION - NO PLATE DETECTED", flush=True)
+                print(f"   Speed: {peak_speed}km/h (Limit: {SPEED_LIMIT}km/h)", flush=True)
+                print(f"   Direction: {direction_name}", flush=True)
+                print(f"   VMS Action: Displaying 'ZPOMAL!' for {VMS_DISPLAY_TIME}s", flush=True)
                 send_plate_to_vms("ZPOMAL!")
-                print(f"⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h ({direction_name}) | 📺 VMS: ZPOMAL! | ⏱️  Displaying for {VMS_DISPLAY_TIME}s", flush=True)
+                print(f"{'='*60}\n", flush=True)
                 
                 time.sleep(VMS_DISPLAY_TIME)
-                print(f"  ✅ [Speed Violation] Display completed", flush=True)
+                print(f"   Status: ✅ Display completed", flush=True)
+                print(f"{'='*60}\n", flush=True)
                 with _speed_violation_lock:
                     _speed_violation_active = False
             else:
-                print(f"  ⏭️  [Speed Violation] Already active, skipping", flush=True)
-    else:
-        print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)
+                # print(f"  ⏭️  [Speed Violation] Already active, skipping", flush=True)  # Reduced verbosity
+                pass
+        else:
+            # print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)  # Reduced verbosity
+            pass
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
@@ -563,7 +580,7 @@ def read_radar_data():
             
             # Watchdog check - runs independently every 3 seconds regardless of data
             if current_time - last_watchdog_time >= watchdog_interval:
-                print(f"📡 [Watchdog] Thread alive | Buffer: {len(buffer)} bytes | Processed: {processed_count} | Last data: {current_time - last_data_time:.1f}s ago", flush=True)
+                # print(f"📡 [Watchdog] Thread alive | Buffer: {len(buffer)} bytes | Processed: {processed_count} | Last data: {current_time - last_data_time:.1f}s ago", flush=True)  # Reduced verbosity
                 last_watchdog_time = current_time
             
             # Simple read with timeout
@@ -644,8 +661,7 @@ def read_radar_data():
             # Force watchdog check even during active reading
             current_check = time.time()
             if current_check - last_watchdog_time >= watchdog_interval:
-                print(f"📡 [Watchdog] Active | Buffer: {len(buffer)} bytes | Processed: {processed_count}", flush=True)
-                sys.stdout.flush()
+                # print(f"📡 [Watchdog] Active | Buffer: {len(buffer)} bytes | Processed: {processed_count}", flush=True)  # Reduced verbosity
                 last_watchdog_time = current_check
                 
         except serial.SerialException as e:
@@ -714,17 +730,22 @@ def send_plate_to_vms(plate_number: str):
     
     # Send command immediately (non-blocking)
     if display_text:
-        print(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s", flush=True)
+        print(f"\n{'='*60}", flush=True)
+        print(f"📺 VMS DISPLAY EVENT", flush=True)
+        print(f"   Message: '{display_text}'", flush=True)
+        print(f"   Duration: {VMS_DISPLAY_TIME}s", flush=True)
     else:
-        print(f"  📺 VMS: Clearing display", flush=True)
+        print(f"\n📺 VMS: Clearing display", flush=True)
     
     success = _send_vms_command(display_text)
     
     if display_text:
         if success:
-            print(f"  ✅ VMS: Command sent successfully", flush=True)
+            print(f"   Status: ✅ Command sent successfully", flush=True)
+            print(f"{'='*60}\n", flush=True)
         else:
-            print(f"  ❌ VMS: Command failed", flush=True)
+            print(f"   Status: ❌ Command failed", flush=True)
+            print(f"{'='*60}\n", flush=True)
         
         # Schedule auto-clear after display time
         def clear_after_delay():
@@ -733,7 +754,7 @@ def send_plate_to_vms(plate_number: str):
             
             with _vms_lock:
                 if _vms_clear_thread is not None:
-                    print(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s", flush=True)
+                    # print(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s", flush=True)  # Reduced verbosity
                     sys.stdout.flush()
                     _send_vms_command("")  # Clear display
                     _vms_clear_thread = None
@@ -951,7 +972,12 @@ def _handle_camera_client(client_socket, client_address):
                     }
                     
                     # Save detection (non-blocking via queue)
-                    print(f"🚗 Plate: {plate_no} | {speed}km/h | {direction} | 💾 Saving...", flush=True)
+                    print(f"\n{'='*60}", flush=True)
+                    print(f"✅ DETECTION WITH PLATE", flush=True)
+                    print(f"   Plate: {plate_no}", flush=True)
+                    print(f"   Speed: {speed}km/h", flush=True)
+                    print(f"   Direction: {direction}", flush=True)
+                    print(f"   Status: 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     
                     # Display on VMS immediately (non-blocking)
@@ -959,7 +985,8 @@ def _handle_camera_client(client_socket, client_address):
                         send_plate_to_vms(plate_no)
                     else:
                         send_plate_to_vms("")
-                        print(f"  ⏭️  VMS: Not displaying (speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h)", flush=True)
+                        print(f"   VMS: ⏭️  Not displaying (speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h)", flush=True)
+                    print(f"{'='*60}\n", flush=True)
                 else:
                     speed = 0
                     detection_data = {
@@ -973,10 +1000,15 @@ def _handle_camera_client(client_socket, client_address):
                         'radar_detection_start': None,
                         'radar_detection_end': None
                     }
-                    print(f"🚗 Plate: {plate_no} | No radar match (outside {RADAR_CAMERA_TIME_WINDOW}s) | 💾 Saving...", flush=True)
+                    print(f"\n{'='*60}", flush=True)
+                    print(f"⚠️  PLATE DETECTION - NO RADAR MATCH", flush=True)
+                    print(f"   Plate: {plate_no}", flush=True)
+                    print(f"   Reason: Outside {RADAR_CAMERA_TIME_WINDOW}s window", flush=True)
+                    print(f"   Status: 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     send_plate_to_vms("")
-                    print(f"  ⏭️  VMS: Not displaying (no speed data)", flush=True)
+                    print(f"   VMS: ⏭️  Not displaying (no speed data)", flush=True)
+                    print(f"{'='*60}\n", flush=True)
             else:
                 # Camera event received but no plate detected
                 print(f"📷 Camera event: No plate detected", flush=True)
