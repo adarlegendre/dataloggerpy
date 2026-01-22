@@ -661,23 +661,57 @@ def _handle_camera_client(client_socket, client_address):
     
     try:
         data = b''
-        client_socket.settimeout(3.0)  # Reduced timeout for faster response
+        client_socket.settimeout(10.0)  # Longer timeout to ensure all data arrives
         
-        # Read all data quickly
-        while True:
+        # Read all data - camera sends HTTP POST with JSON body
+        # Strategy: Read until connection closes (recv returns empty) or we detect complete message
+        max_reads = 100  # Safety limit to prevent infinite loop
+        read_count = 0
+        
+        while read_count < max_reads:
             try:
-                tmp = client_socket.recv(4096)  # Increased buffer for faster read
+                tmp = client_socket.recv(16384)  # Large buffer (16KB) for faster read
                 if not tmp:
+                    # Connection closed by camera - all data received
                     break
                 data += tmp
-                # Break early if we have enough data (most events are small)
-                if len(data) > 8192:  # Reasonable limit
-                    break
+                read_count += 1
+                
+                # Try to detect if we have complete HTTP message using Content-Length
+                if b'\r\n\r\n' in data and len(data) > 100:
+                    try:
+                        raw_str = data.decode('utf-8', errors='ignore')
+                        headers_end = raw_str.find('\r\n\r\n')
+                        if headers_end > 0:
+                            headers = raw_str[:headers_end]
+                            # Look for Content-Length header
+                            import re as re_module
+                            content_length_match = re_module.search(r'Content-Length:\s*(\d+)', headers, re_module.IGNORECASE)
+                            if content_length_match:
+                                content_length = int(content_length_match.group(1))
+                                body_start = headers_end + 4
+                                body_received = len(data) - body_start
+                                if body_received >= content_length:
+                                    # We have all the data according to Content-Length
+                                    print(f"  ✓ Complete message received (Content-Length: {content_length}, received: {body_received})")
+                                    break
+                    except Exception:
+                        pass
+                        
             except socket.timeout:
-                break
+                # Timeout - if we have data, assume it's complete (camera might have sent everything)
+                if len(data) > 100:
+                    print(f"  ⚠️ Socket timeout, but have {len(data)} bytes - assuming complete")
+                    break
+                else:
+                    print(f"⚠️ Camera timeout with insufficient data ({len(data)} bytes)")
+                    break
             except Exception as e:
                 print(f"⚠️ Camera recv error: {e}")
                 break
+        
+        if read_count >= max_reads:
+            print(f"⚠️ Reached max read limit ({max_reads}), may have incomplete data")
         
         if not data:
             client_socket.close()
@@ -686,15 +720,51 @@ def _handle_camera_client(client_socket, client_address):
         print(f"📷 Camera event received ({len(data)} bytes)")
         
         try:
-            # Fast parsing
+            # Parse HTTP message
             raw_data_str = data.decode('utf-8', errors='ignore')
-            body = raw_data_str.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in raw_data_str else raw_data_str
-            body = re.sub(r'[\x00-\x1F\x7F]', '', body)
+            
+            # Extract body from HTTP POST
+            if '\r\n\r\n' in raw_data_str:
+                body = raw_data_str.split('\r\n\r\n', 1)[1]
+            else:
+                body = raw_data_str
+            
+            # Clean control characters but preserve JSON structure
+            # Only remove truly problematic characters, not all control chars
+            body = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', body)
             
             # Debug: show first 200 chars of body
             print(f"  📄 Body preview: {body[:200]}...")
             
-            data_json = json.loads(body)
+            # Try to parse JSON
+            try:
+                data_json = json.loads(body)
+            except json.JSONDecodeError as json_err:
+                # If JSON decode fails, try to find and extract just the JSON part
+                print(f"  ⚠️ Initial JSON parse failed: {json_err}")
+                print(f"  📏 Body length: {len(body)} chars")
+                print(f"  📄 Body end (last 200 chars): ...{body[-200:]}")
+                
+                # Check if body is truncated
+                if body.count('{') > body.count('}'):
+                    print(f"  ❌ JSON appears truncated! Open braces: {body.count('{')}, Close braces: {body.count('}')}")
+                    print(f"  💡 This suggests not all data was received from camera")
+                
+                # Look for JSON object boundaries
+                json_start = body.find('{')
+                json_end = body.rfind('}')
+                if json_start >= 0 and json_end > json_start:
+                    json_str = body[json_start:json_end+1]
+                    print(f"  🔧 Trying to extract JSON (chars {json_start}-{json_end}, length: {len(json_str)})...")
+                    try:
+                        data_json = json.loads(json_str)
+                        print(f"  ✅ Successfully parsed extracted JSON")
+                    except json.JSONDecodeError as extract_err:
+                        print(f"  ❌ Extracted JSON also failed: {extract_err}")
+                        raise  # Re-raise original error
+                else:
+                    print(f"  ❌ Could not find JSON boundaries (start: {json_start}, end: {json_end})")
+                    raise  # Re-raise original error
             
             # Debug: show JSON structure
             if "StructureInfo" in data_json:
