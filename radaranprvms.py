@@ -176,7 +176,7 @@ def _file_writer_worker():
                         f.flush()
                         os.fsync(f.fileno())
                     
-                    # Log saved detections
+                    # Log saved detections - show ALL saves
                     for detection in pending_detections:
                         plate = detection.get('plate_number')
                         speed = detection.get('speed', 0)
@@ -185,6 +185,11 @@ def _file_writer_worker():
                             sys.stdout.write(f"💾 Saved: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
                         else:
                             sys.stdout.write(f"💾 Saved: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
+                        sys.stdout.flush()
+                    
+                    # Show batch save confirmation
+                    if pending_detections:
+                        sys.stdout.write(f"💾 Batch saved: {len(pending_detections)} detection(s) → {os.path.basename(filepath)}\n")
                         sys.stdout.flush()
                     
                     pending_detections.clear()
@@ -201,6 +206,11 @@ def _file_writer_worker():
 def save_detection(detection_data: Dict[str, Any]):
     """Save a detection to today's JSON file via queue (non-blocking)"""
     _detections_queue.put(detection_data)
+    # Show immediate confirmation that it's queued
+    plate = detection_data.get('plate_number', 'Radar-only')
+    speed = detection_data.get('speed', 0)
+    sys.stdout.write(f"  📥 Queued for save: {plate} | {speed}km/h\n")
+    sys.stdout.flush()
 
 def _start_file_writer():
     """Start the file writer thread"""
@@ -249,16 +259,20 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             'radar_detection_end': completed['end_time']
         }
         save_detection(radar_only_data)
-        sys.stdout.write(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | 💾 Saving...\n")
+        sys.stdout.write(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...\n")
         sys.stdout.flush()
     else:
-        print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<8km/h)")
+        sys.stdout.write(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<8km/h)\n")
+        sys.stdout.flush()
     
     # Check for speed violation (no plate detected, speed > limit) - non-blocking
     if peak_speed > SPEED_LIMIT:
-        sys.stdout.write(f"  ⚠️  Speed violation detected: {peak_speed}km/h > {SPEED_LIMIT}km/h - Checking for plate...\n")
+        sys.stdout.write(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...\n")
         sys.stdout.flush()
         Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
+    else:
+        sys.stdout.write(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h\n")
+        sys.stdout.flush()
     
     return completed
 
@@ -306,6 +320,8 @@ def process_radar_reading(direction_sign: str, speed: int):
                         _current_direction = None
                         
                         # Complete detection outside lock to minimize blocking
+                        sys.stdout.write(f"  ✓ Detection completing: {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})\n")
+                        sys.stdout.flush()
                         _complete_detection(
                             direction_copy, direction_name, peak_speed,
                             detection_copy, start_time
@@ -359,14 +375,15 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     direction_name = radar_detection['direction_name']
     detection_id = radar_detection['end_time']
     
-    # Wait briefly to see if camera detects a plate (1 second grace period)
-    print(f"  ⏳ Waiting 1s to check if plate will be detected...")
+    sys.stdout.write(f"  ⏳ [Speed Violation Check] Waiting 1s to see if plate will be detected...\n")
+    sys.stdout.flush()
     time.sleep(1.0)
     
     # Check if this detection was already matched with a plate
     with _matched_detections_lock:
-        if detection_id in _matched_radar_detections:
-            sys.stdout.write(f"  ✅ Plate detected - skipping speed violation\n")
+        is_matched = detection_id in _matched_radar_detections
+        if is_matched:
+            sys.stdout.write(f"  ✅ [Speed Violation Check] Plate detected for this vehicle - skipping ZPOMAL!\n")
             sys.stdout.flush()
             return  # Plate detected, skip violation
     
@@ -374,7 +391,9 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     try:
         detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
         time_since_detection = (datetime.now() - detection_end_time).total_seconds()
-    except Exception:
+    except Exception as e:
+        sys.stdout.write(f"  ❌ [Speed Violation Check] Error parsing time: {e}\n")
+        sys.stdout.flush()
         return
     
     # Display violation if still within reasonable time window
@@ -383,19 +402,22 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
             if not _speed_violation_active:
                 _speed_violation_active = True
                 
-                print(f"  🚨 No plate detected - Displaying speed violation")
+                sys.stdout.write(f"  🚨 [Speed Violation] No plate detected - Displaying ZPOMAL!\n")
+                sys.stdout.flush()
                 send_plate_to_vms("ZPOMAL!")
-                print(f"⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h ({direction_name}) | 📺 VMS: ZPOMAL! | ⏱️  Displaying for {VMS_DISPLAY_TIME}s")
+                sys.stdout.write(f"⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h ({direction_name}) | 📺 VMS: ZPOMAL! | ⏱️  Displaying for {VMS_DISPLAY_TIME}s\n")
+                sys.stdout.flush()
                 
                 time.sleep(VMS_DISPLAY_TIME)
-                print(f"  ✅ Speed violation display completed")
+                sys.stdout.write(f"  ✅ [Speed Violation] Display completed\n")
+                sys.stdout.flush()
                 with _speed_violation_lock:
                     _speed_violation_active = False
             else:
-                sys.stdout.write(f"  ⏭️  Speed violation already active, skipping\n")
+                sys.stdout.write(f"  ⏭️  [Speed Violation] Already active, skipping\n")
                 sys.stdout.flush()
     else:
-        sys.stdout.write(f"  ⏭️  Detection too old ({time_since_detection:.1f}s), skipping violation\n")
+        sys.stdout.write(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping\n")
         sys.stdout.flush()
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
@@ -704,10 +726,17 @@ def extract_plate_number(data_json):
         plate_attr = vehicle_info.get("PlateAttributeInfo", {})
         plate_no = plate_attr.get("PlateNo", None)
         
+        # Debug output
+        if plate_no:
+            sys.stdout.write(f"    🔍 Found PlateNo in JSON: '{plate_no}'\n")
+            sys.stdout.flush()
+        
         if plate_no and plate_no != "Unknown" and plate_no.strip():
             return plate_no
         return None
-    except (KeyError, TypeError, AttributeError):
+    except (KeyError, TypeError, AttributeError) as e:
+        sys.stdout.write(f"    ❌ Plate extraction error: {e}\n")
+        sys.stdout.flush()
         return None
 
 def keepalive():
@@ -827,6 +856,24 @@ def _handle_camera_client(client_socket, client_address):
             
             # Extract plate number
             plate_no = extract_plate_number(data_json)
+            
+            # Debug: show what we found
+            if plate_no:
+                sys.stdout.write(f"  ✅ Plate extracted: {plate_no}\n")
+                sys.stdout.flush()
+            else:
+                # Debug: show why plate extraction failed
+                try:
+                    structure_info = data_json.get("StructureInfo", {})
+                    if structure_info:
+                        obj_info = structure_info.get("ObjInfo", {})
+                        vehicle_list = obj_info.get("VehicleInfoList", [])
+                        sys.stdout.write(f"  ⚠️  No plate: VehicleInfoList={len(vehicle_list) if isinstance(vehicle_list, list) else 'not list'}\n")
+                        sys.stdout.flush()
+                except:
+                    sys.stdout.write(f"  ⚠️  No plate: JSON structure issue\n")
+                    sys.stdout.flush()
+            
             if plate_no:
                 # Get latest completed radar detection (fast lookup)
                 radar_detection = get_latest_completed_detection()
