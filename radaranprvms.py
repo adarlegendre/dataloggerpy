@@ -667,7 +667,7 @@ def _handle_camera_client(client_socket, client_address):
                                 content_length = int(content_length_match.group(1))
                                 body_start = headers_end + 4
                                 body_received = len(data) - body_start
-                                                if body_received >= content_length:
+                                if body_received >= content_length:
                                     # We have all the data according to Content-Length
                                     break
                     except Exception:
