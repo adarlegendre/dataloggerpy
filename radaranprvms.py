@@ -229,10 +229,11 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         if len(_completed_detections) > _max_completed_detections:
             _completed_detections.pop(0)
     
-    print(f"\n✓ Detection: {direction_name} {peak_speed}km/h")
+    print(f"\n✓ Detection completed: {direction_name} {peak_speed}km/h (readings: {len(detection_readings)})")
     
     # Check for speed violation (no plate detected, speed > limit) - non-blocking
     if peak_speed > SPEED_LIMIT:
+        print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h")
         Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
     
     return completed
@@ -480,8 +481,23 @@ def read_radar_data():
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                     print(f"📡 {direction_name}: {speed}km/h", end='\r', flush=True)
                                     last_print_time = current_time
-                        except (ValueError, IndexError):
-                            pass
+                        except (ValueError, IndexError) as e:
+                            # Debug: show what we're receiving
+                            print(f"\n⚠️ Radar parse error: chunk={chunk}, decoded={chunk.decode('utf-8', errors='ignore')}, error={e}")
+                    else:
+                        # Debug: show non-matching chunks
+                        if len(chunk) > 0:
+                            print(f"\n⚠️ Radar unexpected data: {chunk.hex()} ({chunk})")
+                            # Try to find 'A' and realign buffer
+                            if b'A' in chunk:
+                                idx = chunk.index(b'A')
+                                buffer = chunk[idx:] + buffer
+            else:
+                # No data received - show we're still alive periodically
+                current_time = time.time()
+                if current_time - last_print_time >= 2.0:  # Show status every 2 seconds if no data
+                    print("📡 Waiting for radar data...", end='\r', flush=True)
+                    last_print_time = current_time
             
             time.sleep(0.005)  # Reduced delay for faster response (5ms)
                 
@@ -521,9 +537,11 @@ def _send_vms_command(display_text: str) -> bool:
         # Use Popen for truly non-blocking execution
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # Don't wait - let it run in background
+        print(f"  🔧 VMS command sent: {' '.join(cmd)}")
         return True
     except Exception as e:
-        print(f"Error sending VMS command: {e}")
+        print(f"  ❌ Error sending VMS command: {e}")
+        print(f"  📋 Command: {' '.join(cmd)}")
         return False
 
 def send_plate_to_vms(plate_number: str):
@@ -574,15 +592,44 @@ def extract_plate_number(data_json):
     """Extract plate number from camera event data"""
     try:
         structure_info = data_json.get("StructureInfo", {})
+        if not structure_info:
+            print(f"    🔍 No StructureInfo in JSON")
+            return None
+            
         obj_info = structure_info.get("ObjInfo", {})
+        if not obj_info:
+            print(f"    🔍 No ObjInfo in StructureInfo")
+            return None
+            
         vehicle_info_list = obj_info.get("VehicleInfoList", [])
+        if not isinstance(vehicle_info_list, list):
+            print(f"    🔍 VehicleInfoList is not a list: {type(vehicle_info_list)}")
+            return None
+            
+        if not vehicle_info_list:
+            print(f"    🔍 VehicleInfoList is empty")
+            return None
         
-        if isinstance(vehicle_info_list, list) and vehicle_info_list:
-            plate_no = vehicle_info_list[0].get("PlateAttributeInfo", {}).get("PlateNo", None)
-            if plate_no and plate_no != "Unknown" and plate_no.strip():
-                return plate_no
-        return None
-    except (KeyError, TypeError, AttributeError):
+        vehicle_info = vehicle_info_list[0]
+        plate_attr = vehicle_info.get("PlateAttributeInfo", {})
+        plate_no = plate_attr.get("PlateNo", None)
+        
+        if plate_no:
+            print(f"    🔍 Found PlateNo: '{plate_no}'")
+            if plate_no == "Unknown":
+                print(f"    ⚠️  PlateNo is 'Unknown', ignoring")
+                return None
+            if not plate_no.strip():
+                print(f"    ⚠️  PlateNo is empty/whitespace, ignoring")
+                return None
+            return plate_no
+        else:
+            print(f"    🔍 No PlateNo in PlateAttributeInfo")
+            return None
+    except (KeyError, TypeError, AttributeError) as e:
+        print(f"    ❌ Error extracting plate: {e}")
+        import traceback
+        print(f"    📍 Traceback: {traceback.format_exc()}")
         return None
 
 def keepalive():
@@ -636,20 +683,40 @@ def _handle_camera_client(client_socket, client_address):
             client_socket.close()
             return
         
-        print(f"📷 Camera event")
+        print(f"📷 Camera event received ({len(data)} bytes)")
         
         try:
             # Fast parsing
             raw_data_str = data.decode('utf-8', errors='ignore')
             body = raw_data_str.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in raw_data_str else raw_data_str
             body = re.sub(r'[\x00-\x1F\x7F]', '', body)
+            
+            # Debug: show first 200 chars of body
+            print(f"  📄 Body preview: {body[:200]}...")
+            
             data_json = json.loads(body)
+            
+            # Debug: show JSON structure
+            if "StructureInfo" in data_json:
+                print(f"  ✓ StructureInfo found")
+                structure_info = data_json.get("StructureInfo", {})
+                obj_info = structure_info.get("ObjInfo", {})
+                vehicle_info_list = obj_info.get("VehicleInfoList", [])
+                print(f"  📊 VehicleInfoList length: {len(vehicle_info_list) if isinstance(vehicle_info_list, list) else 'not a list'}")
+            else:
+                print(f"  ⚠️ No StructureInfo in JSON. Keys: {list(data_json.keys())[:10]}")
             
             # Extract plate number
             plate_no = extract_plate_number(data_json)
             if plate_no:
+                print(f"  ✅ Plate detected: {plate_no}")
                 # Get latest completed radar detection (fast lookup)
                 radar_detection = get_latest_completed_detection()
+                
+                if radar_detection:
+                    print(f"  📡 Radar detection matched: {radar_detection.get('direction_name', 'Unknown')} {radar_detection.get('peak_speed', 0)}km/h")
+                else:
+                    print(f"  ⚠️  No radar detection found within {RADAR_CAMERA_TIME_WINDOW}s window")
                 
                 # Create timestamp once
                 timestamp = datetime.now().isoformat()
@@ -700,17 +767,23 @@ def _handle_camera_client(client_socket, client_address):
                 
                 # Display on VMS immediately (non-blocking)
                 if speed > MIN_SPEED_FOR_DISPLAY:
+                    print(f"  📺 Sending to VMS: {plate_no} (speed: {speed}km/h > {MIN_SPEED_FOR_DISPLAY}km/h)")
                     send_plate_to_vms(plate_no)
                 else:
+                    print(f"  ⏭️  Not displaying on VMS: speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h")
                     send_plate_to_vms("")  # Clear display
             else:
-                # Camera event received but no plate detected - clear display
+                # Camera event received but no plate detected
+                print(f"  ⚠️  No plate number extracted from camera event")
                 send_plate_to_vms("")
         
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            print(f"  ❌ JSON decode error: {e}")
+            print(f"  📄 Raw body (first 500 chars): {body[:500] if 'body' in locals() else 'N/A'}")
         except Exception as e:
-            print(f"⚠️ Camera error: {e}")
+            print(f"  ❌ Camera processing error: {e}")
+            import traceback
+            print(f"  📍 Traceback: {traceback.format_exc()}")
     
     finally:
         try:
