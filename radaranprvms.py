@@ -463,7 +463,9 @@ def read_radar_data():
     max_retries = 5
     buffer = b''
     last_print_time = 0
-    print_interval = 0.1  # Update display every 100ms for smooth streaming
+    print_interval = 0.5  # Update display every 500ms to avoid too much output
+    last_speed = None
+    last_direction = None
     
     while True:
         try:
@@ -498,13 +500,20 @@ def read_radar_data():
                                 # Process radar reading immediately (non-blocking)
                                 process_radar_reading(direction_sign, speed)
                                 
-                                # Update live streaming display at controlled rate
-                                # Only display non-zero speeds to reduce clutter
+                                # Update live streaming display at controlled rate (per line to avoid display issues)
+                                # Only display non-zero speeds, and only if speed/direction changed or interval passed
                                 if speed > 0 and current_time - last_print_time >= print_interval:
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                    # Use fixed width to prevent display artifacts
-                                    print(f"📡 Live: {direction_name} {speed:3d}km/h", end='\r', flush=True)
-                                    last_print_time = current_time
+                                    # Only print if speed or direction changed to reduce output
+                                    if speed != last_speed or direction_sign != last_direction:
+                                        print(f"📡 Live: {direction_name} {speed:3d}km/h")
+                                        last_speed = speed
+                                        last_direction = direction_sign
+                                        last_print_time = current_time
+                                elif speed == 0:
+                                    # Reset tracking when speed goes to zero
+                                    last_speed = None
+                                    last_direction = None
                         except (ValueError, IndexError):
                             pass  # Skip invalid radar data
                     else:
