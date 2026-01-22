@@ -358,7 +358,6 @@ def process_radar_reading(direction_sign: str, speed: int):
                             print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)
                     else:
                         print(f"  ⚠️  [DEBUG] No vehicle readings found in detection", flush=True)
-                    else:
                         # Reset for next detection
                         _current_detection = []
                         _current_direction = None
@@ -902,8 +901,6 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  🔗 Found radar match: {radar_detection['peak_speed']}km/h | {radar_detection['direction_name']}", flush=True)
                 else:
                     print(f"  ⚠️  No radar match found for plate {plate_no}", flush=True)
-            else:
-                print(f"  🔄 [DEBUG] No plate found, skipping radar match", flush=True)
                 
                 # Create timestamp once
                 timestamp = datetime.now().isoformat()
@@ -958,16 +955,13 @@ def _handle_camera_client(client_socket, client_address):
                         'radar_detection_start': None,
                         'radar_detection_end': None
                     }
-                    sys.stdout.write(f"🚗 Plate: {plate_no} | No radar match (outside {RADAR_CAMERA_TIME_WINDOW}s) | 💾 Saving...\n")
-                    sys.stdout.flush()
+                    print(f"🚗 Plate: {plate_no} | No radar match (outside {RADAR_CAMERA_TIME_WINDOW}s) | 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     send_plate_to_vms("")
-                    sys.stdout.write(f"  ⏭️  VMS: Not displaying (no speed data)\n")
-                    sys.stdout.flush()
+                    print(f"  ⏭️  VMS: Not displaying (no speed data)", flush=True)
             else:
                 # Camera event received but no plate detected
-                sys.stdout.write(f"📷 Camera event: No plate detected\n")
-                sys.stdout.flush()
+                print(f"📷 Camera event: No plate detected", flush=True)
                 send_plate_to_vms("")
         
         except json.JSONDecodeError:
