@@ -175,11 +175,12 @@ def _file_writer_worker():
                         f.flush()
                         os.fsync(f.fileno())
                     
-                    # Log saved detections
+                    # Log saved detections (only for plates, radar-only detections are logged when detected)
                     for detection in pending_detections:
-                        plate = detection.get('plate_number', 'N/A')
-                        speed = detection.get('speed', 0)
-                        print(f"💾 Saved: {plate} ({speed}km/h) → {os.path.basename(filepath)}")
+                        if detection.get('plate_number'):  # Only log plate detections here
+                            plate = detection.get('plate_number', 'N/A')
+                            speed = detection.get('speed', 0)
+                            print(f"💾 Saved: {plate} ({speed}km/h) → {os.path.basename(filepath)}")
                     
                     pending_detections.clear()
                     last_write_time = time.time()
@@ -229,11 +230,26 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         if len(_completed_detections) > _max_completed_detections:
             _completed_detections.pop(0)
     
-    print(f"\n✓ Detection completed: {direction_name} {peak_speed}km/h (readings: {len(detection_readings)})")
+    # Save radar detection even without plate (for vehicles 8km/h and above)
+    if peak_speed >= 8:  # Save all vehicle detections 8km/h and above
+        radar_only_data = {
+            'timestamp': datetime.now().isoformat(),
+            'plate_number': None,
+            'speed': peak_speed,
+            'direction': direction_name,
+            'radar_direction_sign': direction_sign,
+            'vms_displayed': 'no',
+            'radar_readings_count': len(detection_readings),
+            'radar_detection_start': start_time,
+            'radar_detection_end': completed['end_time']
+        }
+        save_detection(radar_only_data)
+        print(f"📡 Radar: {direction_name} {peak_speed}km/h | Saved (no plate)")
+    else:
+        print(f"📡 Radar: {direction_name} {peak_speed}km/h | Not saved (<8km/h)")
     
     # Check for speed violation (no plate detected, speed > limit) - non-blocking
     if peak_speed > SPEED_LIMIT:
-        print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h")
         Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
     
     return completed
@@ -358,12 +374,8 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
             if not _speed_violation_active:
                 _speed_violation_active = True
                 
-                print(f"⚠️  Speed violation: {peak_speed}km/h > {SPEED_LIMIT}km/h ({radar_detection['direction_name']})")
-                
-                try:
-                    send_plate_to_vms("ZPOMAL!")
-                except Exception as e:
-                    print(f"Error sending speed violation: {e}")
+                send_plate_to_vms("ZPOMAL!")
+                print(f"⚠️  Speed violation: {peak_speed}km/h > {SPEED_LIMIT}km/h ({radar_detection['direction_name']}) | VMS: ZPOMAL!")
                 
                 time.sleep(VMS_DISPLAY_TIME)
                 with _speed_violation_lock:
@@ -481,23 +493,14 @@ def read_radar_data():
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                     print(f"📡 {direction_name}: {speed}km/h", end='\r', flush=True)
                                     last_print_time = current_time
-                        except (ValueError, IndexError) as e:
-                            # Debug: show what we're receiving
-                            print(f"\n⚠️ Radar parse error: chunk={chunk}, decoded={chunk.decode('utf-8', errors='ignore')}, error={e}")
+                        except (ValueError, IndexError):
+                            pass  # Skip invalid radar data
                     else:
-                        # Debug: show non-matching chunks
-                        if len(chunk) > 0:
-                            print(f"\n⚠️ Radar unexpected data: {chunk.hex()} ({chunk})")
-                            # Try to find 'A' and realign buffer
-                            if b'A' in chunk:
-                                idx = chunk.index(b'A')
-                                buffer = chunk[idx:] + buffer
-            else:
-                # No data received - show we're still alive periodically
-                current_time = time.time()
-                if current_time - last_print_time >= 2.0:  # Show status every 2 seconds if no data
-                    print("📡 Waiting for radar data...", end='\r', flush=True)
-                    last_print_time = current_time
+                        # Try to find 'A' and realign buffer if needed
+                        if len(chunk) > 0 and b'A' in chunk:
+                            idx = chunk.index(b'A')
+                            buffer = chunk[idx:] + buffer
+            # No data received - continue silently (radar may be idle)
             
             time.sleep(0.005)  # Reduced delay for faster response (5ms)
                 
@@ -535,13 +538,9 @@ def _send_vms_command(display_text: str) -> bool:
     
     try:
         # Use Popen for truly non-blocking execution
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # Don't wait - let it run in background
-        print(f"  🔧 VMS command sent: {' '.join(cmd)}")
+        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
-    except Exception as e:
-        print(f"  ❌ Error sending VMS command: {e}")
-        print(f"  📋 Command: {' '.join(cmd)}")
+    except Exception:
         return False
 
 def send_plate_to_vms(plate_number: str):
@@ -564,8 +563,6 @@ def send_plate_to_vms(plate_number: str):
     _send_vms_command(display_text)
     
     if display_text:
-        print(f"📺 VMS: '{display_text}'")
-        
         # Schedule auto-clear after display time
         def clear_after_delay():
             global _vms_clear_thread
@@ -579,8 +576,6 @@ def send_plate_to_vms(plate_number: str):
         with _vms_lock:
             _vms_clear_thread = Thread(target=clear_after_delay, daemon=True)
             _vms_clear_thread.start()
-    else:
-        print(f"📺 VMS: Cleared")
     
     return True
 
@@ -593,43 +588,24 @@ def extract_plate_number(data_json):
     try:
         structure_info = data_json.get("StructureInfo", {})
         if not structure_info:
-            print(f"    🔍 No StructureInfo in JSON")
             return None
             
         obj_info = structure_info.get("ObjInfo", {})
         if not obj_info:
-            print(f"    🔍 No ObjInfo in StructureInfo")
             return None
             
         vehicle_info_list = obj_info.get("VehicleInfoList", [])
-        if not isinstance(vehicle_info_list, list):
-            print(f"    🔍 VehicleInfoList is not a list: {type(vehicle_info_list)}")
-            return None
-            
-        if not vehicle_info_list:
-            print(f"    🔍 VehicleInfoList is empty")
+        if not isinstance(vehicle_info_list, list) or not vehicle_info_list:
             return None
         
         vehicle_info = vehicle_info_list[0]
         plate_attr = vehicle_info.get("PlateAttributeInfo", {})
         plate_no = plate_attr.get("PlateNo", None)
         
-        if plate_no:
-            print(f"    🔍 Found PlateNo: '{plate_no}'")
-            if plate_no == "Unknown":
-                print(f"    ⚠️  PlateNo is 'Unknown', ignoring")
-                return None
-            if not plate_no.strip():
-                print(f"    ⚠️  PlateNo is empty/whitespace, ignoring")
-                return None
+        if plate_no and plate_no != "Unknown" and plate_no.strip():
             return plate_no
-        else:
-            print(f"    🔍 No PlateNo in PlateAttributeInfo")
-            return None
-    except (KeyError, TypeError, AttributeError) as e:
-        print(f"    ❌ Error extracting plate: {e}")
-        import traceback
-        print(f"    📍 Traceback: {traceback.format_exc()}")
+        return None
+    except (KeyError, TypeError, AttributeError):
         return None
 
 def keepalive():
@@ -691,9 +667,8 @@ def _handle_camera_client(client_socket, client_address):
                                 content_length = int(content_length_match.group(1))
                                 body_start = headers_end + 4
                                 body_received = len(data) - body_start
-                                if body_received >= content_length:
+                                                if body_received >= content_length:
                                     # We have all the data according to Content-Length
-                                    print(f"  ✓ Complete message received (Content-Length: {content_length}, received: {body_received})")
                                     break
                     except Exception:
                         pass
@@ -701,7 +676,6 @@ def _handle_camera_client(client_socket, client_address):
             except socket.timeout:
                 # Timeout - if we have data, assume it's complete (camera might have sent everything)
                 if len(data) > 100:
-                    print(f"  ⚠️ Socket timeout, but have {len(data)} bytes - assuming complete")
                     break
                 else:
                     print(f"⚠️ Camera timeout with insufficient data ({len(data)} bytes)")
@@ -717,8 +691,6 @@ def _handle_camera_client(client_socket, client_address):
             client_socket.close()
             return
         
-        print(f"📷 Camera event received ({len(data)} bytes)")
-        
         try:
             # Parse HTTP message
             raw_data_str = data.decode('utf-8', errors='ignore')
@@ -730,63 +702,26 @@ def _handle_camera_client(client_socket, client_address):
                 body = raw_data_str
             
             # Clean control characters but preserve JSON structure
-            # Only remove truly problematic characters, not all control chars
             body = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', body)
-            
-            # Debug: show first 200 chars of body
-            print(f"  📄 Body preview: {body[:200]}...")
             
             # Try to parse JSON
             try:
                 data_json = json.loads(body)
             except json.JSONDecodeError as json_err:
                 # If JSON decode fails, try to find and extract just the JSON part
-                print(f"  ⚠️ Initial JSON parse failed: {json_err}")
-                print(f"  📏 Body length: {len(body)} chars")
-                print(f"  📄 Body end (last 200 chars): ...{body[-200:]}")
-                
-                # Check if body is truncated
-                if body.count('{') > body.count('}'):
-                    print(f"  ❌ JSON appears truncated! Open braces: {body.count('{')}, Close braces: {body.count('}')}")
-                    print(f"  💡 This suggests not all data was received from camera")
-                
-                # Look for JSON object boundaries
                 json_start = body.find('{')
                 json_end = body.rfind('}')
                 if json_start >= 0 and json_end > json_start:
                     json_str = body[json_start:json_end+1]
-                    print(f"  🔧 Trying to extract JSON (chars {json_start}-{json_end}, length: {len(json_str)})...")
-                    try:
-                        data_json = json.loads(json_str)
-                        print(f"  ✅ Successfully parsed extracted JSON")
-                    except json.JSONDecodeError as extract_err:
-                        print(f"  ❌ Extracted JSON also failed: {extract_err}")
-                        raise  # Re-raise original error
+                    data_json = json.loads(json_str)
                 else:
-                    print(f"  ❌ Could not find JSON boundaries (start: {json_start}, end: {json_end})")
                     raise  # Re-raise original error
-            
-            # Debug: show JSON structure
-            if "StructureInfo" in data_json:
-                print(f"  ✓ StructureInfo found")
-                structure_info = data_json.get("StructureInfo", {})
-                obj_info = structure_info.get("ObjInfo", {})
-                vehicle_info_list = obj_info.get("VehicleInfoList", [])
-                print(f"  📊 VehicleInfoList length: {len(vehicle_info_list) if isinstance(vehicle_info_list, list) else 'not a list'}")
-            else:
-                print(f"  ⚠️ No StructureInfo in JSON. Keys: {list(data_json.keys())[:10]}")
             
             # Extract plate number
             plate_no = extract_plate_number(data_json)
             if plate_no:
-                print(f"  ✅ Plate detected: {plate_no}")
                 # Get latest completed radar detection (fast lookup)
                 radar_detection = get_latest_completed_detection()
-                
-                if radar_detection:
-                    print(f"  📡 Radar detection matched: {radar_detection.get('direction_name', 'Unknown')} {radar_detection.get('peak_speed', 0)}km/h")
-                else:
-                    print(f"  ⚠️  No radar detection found within {RADAR_CAMERA_TIME_WINDOW}s window")
                 
                 # Create timestamp once
                 timestamp = datetime.now().isoformat()
@@ -799,22 +734,35 @@ def _handle_camera_client(client_socket, client_address):
                         _matched_radar_detections.add(detection_id)
                         # Efficient cleanup - only when needed
                         if len(_matched_radar_detections) > _max_matched_detections:
-                            # Keep only most recent 50% when limit exceeded
                             sorted_items = sorted(_matched_radar_detections)
                             _matched_radar_detections = set(sorted_items[-_max_matched_detections // 2:])
                     
                     speed = radar_detection['peak_speed']
+                    direction = radar_detection['direction_name']
+                    vms_displayed = 'yes' if speed > MIN_SPEED_FOR_DISPLAY else 'no'
+                    
                     detection_data = {
                         'timestamp': timestamp,
                         'plate_number': plate_no,
                         'speed': speed,
-                        'direction': radar_detection['direction_name'],
+                        'direction': direction,
                         'radar_direction_sign': radar_detection['direction_sign'],
-                        'vms_displayed': 'yes' if speed > MIN_SPEED_FOR_DISPLAY else 'no',
+                        'vms_displayed': vms_displayed,
                         'radar_readings_count': radar_detection['readings_count'],
                         'radar_detection_start': radar_detection['start_time'],
                         'radar_detection_end': radar_detection['end_time']
                     }
+                    
+                    # Save detection (non-blocking via queue)
+                    save_detection(detection_data)
+                    
+                    # Display on VMS immediately (non-blocking)
+                    if speed > MIN_SPEED_FOR_DISPLAY:
+                        send_plate_to_vms(plate_no)
+                        print(f"🚗 {plate_no} | {speed}km/h | {direction} | VMS: {plate_no} | Saved ✓")
+                    else:
+                        send_plate_to_vms("")
+                        print(f"🚗 {plate_no} | {speed}km/h | {direction} | VMS: (speed too low) | Saved ✓")
                 else:
                     speed = 0
                     detection_data = {
@@ -828,32 +776,17 @@ def _handle_camera_client(client_socket, client_address):
                         'radar_detection_start': None,
                         'radar_detection_end': None
                     }
-                
-                # Save detection (non-blocking via queue) - immediate
-                save_detection(detection_data)
-                
-                # Show plate detection
-                print(f"🚗 Plate: {plate_no} | {speed}km/h | {detection_data['direction']} | VMS: {detection_data['vms_displayed'].upper()}")
-                
-                # Display on VMS immediately (non-blocking)
-                if speed > MIN_SPEED_FOR_DISPLAY:
-                    print(f"  📺 Sending to VMS: {plate_no} (speed: {speed}km/h > {MIN_SPEED_FOR_DISPLAY}km/h)")
-                    send_plate_to_vms(plate_no)
-                else:
-                    print(f"  ⏭️  Not displaying on VMS: speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h")
-                    send_plate_to_vms("")  # Clear display
+                    save_detection(detection_data)
+                    send_plate_to_vms("")
+                    print(f"🚗 {plate_no} | No radar match | VMS: (no speed) | Saved ✓")
             else:
                 # Camera event received but no plate detected
-                print(f"  ⚠️  No plate number extracted from camera event")
                 send_plate_to_vms("")
         
-        except json.JSONDecodeError as e:
-            print(f"  ❌ JSON decode error: {e}")
-            print(f"  📄 Raw body (first 500 chars): {body[:500] if 'body' in locals() else 'N/A'}")
-        except Exception as e:
-            print(f"  ❌ Camera processing error: {e}")
-            import traceback
-            print(f"  📍 Traceback: {traceback.format_exc()}")
+        except json.JSONDecodeError:
+            pass  # Silently skip invalid JSON
+        except Exception:
+            pass  # Silently skip processing errors
     
     finally:
         try:
