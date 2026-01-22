@@ -464,6 +464,7 @@ def read_radar_data():
     max_retries = 5
     buffer = b''
     last_data_time = time.time()
+    last_watchdog_time = time.time()
     watchdog_interval = 3.0
     max_buffer_size = 1000  # Maximum buffer size to prevent memory issues
     processed_count = 0
@@ -481,16 +482,18 @@ def read_radar_data():
                 retry_count = 0
                 buffer = b''
                 processed_count = 0
+                last_watchdog_time = time.time()
             
-            # Simple read
-            data = ser.read(32)
             current_time = time.time()
             
-            # Watchdog check - always runs
-            if current_time - last_data_time > watchdog_interval:
-                sys.stdout.write(f"📡 [Watchdog] Thread alive | Buffer: {len(buffer)} bytes | Processed: {processed_count}\n")
+            # Watchdog check - runs independently every 3 seconds regardless of data
+            if current_time - last_watchdog_time >= watchdog_interval:
+                sys.stdout.write(f"📡 [Watchdog] Thread alive | Buffer: {len(buffer)} bytes | Processed: {processed_count} | Last data: {current_time - last_data_time:.1f}s ago\n")
                 sys.stdout.flush()
-                last_data_time = current_time
+                last_watchdog_time = current_time
+            
+            # Simple read with timeout
+            data = ser.read(32)
             
             if data:
                 last_data_time = current_time
@@ -526,16 +529,20 @@ def read_radar_data():
                                 speed = int(chunk[2:].decode('utf-8'))
                                 direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                 
-                                # Display immediately - simple format
+                                # Display immediately - simple format (ALWAYS FIRST)
                                 sys.stdout.write(f"📡 {direction_name} {speed:3d}km/h\n")
                                 sys.stdout.flush()
                                 processed_count += 1
                                 
-                                # Process (non-blocking, errors ignored)
-                                try:
-                                    process_radar_reading(direction_sign, speed)
-                                except:
-                                    pass
+                                # Process in background thread to never block display
+                                # This ensures radar display continues even if processing is slow
+                                def process_async(direction, spd):
+                                    try:
+                                        process_radar_reading(direction, spd)
+                                    except:
+                                        pass
+                                
+                                Thread(target=process_async, args=(direction_sign, speed), daemon=True).start()
                             except:
                                 pass
                         else:
@@ -557,7 +564,15 @@ def read_radar_data():
                     sys.stdout.flush()
                     buffer = b''
             
+            # Small delay - but ensure watchdog can still run
             time.sleep(0.01)
+            
+            # Force watchdog check even during active reading
+            current_check = time.time()
+            if current_check - last_watchdog_time >= watchdog_interval:
+                sys.stdout.write(f"📡 [Watchdog] Active | Buffer: {len(buffer)} bytes | Processed: {processed_count}\n")
+                sys.stdout.flush()
+                last_watchdog_time = current_check
                 
         except serial.SerialException as e:
             if ser and ser.is_open:
