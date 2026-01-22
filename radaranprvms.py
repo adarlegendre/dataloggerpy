@@ -192,15 +192,13 @@ def _file_writer_worker():
                         speed = detection.get('speed', 0)
                         direction = detection.get('direction', 'Unknown')
                         if plate:
-                            sys.stdout.write(f"💾 SAVED: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
+                            print(f"💾 SAVED: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}", flush=True)
                         else:
-                            sys.stdout.write(f"💾 SAVED: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
-                        sys.stdout.flush()
+                            print(f"💾 SAVED: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}", flush=True)
                     
                     # Show batch save confirmation
                     if pending_detections:
-                        sys.stdout.write(f"✅ File write complete: {len(pending_detections)} detection(s) saved to {os.path.basename(filepath)}\n")
-                        sys.stdout.flush()
+                        print(f"✅ File write complete: {len(pending_detections)} detection(s) saved to {os.path.basename(filepath)}", flush=True)
                     
                     pending_detections.clear()
                     last_write_time = time.time()
@@ -219,8 +217,7 @@ def save_detection(detection_data: Dict[str, Any]):
     # Show immediate confirmation that it's queued
     plate = detection_data.get('plate_number', 'Radar-only')
     speed = detection_data.get('speed', 0)
-    sys.stdout.write(f"  📥 Queued for save: {plate} | {speed}km/h\n")
-    sys.stdout.flush()
+    print(f"  📥 Queued for save: {plate} | {speed}km/h", flush=True)
 
 def _start_file_writer():
     """Start the file writer thread"""
@@ -327,7 +324,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                         _current_direction = None
                         
                         # Complete detection outside lock to minimize blocking
-                        print(f"  ✓ Detection completing: {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
+                        print(f"  ✓ Detection completing (zeros): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
                         _complete_detection(
                             direction_copy, direction_name, peak_speed,
                             detection_copy, start_time
@@ -361,6 +358,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                 _current_direction = direction_sign
                 
                 # Complete old detection outside lock
+                print(f"  ✓ Detection completing (direction change): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
                 _complete_detection(
                     direction_copy, direction_name, peak_speed,
                     detection_copy, start_time
@@ -530,12 +528,12 @@ def read_radar_data():
                     last_a = buffer.rfind(b'A')
                     if last_a > 0 and last_a < len(buffer) - 4:
                         buffer = buffer[last_a:]
-                        sys.stdout.write(f"📡 [Buffer cleared] Size exceeded, kept last {len(buffer)} bytes\n")
+                        print(f"📡 [Buffer cleared] Size exceeded, kept last {len(buffer)} bytes", flush=True)
                         sys.stdout.flush()
                     else:
                         # No valid start found, clear buffer
                         buffer = b''
-                        sys.stdout.write(f"📡 [Buffer cleared] No valid data found\n")
+                        print(f"📡 [Buffer cleared] No valid data found", flush=True)
                         sys.stdout.flush()
                 
                 # Process messages - limit iterations to prevent getting stuck
@@ -595,7 +593,7 @@ def read_radar_data():
             # Force watchdog check even during active reading
             current_check = time.time()
             if current_check - last_watchdog_time >= watchdog_interval:
-                sys.stdout.write(f"📡 [Watchdog] Active | Buffer: {len(buffer)} bytes | Processed: {processed_count}\n")
+                print(f"📡 [Watchdog] Active | Buffer: {len(buffer)} bytes | Processed: {processed_count}", flush=True)
                 sys.stdout.flush()
                 last_watchdog_time = current_check
                 
@@ -684,7 +682,7 @@ def send_plate_to_vms(plate_number: str):
             
             with _vms_lock:
                 if _vms_clear_thread is not None:
-                    sys.stdout.write(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s\n")
+                    print(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s", flush=True)
                     sys.stdout.flush()
                     _send_vms_command("")  # Clear display
                     _vms_clear_thread = None
@@ -864,6 +862,12 @@ def _handle_camera_client(client_socket, client_address):
                 # Get latest completed radar detection (fast lookup)
                 radar_detection = get_latest_completed_detection()
                 
+                # Debug: show if we found a radar match
+                if radar_detection:
+                    print(f"  🔗 Found radar match: {radar_detection['peak_speed']}km/h | {radar_detection['direction_name']}", flush=True)
+                else:
+                    print(f"  ⚠️  No radar match found for plate {plate_no}", flush=True)
+                
                 # Create timestamp once
                 timestamp = datetime.now().isoformat()
                 
@@ -903,8 +907,7 @@ def _handle_camera_client(client_socket, client_address):
                         send_plate_to_vms(plate_no)
                     else:
                         send_plate_to_vms("")
-                        sys.stdout.write(f"  ⏭️  VMS: Not displaying (speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h)\n")
-                        sys.stdout.flush()
+                        print(f"  ⏭️  VMS: Not displaying (speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h)", flush=True)
                 else:
                     speed = 0
                     detection_data = {
