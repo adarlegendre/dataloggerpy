@@ -46,7 +46,7 @@ NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
-RADAR_CAMERA_TIME_WINDOW = 15  # Maximum seconds between radar detection and camera detection to consider them matched
+RADAR_CAMERA_TIME_WINDOW = 3  # Maximum seconds between radar detection and camera detection to consider them matched
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -245,8 +245,8 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         if len(_completed_detections) > _max_completed_detections:
             _completed_detections.pop(0)
     
-    # Save radar detection even without plate (for vehicles 8km/h and above)
-    if peak_speed >= 8:  # Save all vehicle detections 8km/h and above
+    # Save radar detection even without plate (for vehicles 10km/h and above)
+    if peak_speed >= 10:  # Save all vehicle detections 10km/h and above
         radar_only_data = {
             'timestamp': datetime.now().isoformat(),
             'plate_number': None,
@@ -262,7 +262,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         sys.stdout.write(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...\n")
         sys.stdout.flush()
     else:
-        sys.stdout.write(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<8km/h)\n")
+        sys.stdout.write(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)\n")
         sys.stdout.flush()
     
     # Check for speed violation (no plate detected, speed > limit) - non-blocking
@@ -593,7 +593,8 @@ def read_radar_data():
                     buffer = b''
             
             # Small delay - but ensure watchdog can still run
-            time.sleep(0.01)
+            # 300ms interval between radar reads
+            time.sleep(0.3)
             
             # Force watchdog check even during active reading
             current_check = time.time()
