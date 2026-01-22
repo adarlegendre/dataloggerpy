@@ -498,9 +498,8 @@ def read_radar_data():
                                 # Process radar reading immediately (non-blocking)
                                 process_radar_reading(direction_sign, speed)
                                 
-                                # Update live streaming display at controlled rate (per line to avoid display issues)
-                                # Display all non-zero speeds continuously
-                                if speed > 0 and current_time - last_print_time >= print_interval:
+                                # Update live streaming display - show ALL values including zeros
+                                if current_time - last_print_time >= print_interval:
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                     print(f"📡 Live: {direction_name} {speed:3d}km/h")
                                     last_print_time = current_time
