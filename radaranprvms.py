@@ -463,9 +463,7 @@ def read_radar_data():
     max_retries = 5
     buffer = b''
     last_print_time = 0
-    print_interval = 0.5  # Update display every 500ms to avoid too much output
-    last_speed = None
-    last_direction = None
+    print_interval = 0.2  # Update display every 200ms for continuous streaming
     
     while True:
         try:
@@ -501,19 +499,11 @@ def read_radar_data():
                                 process_radar_reading(direction_sign, speed)
                                 
                                 # Update live streaming display at controlled rate (per line to avoid display issues)
-                                # Only display non-zero speeds, and only if speed/direction changed or interval passed
+                                # Display all non-zero speeds continuously
                                 if speed > 0 and current_time - last_print_time >= print_interval:
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                    # Only print if speed or direction changed to reduce output
-                                    if speed != last_speed or direction_sign != last_direction:
-                                        print(f"📡 Live: {direction_name} {speed:3d}km/h")
-                                        last_speed = speed
-                                        last_direction = direction_sign
-                                        last_print_time = current_time
-                                elif speed == 0:
-                                    # Reset tracking when speed goes to zero
-                                    last_speed = None
-                                    last_direction = None
+                                    print(f"📡 Live: {direction_name} {speed:3d}km/h")
+                                    last_print_time = current_time
                         except (ValueError, IndexError):
                             pass  # Skip invalid radar data
                     else:
