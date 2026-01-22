@@ -50,7 +50,7 @@ NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
-RADAR_CAMERA_TIME_WINDOW = 3  # Maximum seconds between radar detection and camera detection to consider them matched
+RADAR_CAMERA_TIME_WINDOW = 5  # Maximum seconds between radar detection and camera detection to consider them matched
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
