@@ -312,6 +312,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         # print(f"  🔄 [DEBUG] Step 6: Checking speed violation: {peak_speed} > {SPEED_LIMIT}", flush=True)  # Debug message commented out
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
         if peak_speed > SPEED_LIMIT:
+            print(f"  ⚠️  Speed violation detected: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check...", flush=True)
             Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
         
         # print(f"  🔄 [DEBUG] Step 7: Returning completed", flush=True)  # Debug message commented out
@@ -438,13 +439,17 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
         direction_name = radar_detection['direction_name']
         detection_id = radar_detection['end_time']
         
+        print(f"  ⏳ [Speed Violation Check] Waiting 1s for plate detection...", flush=True)
         time.sleep(1.0)
         
         # Check if this detection was already matched with a plate
         with _matched_detections_lock:
             is_matched = detection_id in _matched_radar_detections
             if is_matched:
+                print(f"  ✅ [Speed Violation Check] Plate was detected - skipping ZPOMAL!", flush=True)
                 return  # Plate detected, skip violation
+        
+        print(f"  🔍 [Speed Violation Check] No plate match found - proceeding to display ZPOMAL!", flush=True)
         
         # Check if detection is still recent
         try:
