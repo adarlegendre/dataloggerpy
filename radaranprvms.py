@@ -554,9 +554,9 @@ def read_radar_data():
                                 speed = int(chunk[2:].decode('utf-8'))
                                 direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                 
-                        # Display immediately - simple format (ALWAYS FIRST)
-                        print(f"📡 {direction_name} {speed:3d}km/h", flush=True)
-                        processed_count += 1
+                                # Display immediately - simple format (ALWAYS FIRST)
+                                print(f"📡 {direction_name} {speed:3d}km/h", flush=True)
+                                processed_count += 1
                                 
                                 # Process in background thread to never block display
                                 # This ensures radar display continues even if processing is slow
@@ -567,7 +567,8 @@ def read_radar_data():
                                         pass
                                 
                                 Thread(target=process_async, args=(direction_sign, speed), daemon=True).start()
-                            except:
+                            except (ValueError, UnicodeDecodeError):
+                                # Invalid speed value or decode error - skip this chunk
                                 pass
                         else:
                             # Invalid direction, look for next 'A'
