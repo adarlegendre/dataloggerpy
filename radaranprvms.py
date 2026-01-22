@@ -312,10 +312,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         # print(f"  🔄 [DEBUG] Step 6: Checking speed violation: {peak_speed} > {SPEED_LIMIT}", flush=True)  # Debug message commented out
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
         if peak_speed > SPEED_LIMIT:
-            # print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)  # Reduced verbosity
             Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
-        # else:
-        #     print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)  # Reduced verbosity
         
         # print(f"  🔄 [DEBUG] Step 7: Returning completed", flush=True)  # Debug message commented out
         return completed
@@ -436,53 +433,54 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     """
     global _speed_violation_active
     
-    peak_speed = radar_detection['peak_speed']
-    direction_name = radar_detection['direction_name']
-    detection_id = radar_detection['end_time']
-    
-    # print(f"  ⏳ [Speed Violation Check] Waiting 1s to see if plate will be detected...", flush=True)  # Reduced verbosity
-    time.sleep(1.0)
-    
-    # Check if this detection was already matched with a plate
-    with _matched_detections_lock:
-        is_matched = detection_id in _matched_radar_detections
-        if is_matched:
-            # print(f"  ✅ [Speed Violation Check] Plate detected for this vehicle - skipping ZPOMAL!", flush=True)  # Reduced verbosity
-            return  # Plate detected, skip violation
-    
-    # Check if detection is still recent
     try:
-        detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
-        time_since_detection = (datetime.now() - detection_end_time).total_seconds()
+        peak_speed = radar_detection['peak_speed']
+        direction_name = radar_detection['direction_name']
+        detection_id = radar_detection['end_time']
+        
+        time.sleep(1.0)
+        
+        # Check if this detection was already matched with a plate
+        with _matched_detections_lock:
+            is_matched = detection_id in _matched_radar_detections
+            if is_matched:
+                return  # Plate detected, skip violation
+        
+        # Check if detection is still recent
+        try:
+            detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
+            time_since_detection = (datetime.now() - detection_end_time).total_seconds()
+        except Exception as e:
+            print(f"  ❌ [Speed Violation Check] Error parsing time: {e}", flush=True)
+            return
+        
+        # Display violation if still within reasonable time window
+        if time_since_detection <= 5:
+            with _speed_violation_lock:
+                if not _speed_violation_active:
+                    _speed_violation_active = True
+                    
+                    print(f"\n{'='*60}", flush=True)
+                    print(f"🚨 SPEED VIOLATION - NO PLATE DETECTED", flush=True)
+                    print(f"   Speed: {peak_speed}km/h (Limit: {SPEED_LIMIT}km/h)", flush=True)
+                    print(f"   Direction: {direction_name}", flush=True)
+                    print(f"   VMS Action: Displaying 'ZPOMAL!' for {VMS_DISPLAY_TIME}s", flush=True)
+                    send_plate_to_vms("ZPOMAL!")
+                    print(f"{'='*60}\n", flush=True)
+                    
+                    time.sleep(VMS_DISPLAY_TIME)
+                    print(f"   Status: ✅ Display completed", flush=True)
+                    print(f"{'='*60}\n", flush=True)
+                    with _speed_violation_lock:
+                        _speed_violation_active = False
+                else:
+                    pass
+        else:
+            print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)
     except Exception as e:
-        print(f"  ❌ [Speed Violation Check] Error parsing time: {e}", flush=True)
-        return
-    
-    # Display violation if still within reasonable time window
-    if time_since_detection <= 5:
-        with _speed_violation_lock:
-            if not _speed_violation_active:
-                _speed_violation_active = True
-                
-                print(f"\n{'='*60}", flush=True)
-                print(f"🚨 SPEED VIOLATION - NO PLATE DETECTED", flush=True)
-                print(f"   Speed: {peak_speed}km/h (Limit: {SPEED_LIMIT}km/h)", flush=True)
-                print(f"   Direction: {direction_name}", flush=True)
-                print(f"   VMS Action: Displaying 'ZPOMAL!' for {VMS_DISPLAY_TIME}s", flush=True)
-                send_plate_to_vms("ZPOMAL!")
-                print(f"{'='*60}\n", flush=True)
-                
-                time.sleep(VMS_DISPLAY_TIME)
-                print(f"   Status: ✅ Display completed", flush=True)
-                print(f"{'='*60}\n", flush=True)
-                with _speed_violation_lock:
-                    _speed_violation_active = False
-            else:
-                # print(f"  ⏭️  [Speed Violation] Already active, skipping", flush=True)  # Reduced verbosity
-                pass
-    else:
-        # print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)  # Reduced verbosity
-        pass
+        print(f"  ❌ [Speed Violation Check] Unexpected error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
