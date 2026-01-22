@@ -213,7 +213,7 @@ def _file_writer_worker():
 
 def save_detection(detection_data: Dict[str, Any]):
     """Save a detection to today's JSON file via queue (non-blocking)"""
-    print(f"  🔄 [DEBUG] save_detection called", flush=True)
+    # print(f"  🔄 [DEBUG] save_detection called", flush=True)  # Debug message commented out
     _detections_queue.put(detection_data)
     # Show immediate confirmation that it's queued
     plate = detection_data.get('plate_number', 'Radar-only')
@@ -239,11 +239,11 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
     global _completed_detections
     
     # Debug: confirm function is called
-    print(f"  🔄 [DEBUG] _complete_detection called: {direction_name} {peak_speed}km/h", flush=True)
-    print(f"  🔄 [DEBUG] About to enter try block...", flush=True)
+    # print(f"  🔄 [DEBUG] _complete_detection called: {direction_name} {peak_speed}km/h", flush=True)  # Debug message commented out
+    # print(f"  🔄 [DEBUG] About to enter try block...", flush=True)  # Debug message commented out
     
     try:
-        print(f"  🔄 [DEBUG] Step 1: Creating completed dict...", flush=True)
+        # print(f"  🔄 [DEBUG] Step 1: Creating completed dict...", flush=True)  # Debug message commented out
         completed = {
             'direction_sign': direction_sign,
             'direction_name': direction_name,
@@ -253,7 +253,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             'end_time': datetime.now().isoformat(),
             'timestamp': datetime.now().isoformat()
         }
-        print(f"  🔄 [DEBUG] Step 2: Adding to completed_detections...", flush=True)
+        # print(f"  🔄 [DEBUG] Step 2: Adding to completed_detections...", flush=True)  # Debug message commented out
         
         # Thread-safe append to completed detections
         # Use timeout to avoid deadlock if lock is held elsewhere
@@ -264,7 +264,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             lock_acquired = _radar_lock.acquire(timeout=0.5)
             if lock_acquired:
                 break
-            print(f"  🔄 [DEBUG] Lock attempt {attempt + 1}/3 failed, retrying...", flush=True)
+            # print(f"  🔄 [DEBUG] Lock attempt {attempt + 1}/3 failed, retrying...", flush=True)  # Debug message commented out
             time.sleep(0.1)
         
         if lock_acquired:
@@ -272,16 +272,16 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
                 _completed_detections.append(completed)
                 if len(_completed_detections) > _max_completed_detections:
                     _completed_detections.pop(0)
-                print(f"  🔄 [DEBUG] Step 2.1: Added to completed_detections (len={len(_completed_detections)})", flush=True)
+                # print(f"  🔄 [DEBUG] Step 2.1: Added to completed_detections (len={len(_completed_detections)})", flush=True)  # Debug message commented out
             finally:
                 _radar_lock.release()
         else:
-            print(f"  ⚠️  [DEBUG] Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
+            print(f"  ⚠️  Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
         
-        print(f"  🔄 [DEBUG] Step 3: Checking if should save: peak_speed={peak_speed} >= 10", flush=True)
+        # print(f"  🔄 [DEBUG] Step 3: Checking if should save: peak_speed={peak_speed} >= 10", flush=True)  # Debug message commented out
         # Save radar detection even without plate (for vehicles 10km/h and above)
         if peak_speed >= 10:  # Save all vehicle detections 10km/h and above
-            print(f"  🔄 [DEBUG] Step 4: Creating radar_only_data...", flush=True)
+            # print(f"  🔄 [DEBUG] Step 4: Creating radar_only_data...", flush=True)  # Debug message commented out
             radar_only_data = {
                 'timestamp': datetime.now().isoformat(),
                 'plate_number': None,
@@ -293,13 +293,13 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
                 'radar_detection_start': start_time,
                 'radar_detection_end': completed['end_time']
             }
-            print(f"  🔄 [DEBUG] Step 5: Calling save_detection...", flush=True)
+            # print(f"  🔄 [DEBUG] Step 5: Calling save_detection...", flush=True)  # Debug message commented out
             save_detection(radar_only_data)
             print(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...", flush=True)
         else:
             print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)", flush=True)
         
-        print(f"  🔄 [DEBUG] Step 6: Checking speed violation: {peak_speed} > {SPEED_LIMIT}", flush=True)
+        # print(f"  🔄 [DEBUG] Step 6: Checking speed violation: {peak_speed} > {SPEED_LIMIT}", flush=True)  # Debug message commented out
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
         if peak_speed > SPEED_LIMIT:
             print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)
@@ -307,7 +307,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         else:
             print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)
         
-        print(f"  🔄 [DEBUG] Step 7: Returning completed", flush=True)
+        # print(f"  🔄 [DEBUG] Step 7: Returning completed", flush=True)  # Debug message commented out
         return completed
     except Exception as e:
         print(f"  ❌ Error in _complete_detection: {e}", flush=True)
@@ -341,13 +341,13 @@ def process_radar_reading(direction_sign: str, speed: int):
                 return  # No active detection, ignore zeros
             
             _current_detection.append(reading)
-            print(f"  🔄 [DEBUG] Zero speed: detection_len={len(_current_detection)}", flush=True)
+            # print(f"  🔄 [DEBUG] Zero speed: detection_len={len(_current_detection)}", flush=True)  # Debug message commented out
             
             # Check for consecutive zeros to complete detection
             if len(_current_detection) >= CONSECUTIVE_ZEROS_THRESHOLD:
                 recent_readings = _current_detection[-CONSECUTIVE_ZEROS_THRESHOLD:]
                 zeros_count = sum(1 for r in recent_readings if r['speed'] == 0)
-                print(f"  🔄 [DEBUG] Checking zeros: len={len(_current_detection)}, recent_zeros={zeros_count}/{CONSECUTIVE_ZEROS_THRESHOLD}", flush=True)
+                # print(f"  🔄 [DEBUG] Checking zeros: len={len(_current_detection)}, recent_zeros={zeros_count}/{CONSECUTIVE_ZEROS_THRESHOLD}", flush=True)  # Debug message commented out
                 if all(r['speed'] == 0 for r in recent_readings):
                     # Complete the detection
                     vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
@@ -364,17 +364,17 @@ def process_radar_reading(direction_sign: str, speed: int):
                         
                         # Complete detection outside lock to minimize blocking
                         print(f"  ✓ Detection completing (zeros): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
-                        print(f"  🔄 [DEBUG] About to call _complete_detection...", flush=True)
+                        # print(f"  🔄 [DEBUG] About to call _complete_detection...", flush=True)  # Debug message commented out
                         result = _complete_detection(
                             direction_copy, direction_name, peak_speed,
                             detection_copy, start_time
                         )
-                        if result:
-                            print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)
-                        else:
-                            print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)
+                        # if result:
+                        #     print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)  # Debug message commented out
+                        # else:
+                        #     print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)  # Debug message commented out
                     else:
-                        print(f"  ⚠️  [DEBUG] No vehicle readings found in detection", flush=True)
+                        # print(f"  ⚠️  [DEBUG] No vehicle readings found in detection", flush=True)  # Debug message commented out
                         # Reset for next detection
                         _current_detection = []
                         _current_direction = None
@@ -390,7 +390,7 @@ def process_radar_reading(direction_sign: str, speed: int):
             _current_detection.append(reading)
         else:
             # Direction changed - complete old detection and start new
-            print(f"  🔄 [DEBUG] Direction changed: {_current_direction} -> {direction_sign}", flush=True)
+            # print(f"  🔄 [DEBUG] Direction changed: {_current_direction} -> {direction_sign}", flush=True)  # Debug message commented out
             vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
             if vehicle_readings:
                 peak_speed = max(r['speed'] for r in vehicle_readings)
@@ -405,15 +405,15 @@ def process_radar_reading(direction_sign: str, speed: int):
                 
                 # Complete old detection outside lock
                 print(f"  ✓ Detection completing (direction change): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
-                print(f"  🔄 [DEBUG] About to call _complete_detection (direction change)...", flush=True)
+                # print(f"  🔄 [DEBUG] About to call _complete_detection (direction change)...", flush=True)  # Debug message commented out
                 result = _complete_detection(
                     direction_copy, direction_name, peak_speed,
                     detection_copy, start_time
                 )
-                if result:
-                    print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)
-                else:
-                    print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)
+                # if result:
+                #     print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)  # Debug message commented out
+                # else:
+                #     print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)  # Debug message commented out
             else:
                 # Start new detection with new direction
                 _current_detection = [reading]
@@ -910,7 +910,7 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  ⚠️  No plate: JSON structure issue", flush=True)
             
             if plate_no:
-                print(f"  🔄 [DEBUG] Plate found, getting radar detection...", flush=True)
+                # print(f"  🔄 [DEBUG] Plate found, getting radar detection...", flush=True)  # Debug message commented out
                 # Get latest completed radar detection (fast lookup)
                 radar_detection = get_latest_completed_detection()
                 
