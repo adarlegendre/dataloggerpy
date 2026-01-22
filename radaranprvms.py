@@ -463,7 +463,7 @@ def read_radar_data():
     max_retries = 5
     buffer = b''
     last_print_time = 0
-    print_interval = 0.2  # Update display every 200ms for continuous streaming
+    print_interval = 0.1  # Update display every 100ms for continuous streaming
     
     while True:
         try:
@@ -483,7 +483,6 @@ def read_radar_data():
                 buffer += data
                 
                 # Process complete messages (5 bytes: A+XXX or A-XXX)
-                current_time = time.time()
                 while len(buffer) >= 5:
                     chunk = buffer[:5]
                     buffer = buffer[5:]
@@ -495,10 +494,14 @@ def read_radar_data():
                                 direction_sign = decoded[1]
                                 speed = int(decoded[2:])
                                 
+                                # Get current time for each reading (important for accurate throttling)
+                                current_time = time.time()
+                                
                                 # Process radar reading immediately (non-blocking)
                                 process_radar_reading(direction_sign, speed)
                                 
                                 # Update live streaming display - show ALL values including zeros
+                                # Check time for each reading to ensure continuous display
                                 if current_time - last_print_time >= print_interval:
                                     direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                     print(f"📡 Live: {direction_name} {speed:3d}km/h")
