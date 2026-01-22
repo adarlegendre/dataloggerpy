@@ -130,8 +130,7 @@ def _file_writer_worker():
     ensure_detections_folder()
     
     # Confirm file writer is running
-    sys.stdout.write("✅ File writer worker thread started and running\n")
-    sys.stdout.flush()
+    print("✅ File writer worker thread started and running", flush=True)
     
     # Cache for batch writing
     pending_detections = []
@@ -144,6 +143,7 @@ def _file_writer_worker():
             try:
                 detection_data = _detections_queue.get(timeout=batch_timeout)
                 pending_detections.append(detection_data)
+                print(f"  📬 [File Writer] Received item from queue (total pending: {len(pending_detections)})", flush=True)
             except Empty:
                 pass  # Timeout - check if we should flush pending
             
@@ -213,11 +213,12 @@ def _file_writer_worker():
 
 def save_detection(detection_data: Dict[str, Any]):
     """Save a detection to today's JSON file via queue (non-blocking)"""
+    print(f"  🔄 [DEBUG] save_detection called", flush=True)
     _detections_queue.put(detection_data)
     # Show immediate confirmation that it's queued
     plate = detection_data.get('plate_number', 'Radar-only')
     speed = detection_data.get('speed', 0)
-    print(f"  📥 Queued for save: {plate} | {speed}km/h", flush=True)
+    print(f"  📥 Queued for save: {plate} | {speed}km/h (queue size: {_detections_queue.qsize()})", flush=True)
 
 def _start_file_writer():
     """Start the file writer thread"""
@@ -237,48 +238,60 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
     """Helper to complete a detection and add to queue - thread-safe"""
     global _completed_detections
     
-    completed = {
-        'direction_sign': direction_sign,
-        'direction_name': direction_name,
-        'peak_speed': peak_speed,
-        'readings_count': len(detection_readings),
-        'start_time': start_time,
-        'end_time': datetime.now().isoformat(),
-        'timestamp': datetime.now().isoformat()
-    }
+    # Debug: confirm function is called
+    print(f"  🔄 [DEBUG] _complete_detection called: {direction_name} {peak_speed}km/h", flush=True)
     
-    # Thread-safe append to completed detections
-    with _radar_lock:
-        _completed_detections.append(completed)
-        if len(_completed_detections) > _max_completed_detections:
-            _completed_detections.pop(0)
-    
-    # Save radar detection even without plate (for vehicles 10km/h and above)
-    if peak_speed >= 10:  # Save all vehicle detections 10km/h and above
-        radar_only_data = {
-            'timestamp': datetime.now().isoformat(),
-            'plate_number': None,
-            'speed': peak_speed,
-            'direction': direction_name,
-            'radar_direction_sign': direction_sign,
-            'vms_displayed': 'no',
-            'radar_readings_count': len(detection_readings),
-            'radar_detection_start': start_time,
-            'radar_detection_end': completed['end_time']
+    try:
+        completed = {
+            'direction_sign': direction_sign,
+            'direction_name': direction_name,
+            'peak_speed': peak_speed,
+            'readings_count': len(detection_readings),
+            'start_time': start_time,
+            'end_time': datetime.now().isoformat(),
+            'timestamp': datetime.now().isoformat()
         }
-        save_detection(radar_only_data)
-        print(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...", flush=True)
-    else:
-        print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)", flush=True)
-    
-    # Check for speed violation (no plate detected, speed > limit) - non-blocking
-    if peak_speed > SPEED_LIMIT:
-        print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)
-        Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
-    else:
-        print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)
-    
-    return completed
+        
+        # Thread-safe append to completed detections
+        with _radar_lock:
+            _completed_detections.append(completed)
+            if len(_completed_detections) > _max_completed_detections:
+                _completed_detections.pop(0)
+        
+        # Save radar detection even without plate (for vehicles 10km/h and above)
+        print(f"  🔄 [DEBUG] Checking if should save: peak_speed={peak_speed} >= 10", flush=True)
+        if peak_speed >= 10:  # Save all vehicle detections 10km/h and above
+            print(f"  🔄 [DEBUG] Creating radar_only_data...", flush=True)
+            radar_only_data = {
+                'timestamp': datetime.now().isoformat(),
+                'plate_number': None,
+                'speed': peak_speed,
+                'direction': direction_name,
+                'radar_direction_sign': direction_sign,
+                'vms_displayed': 'no',
+                'radar_readings_count': len(detection_readings),
+                'radar_detection_start': start_time,
+                'radar_detection_end': completed['end_time']
+            }
+            print(f"  🔄 [DEBUG] Calling save_detection...", flush=True)
+            save_detection(radar_only_data)
+            print(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...", flush=True)
+        else:
+            print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)", flush=True)
+        
+        # Check for speed violation (no plate detected, speed > limit) - non-blocking
+        if peak_speed > SPEED_LIMIT:
+            print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)
+            Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
+        else:
+            print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)
+        
+        return completed
+    except Exception as e:
+        print(f"  ❌ Error in _complete_detection: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return None
 
 def process_radar_reading(direction_sign: str, speed: int):
     """
@@ -325,10 +338,15 @@ def process_radar_reading(direction_sign: str, speed: int):
                         
                         # Complete detection outside lock to minimize blocking
                         print(f"  ✓ Detection completing (zeros): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
-                        _complete_detection(
+                        print(f"  🔄 [DEBUG] About to call _complete_detection...", flush=True)
+                        result = _complete_detection(
                             direction_copy, direction_name, peak_speed,
                             detection_copy, start_time
                         )
+                        if result:
+                            print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)
+                        else:
+                            print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)
                     else:
                         # Reset for next detection
                         _current_detection = []
@@ -359,10 +377,15 @@ def process_radar_reading(direction_sign: str, speed: int):
                 
                 # Complete old detection outside lock
                 print(f"  ✓ Detection completing (direction change): {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
-                _complete_detection(
+                print(f"  🔄 [DEBUG] About to call _complete_detection (direction change)...", flush=True)
+                result = _complete_detection(
                     direction_copy, direction_name, peak_speed,
                     detection_copy, start_time
                 )
+                if result:
+                    print(f"  ✅ [DEBUG] _complete_detection returned successfully", flush=True)
+                else:
+                    print(f"  ⚠️  [DEBUG] _complete_detection returned None", flush=True)
             else:
                 # Start new detection with new direction
                 _current_detection = [reading]
@@ -561,8 +584,8 @@ def read_radar_data():
                                 def process_async(direction, spd):
                                     try:
                                         process_radar_reading(direction, spd)
-                                    except:
-                                        pass
+                                    except Exception as e:
+                                        print(f"  ❌ Error processing radar reading: {e}", flush=True)
                                 
                                 Thread(target=process_async, args=(direction_sign, speed), daemon=True).start()
                             except (ValueError, UnicodeDecodeError):
