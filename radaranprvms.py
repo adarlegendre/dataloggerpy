@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Radar-ANPR-VMS Integration System
 Combines radar detection, ANPR (camera plate recognition), and VMS display.
 Displays all detected license plates on VMS display.
 Stores all detections in daily JSON files.
+
+NOTE: For best results on Raspberry Pi, run with: python3 -u radaranprvms.py
+      The -u flag ensures unbuffered output for immediate display.
 """
 
 from requests.auth import HTTPDigestAuth
@@ -125,10 +129,14 @@ def _file_writer_worker():
     _file_writer_running = True
     ensure_detections_folder()
     
+    # Confirm file writer is running
+    sys.stdout.write("✅ File writer worker thread started and running\n")
+    sys.stdout.flush()
+    
     # Cache for batch writing
     pending_detections = []
     last_write_time = time.time()
-    batch_timeout = 0.5  # Write batch every 0.5 seconds or when queue is empty
+    batch_timeout = 0.2  # Write batch every 0.2 seconds for faster save confirmation
     
     while _file_writer_running:
         try:
@@ -146,6 +154,8 @@ def _file_writer_worker():
             )
             
             if should_write:
+                # Debug: show we're about to write
+                print(f"📝 [File Writer] Writing {len(pending_detections)} detection(s) to file...", flush=True)
                 # Update file path if date changed
                 today = datetime.now().date()
                 if _current_date != today or _detections_file is None:
@@ -176,27 +186,27 @@ def _file_writer_worker():
                         f.flush()
                         os.fsync(f.fileno())
                     
-                    # Log saved detections - show ALL saves
+                    # Log saved detections - show ALL saves with clear indication
                     for detection in pending_detections:
                         plate = detection.get('plate_number')
                         speed = detection.get('speed', 0)
                         direction = detection.get('direction', 'Unknown')
                         if plate:
-                            sys.stdout.write(f"💾 Saved: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
+                            sys.stdout.write(f"💾 SAVED: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
                         else:
-                            sys.stdout.write(f"💾 Saved: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
+                            sys.stdout.write(f"💾 SAVED: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
                         sys.stdout.flush()
                     
                     # Show batch save confirmation
                     if pending_detections:
-                        sys.stdout.write(f"💾 Batch saved: {len(pending_detections)} detection(s) → {os.path.basename(filepath)}\n")
+                        sys.stdout.write(f"✅ File write complete: {len(pending_detections)} detection(s) saved to {os.path.basename(filepath)}\n")
                         sys.stdout.flush()
                     
                     pending_detections.clear()
                     last_write_time = time.time()
                     
                 except Exception as e:
-                    print(f"Error saving detections: {e}")
+                    print(f"❌ Error saving detections: {e}", flush=True)
                     # Keep pending detections for retry
                     
         except Exception as e:
@@ -219,6 +229,7 @@ def _start_file_writer():
         writer_thread = Thread(target=_file_writer_worker, daemon=True)
         writer_thread.start()
         time.sleep(0.1)  # Give thread time to start
+        print("✅ File writer thread started", flush=True)
 
 # ============================================================================
 # RADAR FUNCTIONS - Vehicle Detection Tracking
@@ -259,20 +270,16 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             'radar_detection_end': completed['end_time']
         }
         save_detection(radar_only_data)
-        sys.stdout.write(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...\n")
-        sys.stdout.flush()
+        print(f"\n📡 Radar Detection COMPLETE: {direction_name} {peak_speed}km/h | 💾 Saving to queue...", flush=True)
     else:
-        sys.stdout.write(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)\n")
-        sys.stdout.flush()
+        print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<10km/h)", flush=True)
     
     # Check for speed violation (no plate detected, speed > limit) - non-blocking
     if peak_speed > SPEED_LIMIT:
-        sys.stdout.write(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...\n")
-        sys.stdout.flush()
+        print(f"  ⚠️  Speed violation check: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check thread...", flush=True)
         Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
     else:
-        sys.stdout.write(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h\n")
-        sys.stdout.flush()
+        print(f"  ✓ Speed OK: {peak_speed}km/h <= {SPEED_LIMIT}km/h", flush=True)
     
     return completed
 
@@ -320,8 +327,7 @@ def process_radar_reading(direction_sign: str, speed: int):
                         _current_direction = None
                         
                         # Complete detection outside lock to minimize blocking
-                        sys.stdout.write(f"  ✓ Detection completing: {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})\n")
-                        sys.stdout.flush()
+                        print(f"  ✓ Detection completing: {direction_name} {peak_speed}km/h (readings: {len(detection_copy)})", flush=True)
                         _complete_detection(
                             direction_copy, direction_name, peak_speed,
                             detection_copy, start_time
@@ -375,16 +381,14 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     direction_name = radar_detection['direction_name']
     detection_id = radar_detection['end_time']
     
-    sys.stdout.write(f"  ⏳ [Speed Violation Check] Waiting 1s to see if plate will be detected...\n")
-    sys.stdout.flush()
+    print(f"  ⏳ [Speed Violation Check] Waiting 1s to see if plate will be detected...", flush=True)
     time.sleep(1.0)
     
     # Check if this detection was already matched with a plate
     with _matched_detections_lock:
         is_matched = detection_id in _matched_radar_detections
         if is_matched:
-            sys.stdout.write(f"  ✅ [Speed Violation Check] Plate detected for this vehicle - skipping ZPOMAL!\n")
-            sys.stdout.flush()
+            print(f"  ✅ [Speed Violation Check] Plate detected for this vehicle - skipping ZPOMAL!", flush=True)
             return  # Plate detected, skip violation
     
     # Check if detection is still recent
@@ -392,8 +396,7 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
         detection_end_time = datetime.fromisoformat(radar_detection['end_time'])
         time_since_detection = (datetime.now() - detection_end_time).total_seconds()
     except Exception as e:
-        sys.stdout.write(f"  ❌ [Speed Violation Check] Error parsing time: {e}\n")
-        sys.stdout.flush()
+        print(f"  ❌ [Speed Violation Check] Error parsing time: {e}", flush=True)
         return
     
     # Display violation if still within reasonable time window
@@ -402,23 +405,18 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
             if not _speed_violation_active:
                 _speed_violation_active = True
                 
-                sys.stdout.write(f"  🚨 [Speed Violation] No plate detected - Displaying ZPOMAL!\n")
-                sys.stdout.flush()
+                print(f"  🚨 [Speed Violation] No plate detected - Displaying ZPOMAL!", flush=True)
                 send_plate_to_vms("ZPOMAL!")
-                sys.stdout.write(f"⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h ({direction_name}) | 📺 VMS: ZPOMAL! | ⏱️  Displaying for {VMS_DISPLAY_TIME}s\n")
-                sys.stdout.flush()
+                print(f"⚠️  SPEED VIOLATION: {peak_speed}km/h > {SPEED_LIMIT}km/h ({direction_name}) | 📺 VMS: ZPOMAL! | ⏱️  Displaying for {VMS_DISPLAY_TIME}s", flush=True)
                 
                 time.sleep(VMS_DISPLAY_TIME)
-                sys.stdout.write(f"  ✅ [Speed Violation] Display completed\n")
-                sys.stdout.flush()
+                print(f"  ✅ [Speed Violation] Display completed", flush=True)
                 with _speed_violation_lock:
                     _speed_violation_active = False
             else:
-                sys.stdout.write(f"  ⏭️  [Speed Violation] Already active, skipping\n")
-                sys.stdout.flush()
+                print(f"  ⏭️  [Speed Violation] Already active, skipping", flush=True)
     else:
-        sys.stdout.write(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping\n")
-        sys.stdout.flush()
+        print(f"  ⏭️  [Speed Violation] Detection too old ({time_since_detection:.1f}s), skipping", flush=True)
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
@@ -516,8 +514,7 @@ def read_radar_data():
             
             # Watchdog check - runs independently every 3 seconds regardless of data
             if current_time - last_watchdog_time >= watchdog_interval:
-                sys.stdout.write(f"📡 [Watchdog] Thread alive | Buffer: {len(buffer)} bytes | Processed: {processed_count} | Last data: {current_time - last_data_time:.1f}s ago\n")
-                sys.stdout.flush()
+                print(f"📡 [Watchdog] Thread alive | Buffer: {len(buffer)} bytes | Processed: {processed_count} | Last data: {current_time - last_data_time:.1f}s ago", flush=True)
                 last_watchdog_time = current_time
             
             # Simple read with timeout
@@ -557,10 +554,9 @@ def read_radar_data():
                                 speed = int(chunk[2:].decode('utf-8'))
                                 direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                 
-                                # Display immediately - simple format (ALWAYS FIRST)
-                                sys.stdout.write(f"📡 {direction_name} {speed:3d}km/h\n")
-                                sys.stdout.flush()
-                                processed_count += 1
+                        # Display immediately - simple format (ALWAYS FIRST)
+                        print(f"📡 {direction_name} {speed:3d}km/h", flush=True)
+                        processed_count += 1
                                 
                                 # Process in background thread to never block display
                                 # This ensures radar display continues even if processing is slow
@@ -588,8 +584,7 @@ def read_radar_data():
                 
                 # If we hit max iterations, clear buffer to prevent getting stuck
                 if iteration >= max_iterations:
-                    sys.stdout.write(f"📡 [Buffer cleared] Max iterations reached\n")
-                    sys.stdout.flush()
+                    print(f"📡 [Buffer cleared] Max iterations reached", flush=True)
                     buffer = b''
             
             # Small delay - but ensure watchdog can still run
@@ -641,16 +636,14 @@ def _send_vms_command(display_text: str) -> bool:
     
     # Show the exact command being sent
     cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd)
-    sys.stdout.write(f"  📤 VMS Command: {cmd_str}\n")
-    sys.stdout.flush()
+    print(f"  📤 VMS Command: {cmd_str}", flush=True)
     
     try:
         # Use Popen for truly non-blocking execution
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
     except Exception as e:
-        sys.stdout.write(f"  ❌ VMS Command failed: {e}\n")
-        sys.stdout.flush()
+        print(f"  ❌ VMS Command failed: {e}", flush=True)
         return False
 
 def send_plate_to_vms(plate_number: str):
@@ -671,19 +664,17 @@ def send_plate_to_vms(plate_number: str):
     
     # Send command immediately (non-blocking)
     if display_text:
-        sys.stdout.write(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s\n")
+        print(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s", flush=True)
     else:
-        sys.stdout.write(f"  📺 VMS: Clearing display\n")
-    sys.stdout.flush()
+        print(f"  📺 VMS: Clearing display", flush=True)
     
     success = _send_vms_command(display_text)
     
     if display_text:
         if success:
-            sys.stdout.write(f"  ✅ VMS: Command sent successfully\n")
+            print(f"  ✅ VMS: Command sent successfully", flush=True)
         else:
-            sys.stdout.write(f"  ❌ VMS: Command failed\n")
-        sys.stdout.flush()
+            print(f"  ❌ VMS: Command failed", flush=True)
         
         # Schedule auto-clear after display time
         def clear_after_delay():
@@ -729,15 +720,13 @@ def extract_plate_number(data_json):
         
         # Debug output
         if plate_no:
-            sys.stdout.write(f"    🔍 Found PlateNo in JSON: '{plate_no}'\n")
-            sys.stdout.flush()
+            print(f"    🔍 Found PlateNo in JSON: '{plate_no}'", flush=True)
         
         if plate_no and plate_no != "Unknown" and plate_no.strip():
             return plate_no
         return None
     except (KeyError, TypeError, AttributeError) as e:
-        sys.stdout.write(f"    ❌ Plate extraction error: {e}\n")
-        sys.stdout.flush()
+        print(f"    ❌ Plate extraction error: {e}", flush=True)
         return None
 
 def keepalive():
@@ -824,8 +813,7 @@ def _handle_camera_client(client_socket, client_address):
             return
         
         # Show camera event received
-        sys.stdout.write(f"📷 Camera event received ({len(data)} bytes)\n")
-        sys.stdout.flush()
+        print(f"📷 Camera event received ({len(data)} bytes)", flush=True)
         
         try:
             # Parse HTTP message
@@ -851,8 +839,7 @@ def _handle_camera_client(client_socket, client_address):
                     json_str = body[json_start:json_end+1]
                     data_json = json.loads(json_str)
                 else:
-                    sys.stdout.write(f"  ❌ JSON parse failed: {json_err}\n")
-                    sys.stdout.flush()
+                    print(f"  ❌ JSON parse failed: {json_err}", flush=True)
                     raise  # Re-raise original error
             
             # Extract plate number
@@ -860,8 +847,7 @@ def _handle_camera_client(client_socket, client_address):
             
             # Debug: show what we found
             if plate_no:
-                sys.stdout.write(f"  ✅ Plate extracted: {plate_no}\n")
-                sys.stdout.flush()
+                print(f"  ✅ Plate extracted: {plate_no}", flush=True)
             else:
                 # Debug: show why plate extraction failed
                 try:
@@ -869,11 +855,9 @@ def _handle_camera_client(client_socket, client_address):
                     if structure_info:
                         obj_info = structure_info.get("ObjInfo", {})
                         vehicle_list = obj_info.get("VehicleInfoList", [])
-                        sys.stdout.write(f"  ⚠️  No plate: VehicleInfoList={len(vehicle_list) if isinstance(vehicle_list, list) else 'not list'}\n")
-                        sys.stdout.flush()
+                        print(f"  ⚠️  No plate: VehicleInfoList={len(vehicle_list) if isinstance(vehicle_list, list) else 'not list'}", flush=True)
                 except:
-                    sys.stdout.write(f"  ⚠️  No plate: JSON structure issue\n")
-                    sys.stdout.flush()
+                    print(f"  ⚠️  No plate: JSON structure issue", flush=True)
             
             if plate_no:
                 # Get latest completed radar detection (fast lookup)
@@ -910,8 +894,7 @@ def _handle_camera_client(client_socket, client_address):
                     }
                     
                     # Save detection (non-blocking via queue)
-                    sys.stdout.write(f"🚗 Plate: {plate_no} | {speed}km/h | {direction} | 💾 Saving...\n")
-                    sys.stdout.flush()
+                    print(f"🚗 Plate: {plate_no} | {speed}km/h | {direction} | 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     
                     # Display on VMS immediately (non-blocking)
@@ -1005,6 +988,14 @@ def main():
     # Start file writer thread
     _start_file_writer()
     
+    # Verify file writer started
+    import time as time_module
+    time_module.sleep(0.2)  # Give it time to start
+    if _file_writer_running:
+        print("✓ File writer is running")
+    else:
+        print("⚠️  WARNING: File writer may not be running!")
+    
     # Step 1: Start radar reader thread
     print("\nStarting radar reader...")
     radar_thread = Thread(target=read_radar_data, daemon=True)
@@ -1066,12 +1057,19 @@ def main():
         raise SystemExit(1)
 
 if __name__ == "__main__":
+    # Force unbuffered output for immediate display on Raspberry Pi
+    # This ensures all output appears immediately without buffering
+    import sys
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\nScript terminated by user")
-        print(f"Today's detections saved to: {get_daily_json_path()}")
+        print("\n\nScript terminated by user", flush=True)
+        print(f"Today's detections saved to: {get_daily_json_path()}", flush=True)
         raise SystemExit(0)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", flush=True)
         raise SystemExit(1)
