@@ -39,7 +39,7 @@ CAMERA_URL = f'http://{CAMERA_IP}:{CAMERA_PORT}/LAPI/V1.0/System/Event/Subscript
 # Radar configuration
 RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
-RADAR_TIMEOUT = 0.01
+RADAR_TIMEOUT = 0.1  # Increased timeout to prevent blocking
 ONLY_POSITIVE_DIRECTION = False  # Set to False to display all directions
 POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
@@ -482,9 +482,18 @@ def read_radar_data():
                 retry_count = 0
                 buffer = b''
             
+            # Read with timeout to prevent indefinite blocking
             data = ser.read(32)
+            current_loop_time = time.time()
+            
+            # Check watchdog BEFORE processing to ensure it always runs
+            if current_loop_time - last_data_time > watchdog_interval:
+                sys.stdout.write(f"📡 Radar: No data for {current_loop_time - last_data_time:.1f}s (processed {readings_count} readings, thread alive)\n")
+                sys.stdout.flush()
+                last_data_time = current_loop_time  # Reset to prevent spam
+            
             if data:
-                last_data_time = time.time()  # Update last data time
+                last_data_time = current_loop_time  # Update last data time
                 buffer += data
                 
                 # Process complete messages (5 bytes: A+XXX or A-XXX)
@@ -539,16 +548,8 @@ def read_radar_data():
                 if iteration >= max_iterations:
                     print(f"\n⚠️ Radar buffer processing limit reached, clearing buffer")
                     buffer = b''
-            # No data received - check watchdog
-            current_time = time.time()
-            if current_time - last_data_time > watchdog_interval:
-                # No data for a while - show watchdog to indicate thread is alive
-                sys.stdout.write(f"📡 Radar: Waiting for data... (thread alive, processed {readings_count} readings)\n")
-                sys.stdout.flush()
-                last_print_time = current_time
-                last_data_time = current_time  # Reset to prevent spam
-            
-            time.sleep(0.005)  # Reduced delay for faster response (5ms)
+            # Small delay to prevent CPU spinning, but keep it minimal
+            time.sleep(0.001)  # 1ms delay - very small to maintain responsiveness
                 
         except serial.SerialException as e:
             if ser and ser.is_open:
