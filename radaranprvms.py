@@ -257,8 +257,16 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         
         # Thread-safe append to completed detections
         # Use timeout to avoid deadlock if lock is held elsewhere
+        # Retry a few times since this is critical for camera matching
         import threading
-        lock_acquired = _radar_lock.acquire(timeout=1.0)
+        lock_acquired = False
+        for attempt in range(3):
+            lock_acquired = _radar_lock.acquire(timeout=0.5)
+            if lock_acquired:
+                break
+            print(f"  🔄 [DEBUG] Lock attempt {attempt + 1}/3 failed, retrying...", flush=True)
+            time.sleep(0.1)
+        
         if lock_acquired:
             try:
                 _completed_detections.append(completed)
@@ -268,7 +276,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             finally:
                 _radar_lock.release()
         else:
-            print(f"  ⚠️  [DEBUG] Could not acquire lock, skipping completed_detections append", flush=True)
+            print(f"  ⚠️  [DEBUG] Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
         
         print(f"  🔄 [DEBUG] Step 3: Checking if should save: peak_speed={peak_speed} >= 10", flush=True)
         # Save radar detection even without plate (for vehicles 10km/h and above)
@@ -594,7 +602,7 @@ def read_radar_data():
                                 direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
                                 
                                 # Display immediately - simple format (ALWAYS FIRST)
-                                print(f"📡 {direction_name} {speed:3d}km/h", flush=True)
+                                # print(f"📡 {direction_name} {speed:3d}km/h", flush=True)  # Commented out to reduce console clutter
                                 processed_count += 1
                                 
                                 # Process in background thread to never block display
