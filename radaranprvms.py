@@ -182,9 +182,10 @@ def _file_writer_worker():
                         speed = detection.get('speed', 0)
                         direction = detection.get('direction', 'Unknown')
                         if plate:
-                            print(f"💾 Saved: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}")
+                            sys.stdout.write(f"💾 Saved: {plate} | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
                         else:
-                            print(f"💾 Saved: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}")
+                            sys.stdout.write(f"💾 Saved: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}\n")
+                        sys.stdout.flush()
                     
                     pending_detections.clear()
                     last_write_time = time.time()
@@ -248,13 +249,15 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             'radar_detection_end': completed['end_time']
         }
         save_detection(radar_only_data)
-        print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | 💾 Saving...")
+        sys.stdout.write(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | 💾 Saving...\n")
+        sys.stdout.flush()
     else:
         print(f"\n📡 Radar Detection: {direction_name} {peak_speed}km/h | ⏭️  Not saved (<8km/h)")
     
     # Check for speed violation (no plate detected, speed > limit) - non-blocking
     if peak_speed > SPEED_LIMIT:
-        print(f"  ⚠️  Speed violation detected: {peak_speed}km/h > {SPEED_LIMIT}km/h - Checking for plate...")
+        sys.stdout.write(f"  ⚠️  Speed violation detected: {peak_speed}km/h > {SPEED_LIMIT}km/h - Checking for plate...\n")
+        sys.stdout.flush()
         Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
     
     return completed
@@ -363,7 +366,8 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
     # Check if this detection was already matched with a plate
     with _matched_detections_lock:
         if detection_id in _matched_radar_detections:
-            print(f"  ✅ Plate detected - skipping speed violation")
+            sys.stdout.write(f"  ✅ Plate detected - skipping speed violation\n")
+            sys.stdout.flush()
             return  # Plate detected, skip violation
     
     # Check if detection is still recent
@@ -388,9 +392,11 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
                 with _speed_violation_lock:
                     _speed_violation_active = False
             else:
-                print(f"  ⏭️  Speed violation already active, skipping")
+                sys.stdout.write(f"  ⏭️  Speed violation already active, skipping\n")
+                sys.stdout.flush()
     else:
-        print(f"  ⏭️  Detection too old ({time_since_detection:.1f}s), skipping violation")
+        sys.stdout.write(f"  ⏭️  Detection too old ({time_since_detection:.1f}s), skipping violation\n")
+        sys.stdout.flush()
 
 def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WINDOW) -> Optional[Dict[str, Any]]:
     """
@@ -612,14 +618,16 @@ def _send_vms_command(display_text: str) -> bool:
     
     # Show the exact command being sent
     cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd)
-    print(f"  📤 VMS Command: {cmd_str}")
+    sys.stdout.write(f"  📤 VMS Command: {cmd_str}\n")
+    sys.stdout.flush()
     
     try:
         # Use Popen for truly non-blocking execution
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
     except Exception as e:
-        print(f"  ❌ VMS Command failed: {e}")
+        sys.stdout.write(f"  ❌ VMS Command failed: {e}\n")
+        sys.stdout.flush()
         return False
 
 def send_plate_to_vms(plate_number: str):
@@ -640,17 +648,19 @@ def send_plate_to_vms(plate_number: str):
     
     # Send command immediately (non-blocking)
     if display_text:
-        print(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s")
+        sys.stdout.write(f"  📺 VMS: Sending '{display_text}' → Display for {VMS_DISPLAY_TIME}s\n")
     else:
-        print(f"  📺 VMS: Clearing display")
+        sys.stdout.write(f"  📺 VMS: Clearing display\n")
+    sys.stdout.flush()
     
     success = _send_vms_command(display_text)
     
     if display_text:
         if success:
-            print(f"  ✅ VMS: Command sent successfully")
+            sys.stdout.write(f"  ✅ VMS: Command sent successfully\n")
         else:
-            print(f"  ❌ VMS: Command failed")
+            sys.stdout.write(f"  ❌ VMS: Command failed\n")
+        sys.stdout.flush()
         
         # Schedule auto-clear after display time
         def clear_after_delay():
@@ -659,7 +669,8 @@ def send_plate_to_vms(plate_number: str):
             
             with _vms_lock:
                 if _vms_clear_thread is not None:
-                    print(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s")
+                    sys.stdout.write(f"  📺 VMS: Auto-clearing after {VMS_DISPLAY_TIME}s\n")
+                    sys.stdout.flush()
                     _send_vms_command("")  # Clear display
                     _vms_clear_thread = None
     
@@ -782,6 +793,10 @@ def _handle_camera_client(client_socket, client_address):
             client_socket.close()
             return
         
+        # Show camera event received
+        sys.stdout.write(f"📷 Camera event received ({len(data)} bytes)\n")
+        sys.stdout.flush()
+        
         try:
             # Parse HTTP message
             raw_data_str = data.decode('utf-8', errors='ignore')
@@ -806,6 +821,8 @@ def _handle_camera_client(client_socket, client_address):
                     json_str = body[json_start:json_end+1]
                     data_json = json.loads(json_str)
                 else:
+                    sys.stdout.write(f"  ❌ JSON parse failed: {json_err}\n")
+                    sys.stdout.flush()
                     raise  # Re-raise original error
             
             # Extract plate number
@@ -845,7 +862,8 @@ def _handle_camera_client(client_socket, client_address):
                     }
                     
                     # Save detection (non-blocking via queue)
-                    print(f"🚗 Plate Detected: {plate_no} | {speed}km/h | {direction} | 💾 Saving...")
+                    sys.stdout.write(f"🚗 Plate: {plate_no} | {speed}km/h | {direction} | 💾 Saving...\n")
+                    sys.stdout.flush()
                     save_detection(detection_data)
                     
                     # Display on VMS immediately (non-blocking)
@@ -853,7 +871,8 @@ def _handle_camera_client(client_socket, client_address):
                         send_plate_to_vms(plate_no)
                     else:
                         send_plate_to_vms("")
-                        print(f"  ⏭️  VMS: Not displaying (speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h threshold)")
+                        sys.stdout.write(f"  ⏭️  VMS: Not displaying (speed {speed}km/h <= {MIN_SPEED_FOR_DISPLAY}km/h)\n")
+                        sys.stdout.flush()
                 else:
                     speed = 0
                     detection_data = {
@@ -867,12 +886,16 @@ def _handle_camera_client(client_socket, client_address):
                         'radar_detection_start': None,
                         'radar_detection_end': None
                     }
-                    print(f"🚗 Plate Detected: {plate_no} | No radar match (outside {RADAR_CAMERA_TIME_WINDOW}s window) | 💾 Saving...")
+                    sys.stdout.write(f"🚗 Plate: {plate_no} | No radar match (outside {RADAR_CAMERA_TIME_WINDOW}s) | 💾 Saving...\n")
+                    sys.stdout.flush()
                     save_detection(detection_data)
                     send_plate_to_vms("")
-                    print(f"  ⏭️  VMS: Not displaying (no speed data)")
+                    sys.stdout.write(f"  ⏭️  VMS: Not displaying (no speed data)\n")
+                    sys.stdout.flush()
             else:
                 # Camera event received but no plate detected
+                sys.stdout.write(f"📷 Camera event: No plate detected\n")
+                sys.stdout.flush()
                 send_plate_to_vms("")
         
         except json.JSONDecodeError:
