@@ -476,8 +476,7 @@ def _check_and_display_speed_violation(radar_detection: Dict[str, Any]):
                     time.sleep(VMS_DISPLAY_TIME)
                     print(f"   Status: ✅ Display completed", flush=True)
                     print(f"{'='*60}\n", flush=True)
-                    with _speed_violation_lock:
-                        _speed_violation_active = False
+                    _speed_violation_active = False  # Already holding _speed_violation_lock, do not acquire again
                 else:
                     pass
         else:
