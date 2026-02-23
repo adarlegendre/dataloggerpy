@@ -198,12 +198,19 @@ def map_detection_to_virtual_ticket(detection, record_id):
 
     plate = detection.get('plate_number') or ''
     speed = detection.get('speed') or 0
+    direction = detection.get('direction', '') or ''
+
+    # API requires non-empty Wim and LicensePlate
+    if not direction:
+        direction = "UNKNOWN"
+    if not plate:
+        plate = "RADAR-ONLY"
 
     virtual_ticket = {
         "ticketId": record_id,
         "cid": record_id,
         "dateTimeLocal": date_time_local,
-        "wim": detection.get('direction', '') or '',
+        "wim": direction,
         "vehicleClass": 0,
         "velocity": float(speed) if speed is not None else 0,
         "length": 0,
