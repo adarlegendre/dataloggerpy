@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 DETECTIONS_FOLDER = "detections"
 CAMWIM_SERVICE_URL = "http://89.24.183.108:4445"
+USE_REQUEST_WRAPPER = False  # Original datamapper sends body directly; set True if API returns "request field required"
 CAMWIM_ENHANCED_ENDPOINT = "/api/wim/VirtualTicket/enhanced"
 CAMWIM_PROGRESS_ENDPOINT = "/api/wim/DataImportProgress"
 
@@ -213,16 +214,16 @@ def map_detection_to_virtual_ticket(detection, record_id):
 
     speed = detection.get('speed') or 0
 
-    # API expects PascalCase for Wim and LicensePlate when inside request wrapper
+    # Match original datamapper: camelCase, sent as root body (no request wrapper)
     virtual_ticket = {
         "ticketId": record_id,
         "cid": record_id,
         "dateTimeLocal": date_time_local,
-        "Wim": direction,
+        "wim": direction,
         "vehicleClass": 0,
         "velocity": int(speed) if speed is not None else 0,
         "length": 0,
-        "LicensePlate": plate,
+        "licensePlate": plate,
         "anprAssist": None,
         "licensePlateBack": None,
         "totalWeight": 0,
@@ -267,10 +268,10 @@ def map_detection_to_virtual_ticket(detection, record_id):
 # ============================================================================
 
 def post_to_camwim_service(virtual_ticket_request):
-    """POST the VirtualTicketRequest to CAMWIM Service enhanced endpoint"""
+    """POST the VirtualTicketRequest to CAMWIM Service"""
     url = f"{CAMWIM_SERVICE_URL}{CAMWIM_ENHANCED_ENDPOINT}"
     headers = {'Content-Type': 'application/json'}
-    payload = {"request": virtual_ticket_request}
+    payload = {"request": virtual_ticket_request} if USE_REQUEST_WRAPPER else virtual_ticket_request
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         if response.status_code == 201:
