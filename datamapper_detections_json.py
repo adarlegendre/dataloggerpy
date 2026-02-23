@@ -145,7 +145,8 @@ def get_detection_json_files(folder=DETECTIONS_FOLDER):
         return []
     files = []
     for f in os.listdir(folder):
-        if f.endswith('.json') and len(f) == 12:  # DD_MM_YYYY.json
+        # DD_MM_YYYY.json = 15 chars (e.g. 23_02_2026.json)
+        if f.endswith('.json') and len(f) == 15 and f[2] == '_' and f[5] == '_':
             path = os.path.join(folder, f)
             if os.path.isfile(path):
                 files.append(path)
@@ -467,6 +468,27 @@ def run_watch_loop(progress_tracker=None, force_new=False):
         time.sleep(POLL_INTERVAL)
 
 
+def _log_no_records_reason():
+    """Log why no records were found to help diagnose."""
+    folder = DETECTIONS_FOLDER
+    if not os.path.exists(folder):
+        logger.info("No records to process: folder '%s' does not exist. Run radaranprvms.py first to create detections.", folder)
+        return
+    files = get_detection_json_files(folder)
+    if not files:
+        logger.info("No records to process: folder '%s' is empty or has no DD_MM_YYYY.json files. Run radaranprvms.py to generate detections.", folder)
+        return
+    state = load_sent_state()
+    total_detections = sum(len(load_detections_from_file(p)) for p in files)
+    if total_detections == 0:
+        logger.info("No records to process: %d JSON file(s) found but all are empty.", len(files))
+        return
+    if state["completed_files"] and len(state["completed_files"]) >= len(files):
+        logger.info("No records to process: all %d detection(s) across %d file(s) already sent.", total_detections, len(files))
+        return
+    logger.info("No records to process: %d file(s), %d total detection(s). Check datamapper_sent_state.json if resuming.", len(files), total_detections)
+
+
 def process_all_detections(progress_tracker=None, limit=None):
     """
     One-shot: process all pending detections and exit.
@@ -479,7 +501,7 @@ def process_all_detections(progress_tracker=None, limit=None):
             break
 
     if not records:
-        logger.info("No records to process")
+        _log_no_records_reason()
         return True
 
     first_id = records[0][0]
