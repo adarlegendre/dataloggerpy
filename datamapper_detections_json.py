@@ -225,7 +225,7 @@ def map_detection_to_virtual_ticket(detection, record_id):
         "length": 0,
         "licensePlate": plate,
         "anprAssist": None,
-        "licensePlateBack": None,
+        "licensePlateBack": "UNKNOWN",
         "totalWeight": 0,
         "axlesCount": 0,
         "axleConf": "2*SS",
