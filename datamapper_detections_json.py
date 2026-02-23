@@ -220,7 +220,7 @@ def map_detection_to_virtual_ticket(detection, record_id):
         "dateTimeLocal": date_time_local,
         "wim": direction,
         "vehicleClass": 0,
-        "velocity": float(speed) if speed is not None else 0,
+        "velocity": int(speed) if speed is not None else 0,
         "length": 0,
         "licensePlate": plate,
         "anprAssist": None,
@@ -267,11 +267,12 @@ def map_detection_to_virtual_ticket(detection, record_id):
 # ============================================================================
 
 def post_to_camwim_service(virtual_ticket_request):
-    """POST the VirtualTicketRequest to CAMWIM Service enhanced endpoint (matches working datamapper)"""
+    """POST the VirtualTicketRequest to CAMWIM Service enhanced endpoint"""
     url = f"{CAMWIM_SERVICE_URL}{CAMWIM_ENHANCED_ENDPOINT}"
     headers = {'Content-Type': 'application/json'}
+    payload = {"request": virtual_ticket_request}
     try:
-        response = requests.post(url, json=virtual_ticket_request, headers=headers, timeout=30)
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
         if response.status_code == 201:
             return True, response.json()
         else:
