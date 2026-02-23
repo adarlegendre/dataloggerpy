@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 DETECTIONS_FOLDER = "detections"
-CAMWIM_SERVICE_URL = "http://89.24.183.108:4040"
+CAMWIM_SERVICE_URL = "http://89.24.183.108:4445"
 CAMWIM_ENHANCED_ENDPOINT = "/api/VirtualTicket/enhanced"
 CAMWIM_PROGRESS_ENDPOINT = "/api/DataImportProgress"
 
