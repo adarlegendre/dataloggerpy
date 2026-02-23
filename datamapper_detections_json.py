@@ -42,7 +42,7 @@ BATCH_SIZE = 50
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 SENT_STATE_FILE = 'datamapper_sent_state.json'  # Tracks (file, index) - only reads files with new data
-POLL_INTERVAL = 15  # Seconds between checks for new detections
+POLL_INTERVAL = 1  # Seconds between checks for new detections
 
 
 # ============================================================================
@@ -408,6 +408,31 @@ def has_pending_detections(folder=DETECTIONS_FOLDER):
 
 
 # ============================================================================
+# PREVIEW (no POST)
+# ============================================================================
+
+def preview_pending(count=1):
+    """Show payload for pending records without posting. Returns number shown."""
+    records = list(iter_pending_detections())
+    if not records:
+        logger.info("No pending records to preview")
+        return 0
+    for i, (ticket_id, detection, filepath, basename, idx, total) in enumerate(records[:count]):
+        payload = map_detection_to_virtual_ticket(detection, ticket_id)
+        print("\n" + "=" * 60)
+        print(f"PREVIEW record {i + 1}/{min(count, len(records))} (no POST)")
+        print("=" * 60)
+        print(f"Source: {basename} index {idx}")
+        print(f"ticketId: {payload.get('ticketId')}")
+        print(f"licensePlate: {payload.get('licensePlate')}")
+        print(f"wim: {payload.get('wim')}")
+        print(f"dateTimeLocal: {payload.get('dateTimeLocal')}")
+        print(f"velocity: {payload.get('velocity')}")
+        print("=" * 60)
+    return min(count, len(records))
+
+
+# ============================================================================
 # MAIN PROCESSING
 # ============================================================================
 
@@ -591,14 +616,26 @@ def main():
         print("Usage:")
         print("  python datamapper_detections_json.py              # Watch mode: poll for new detections, send & mark (default)")
         print("  python datamapper_detections_json.py --once        # One-shot: process all pending then exit")
-        print("  python datamapper_detections_json.py --force-new  # Reset tracking, start from beginning")
+        print("  python datamapper_detections_json.py --test        # (with --once) Process 1 record only - verify API")
         print("  python datamapper_detections_json.py --limit N    # (with --once) Process at most N records")
-        print("  python datamapper_detections_json.py --test       # (with --once) Process 1 record only")
-        print("  python datamapper_detections_json.py --help       # Show this help")
+        print("  python datamapper_detections_json.py --preview [N] # Show payload for 1 (or N) pending records, no POST")
+        print("  python datamapper_detections_json.py --force-new  # Reset tracking, start from beginning")
+        print("  python datamapper_detections_json.py --help        # Show this help")
         return
 
     force_new = '--force-new' in args
     once = '--once' in args
+
+    # --preview: show payload without posting
+    if '--preview' in args:
+        preview_count = 1
+        idx = args.index('--preview')
+        if idx + 1 < len(args) and args[idx + 1].isdigit():
+            preview_count = int(args[idx + 1])
+        if force_new and os.path.exists(SENT_STATE_FILE):
+            os.remove(SENT_STATE_FILE)
+        preview_pending(preview_count)
+        return
 
     if once:
         progress_tracker = DataImportProgressTracker(CAMWIM_SERVICE_URL)
