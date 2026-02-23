@@ -187,40 +187,47 @@ def map_detection_to_virtual_ticket(detection, record_id):
     Images are skipped (empty).
     """
     timestamp = detection.get('timestamp')
-    if isinstance(timestamp, str):
+    if isinstance(timestamp, str) and timestamp.strip():
         try:
             dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
             date_time_local = dt.strftime('%Y-%m-%dT%H:%M:%S')
         except (ValueError, TypeError):
-            date_time_local = timestamp or ''
+            date_time_local = timestamp
+    elif timestamp:
+        date_time_local = str(timestamp)
     else:
-        date_time_local = str(timestamp) if timestamp else ''
+        date_time_local = "UNKNOWN"
 
-    plate = detection.get('plate_number') or ''
-    speed = detection.get('speed') or 0
-    direction = detection.get('direction', '') or ''
+    # Handle null/empty - use UNKNOWN per working datamapper pattern
+    plate = detection.get('plate_number')
+    if plate is None or (isinstance(plate, str) and not plate.strip()):
+        plate = "UNKNOWN"
+    else:
+        plate = str(plate).strip()
 
-    # API requires non-empty Wim and LicensePlate
-    if not direction:
+    direction = detection.get('direction')
+    if direction is None or (isinstance(direction, str) and not direction.strip()):
         direction = "UNKNOWN"
-    if not plate:
-        plate = "RADAR-ONLY"
+    else:
+        direction = str(direction).strip()
 
-    # API expects PascalCase for Wim and LicensePlate
+    speed = detection.get('speed') or 0
+
+    # Match working datamapper format: camelCase, no request wrapper
     virtual_ticket = {
         "ticketId": record_id,
         "cid": record_id,
         "dateTimeLocal": date_time_local,
-        "Wim": direction,
+        "wim": direction,
         "vehicleClass": 0,
         "velocity": float(speed) if speed is not None else 0,
         "length": 0,
-        "LicensePlate": plate,
+        "licensePlate": plate,
         "anprAssist": None,
         "licensePlateBack": None,
         "totalWeight": 0,
         "axlesCount": 0,
-        "axleConf": "",
+        "axleConf": "2*SS",
         "permissible": 0,
         "avw": 0,
         "gvw": 0,
@@ -260,12 +267,11 @@ def map_detection_to_virtual_ticket(detection, record_id):
 # ============================================================================
 
 def post_to_camwim_service(virtual_ticket_request):
-    """POST the VirtualTicketRequest to CAMWIM Service enhanced endpoint"""
+    """POST the VirtualTicketRequest to CAMWIM Service enhanced endpoint (matches working datamapper)"""
     url = f"{CAMWIM_SERVICE_URL}{CAMWIM_ENHANCED_ENDPOINT}"
     headers = {'Content-Type': 'application/json'}
-    payload = {"request": virtual_ticket_request}
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response = requests.post(url, json=virtual_ticket_request, headers=headers, timeout=30)
         if response.status_code == 201:
             return True, response.json()
         else:
