@@ -335,10 +335,11 @@ def save_sent_state(state):
 
 def iter_pending_detections(folder=DETECTIONS_FOLDER):
     """
-    Yield only unsent detections. Reads ONLY files that may have new data:
-    - Skips completed_files entirely (never reads them)
-    - Reads current_file from current_index+1
-    - Reads new files (after current) fully
+    Yield only unsent detections. Tracks each file; sends per new records on active file.
+    - completed_files: never re-read
+    - current_file: yields from current_index+1 only (new records since last send)
+    - new files: yields from start
+    When radaranprvms appends to today's file, next poll yields only the new records.
     Yields (ticket_id, detection, filepath, basename, index, total_in_file).
     Call mark_sent() after each successful send.
     """
@@ -405,6 +406,17 @@ def has_pending_detections(folder=DETECTIONS_FOLDER):
             if os.path.basename(p) == state["current_file"]:
                 return True
     return False
+
+
+def get_active_file_basename():
+    """Today's file - the one radaranprvms is actively appending to."""
+    return datetime.now().strftime('%d_%m_%Y.json')
+
+
+def is_on_active_file():
+    """True if we're currently processing the active (today's) file."""
+    state = load_sent_state()
+    return state.get("current_file") == get_active_file_basename()
 
 
 # ============================================================================
@@ -483,13 +495,18 @@ def process_pending_detections(progress_tracker=None):
 def run_watch_loop(progress_tracker=None, force_new=False):
     """
     Continuously poll for new detections, send unsent ones, mark as sent.
-    Only reads files with new data (skips completed files). Runs until Ctrl+C.
+    - Completed files: never re-read
+    - Current file: sends from last_index+1 (only new records)
+    - Active file (today's): when reached, sends per new records added; keeps checking
+      until caught up so new detections are sent promptly as radaranprvms appends them.
     """
     if force_new and os.path.exists(SENT_STATE_FILE):
         os.remove(SENT_STATE_FILE)
         logger.info("Reset: cleared sent state (--force-new)")
 
-    logger.info("Watch mode: polling every %d s. Only reads files with new data.", POLL_INTERVAL)
+    logger.info("Watch mode: polling every %d s. Tracks each file; active file sends per new records.", POLL_INTERVAL)
+    ACTIVE_FILE_CATCHUP_INTERVAL = 0.2  # Seconds between re-checks when on active file
+    ACTIVE_FILE_MAX_ITERATIONS = 100     # Max catchup iterations per poll cycle
 
     while True:
         try:
@@ -497,9 +514,23 @@ def run_watch_loop(progress_tracker=None, force_new=False):
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            sent, success, failed = process_pending_detections(progress_tracker=None)
-            if sent > 0:
-                logger.info("Sent: %d | Success: %d | Failed: %d", sent, success, failed)
+            # When on active file (today's), process in tight loop until caught up -
+            # new records may be added while we send, so we re-check frequently
+            if is_on_active_file():
+                total_sent = 0
+                for _ in range(ACTIVE_FILE_MAX_ITERATIONS):
+                    sent, success, failed = process_pending_detections(progress_tracker=None)
+                    if sent == 0:
+                        break
+                    total_sent += sent
+                    logger.info("Active file %s: sent %d | Success: %d | Failed: %d", get_active_file_basename(), sent, success, failed)
+                    time.sleep(ACTIVE_FILE_CATCHUP_INTERVAL)
+                if total_sent > 0:
+                    logger.info("Caught up on active file. Total sent this cycle: %d", total_sent)
+            else:
+                sent, success, failed = process_pending_detections(progress_tracker=None)
+                if sent > 0:
+                    logger.info("Sent: %d | Success: %d | Failed: %d", sent, success, failed)
 
         except KeyboardInterrupt:
             logger.info("Stopped by user (Ctrl+C)")
