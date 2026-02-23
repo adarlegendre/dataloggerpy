@@ -213,16 +213,16 @@ def map_detection_to_virtual_ticket(detection, record_id):
 
     speed = detection.get('speed') or 0
 
-    # Match working datamapper format: camelCase, no request wrapper
+    # API expects PascalCase for Wim and LicensePlate when inside request wrapper
     virtual_ticket = {
         "ticketId": record_id,
         "cid": record_id,
         "dateTimeLocal": date_time_local,
-        "wim": direction,
+        "Wim": direction,
         "vehicleClass": 0,
         "velocity": int(speed) if speed is not None else 0,
         "length": 0,
-        "licensePlate": plate,
+        "LicensePlate": plate,
         "anprAssist": None,
         "licensePlateBack": None,
         "totalWeight": 0,
