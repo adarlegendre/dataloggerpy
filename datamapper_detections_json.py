@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 DETECTIONS_FOLDER = "detections"
 CAMWIM_SERVICE_URL = "http://89.24.183.108:4445"
-CAMWIM_ENHANCED_ENDPOINT = "/api/VirtualTicket/enhanced"
-CAMWIM_PROGRESS_ENDPOINT = "/api/DataImportProgress"
+CAMWIM_ENHANCED_ENDPOINT = "/api/wim/VirtualTicket/enhanced"
+CAMWIM_PROGRESS_ENDPOINT = "/api/wim/DataImportProgress"
 
 BATCH_SIZE = 50
 MAX_RETRIES = 3
