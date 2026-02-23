@@ -220,7 +220,7 @@ def map_detection_to_virtual_ticket(detection, record_id):
         "cid": record_id,
         "dateTimeLocal": date_time_local,
         "wim": direction,
-        "vehicleClass": 0,
+        "vehicleClass": 1,
         "velocity": int(speed) if speed is not None else 0,
         "length": 0,
         "licensePlate": plate,
