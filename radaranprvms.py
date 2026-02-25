@@ -185,7 +185,16 @@ def _file_writer_worker():
                         json.dump(detections, f, indent=2, ensure_ascii=False)
                         f.flush()
                         os.fsync(f.fileno())
-                    
+
+                    # Flag for datamapper: file changed, needs sync
+                    sync_flag_path = os.path.join(DETECTIONS_FOLDER, '.sync_needed')
+                    try:
+                        with open(sync_flag_path, 'w', encoding='utf-8') as sf:
+                            sf.write(json.dumps({"file": os.path.basename(filepath), "ts": datetime.now().isoformat()}))
+                            sf.flush()
+                    except Exception:
+                        pass
+
                     # Log saved detections - show ALL saves with clear indication
                     for detection in pending_detections:
                         plate = detection.get('plate_number')
