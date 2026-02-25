@@ -40,10 +40,12 @@ CAMWIM_PROGRESS_ENDPOINT = "/api/wim/DataImportProgress"
 
 BATCH_SIZE = 50
 MAX_RETRIES = 3
-RETRY_DELAY = 5
+RETRY_DELAY = 2  # Seconds between retries (was 5 - too slow for realtime)
+REQUEST_TIMEOUT = 10  # Seconds per HTTP request (was 30)
+STATE_SAVE_INTERVAL = 5  # Save state every N records (avoids disk I/O per record)
 SENT_STATE_FILE = 'datamapper_sent_state.json'  # Tracks (file, index) - only reads files with new data
 SYNC_FLAG_FILE = os.path.join(DETECTIONS_FOLDER, '.sync_needed')  # radaranprvms writes when file changes
-POLL_INTERVAL = 1  # Seconds between checks for new detections
+POLL_INTERVAL = 0.5  # Seconds between checks (was 1 - faster for realtime)
 
 
 # ============================================================================
@@ -268,13 +270,14 @@ def map_detection_to_virtual_ticket(detection, record_id):
 # CAMWIM POSTING
 # ============================================================================
 
-def post_to_camwim_service(virtual_ticket_request):
-    """POST the VirtualTicketRequest to CAMWIM Service"""
+def post_to_camwim_service(virtual_ticket_request, session=None):
+    """POST the VirtualTicketRequest to CAMWIM Service. Use session for connection reuse."""
     url = f"{CAMWIM_SERVICE_URL}{CAMWIM_ENHANCED_ENDPOINT}"
     headers = {'Content-Type': 'application/json'}
     payload = {"request": virtual_ticket_request} if USE_REQUEST_WRAPPER else virtual_ticket_request
+    http = session or requests
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response = http.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         if response.status_code == 201:
             return True, response.json()
         else:
@@ -285,16 +288,16 @@ def post_to_camwim_service(virtual_ticket_request):
         return False, str(e)
 
 
-def process_and_post_record(detection, record_id):
-    """Map detection to VirtualTicket and post to CAMWIM Service"""
+def process_and_post_record(detection, record_id, session=None):
+    """Map detection to VirtualTicket and post to CAMWIM Service. Returns (success, virtual_ticket for logging)."""
     virtual_ticket = map_detection_to_virtual_ticket(detection, record_id)
     for attempt in range(MAX_RETRIES):
-        success, _ = post_to_camwim_service(virtual_ticket)
+        success, resp = post_to_camwim_service(virtual_ticket, session=session)
         if success:
-            return True
+            return True, virtual_ticket
         if attempt < MAX_RETRIES - 1:
             time.sleep(RETRY_DELAY)
-    return False
+    return False, virtual_ticket
 
 
 # ============================================================================
@@ -545,45 +548,69 @@ def preview_pending(count=1):
 # MAIN PROCESSING
 # ============================================================================
 
+def _apply_mark_sent_to_state(state, basename, index, total_in_file):
+    """Apply mark_sent updates to state dict (no disk I/O)."""
+    state.setdefault("completed_file_last_index", {})
+    state["next_ticket_id"] = state.get("next_ticket_id", 1) + 1
+    state["current_file"] = basename
+    state["current_index"] = index
+    if basename == get_active_file_basename():
+        state["active_file_last_index"] = index
+    if basename in state.get("completed_files", []):
+        state["completed_file_last_index"][basename] = index
+    if index == total_in_file - 1 and basename != get_active_file_basename():
+        state["completed_file_last_index"][basename] = index
+        if basename not in state.get("completed_files", []):
+            state["completed_files"] = state.get("completed_files", []) + [basename]
+        state["current_file"] = None
+        state["current_index"] = -1
+
+
 def process_pending_detections(progress_tracker=None, force_process_file=None):
     """
-    Send all unsent detections. Only reads files with new data (re-reads completed when sync flag says changed).
-    Marks each sent record via mark_sent(). Returns (sent_count, success_count, failed_count).
+    Send all unsent detections. Streams records (no bulk load). Batch-saves state every N records.
+    Returns (sent_count, success_count, failed_count).
     force_process_file: when sync flag indicates this file changed, process it first (any file).
     """
-    records = list(iter_pending_detections(force_process_file=force_process_file))
-    if not records:
-        return 0, 0, 0
-
-    first_id = records[0][0]
-    last_id = records[-1][0]
-
-    if progress_tracker:
-        desc = f"Radar-ANPR detections (IDs {first_id}-{last_id})"
-        if not progress_tracker.start_import(desc, first_id, last_id):
-            return 0, 0, 0
-
+    session = requests.Session()
+    state = load_sent_state()
+    first_id = None
     success_count = 0
     failed_count = 0
 
     try:
-        for ticket_id, detection, filepath, basename, index, total in records:
-            success = process_and_post_record(detection, ticket_id)
+        for ticket_id, detection, filepath, basename, index, total in iter_pending_detections(force_process_file=force_process_file):
+            if first_id is None:
+                first_id = ticket_id
+                if progress_tracker:
+                    if not progress_tracker.start_import(f"Radar-ANPR detections from {basename}", ticket_id, ticket_id):
+                        return 0, 0, 0
+
+            success, vt = process_and_post_record(detection, ticket_id, session=session)
             if success:
                 success_count += 1
-                mark_sent(basename, index, total)
+                _apply_mark_sent_to_state(state, basename, index, total)
+                # Realtime: show each record sent immediately (flush for unbuffered output)
+                msg = "SENT #%s | %s | %s | %s km/h | %s" % (
+                    vt.get("ticketId"), vt.get("licensePlate"), vt.get("wim"),
+                    vt.get("velocity"), vt.get("dateTimeLocal"))
+                logger.info(msg)
+                print(msg, flush=True)
+                if success_count % STATE_SAVE_INTERVAL == 0:
+                    save_sent_state(state)
             else:
                 failed_count += 1
-                # Don't mark - will retry next poll
 
             if progress_tracker and (success_count + failed_count) % 10 == 0:
                 progress_tracker.update_progress(ticket_id, success_count + failed_count, failed_count)
 
-        if progress_tracker:
+        save_sent_state(state)
+        if progress_tracker and first_id is not None:
             progress_tracker.complete_import(success_count + failed_count, failed_count)
 
-        return len(records), success_count, failed_count
+        return success_count + failed_count, success_count, failed_count
     except Exception as e:
+        save_sent_state(state)
         logger.error(f"Error processing: {e}")
         if progress_tracker:
             progress_tracker.fail_import(str(e))
@@ -602,8 +629,8 @@ def run_watch_loop(progress_tracker=None, force_new=False):
         os.remove(SENT_STATE_FILE)
         logger.info("Reset: cleared sent state (--force-new)")
 
-    logger.info("Watch mode: polling every %d s. Tracks each file; active file sends per new records.", POLL_INTERVAL)
-    ACTIVE_FILE_CATCHUP_INTERVAL = 0.2  # Seconds between re-checks when on active file
+    logger.info("Watch mode: polling every %.1f s. Realtime send logging enabled.", POLL_INTERVAL)
+    ACTIVE_FILE_CATCHUP_INTERVAL = 0.1  # Seconds between re-checks when on active file (was 0.2)
     ACTIVE_FILE_MAX_ITERATIONS = 100     # Max catchup iterations per poll cycle
 
     while True:
@@ -674,52 +701,50 @@ def _log_no_records_reason():
 def process_all_detections(progress_tracker=None, limit=None):
     """
     One-shot: process all pending detections and exit.
-    Only reads files with new data. If limit is set, process at most that many.
+    Streams records, batch-saves state, realtime logging.
     """
-    records = []
-    for item in iter_pending_detections():
-        records.append(item)
-        if limit is not None and len(records) >= limit:
-            break
-
-    if not records:
-        _log_no_records_reason()
-        return True
-
-    first_id = records[0][0]
-    last_id = records[-1][0]
-    total_to_process = len(records)
-
-    if progress_tracker:
-        desc = f"Radar-ANPR detections (IDs {first_id}-{last_id})"
-        if not progress_tracker.start_import(desc, first_id, last_id):
-            logger.error("Failed to start import operation")
-            return False
-
+    session = requests.Session()
+    state = load_sent_state()
+    first_id = None
     total_processed = 0
     total_success = 0
     total_failed = 0
     start_time = time.time()
 
     try:
-        for ticket_id, detection, filepath, basename, index, total in records:
-            success = process_and_post_record(detection, ticket_id)
+        for ticket_id, detection, filepath, basename, index, total in iter_pending_detections():
+            if first_id is None:
+                first_id = ticket_id
+                if progress_tracker:
+                    if not progress_tracker.start_import(f"Radar-ANPR detections from {basename}", ticket_id, ticket_id):
+                        return False
+
+            success, vt = process_and_post_record(detection, ticket_id, session=session)
             total_processed += 1
             if success:
                 total_success += 1
-                mark_sent(basename, index, total)
+                _apply_mark_sent_to_state(state, basename, index, total)
+                msg = "SENT #%s | %s | %s | %s km/h | %s" % (
+                    vt.get("ticketId"), vt.get("licensePlate"), vt.get("wim"),
+                    vt.get("velocity"), vt.get("dateTimeLocal"))
+                logger.info(msg)
+                print(msg, flush=True)
+                if total_success % STATE_SAVE_INTERVAL == 0:
+                    save_sent_state(state)
             else:
                 total_failed += 1
 
             if progress_tracker and total_processed % 10 == 0:
                 progress_tracker.update_progress(ticket_id, total_processed, total_failed)
 
-            if total_processed % 10 == 0:
-                pct = (total_processed / total_to_process) * 100
-                remaining = total_to_process - total_processed
-                elapsed = time.time() - start_time
-                eta = (elapsed / total_processed * remaining) / 60 if total_processed > 0 else 0
-                print(f"\rProgress: {total_processed}/{total_to_process} ({pct:.1f}%) - ETA: {eta:.1f}min", end="", flush=True)
+            if limit is not None and total_processed >= limit:
+                break
+
+        save_sent_state(state)
+
+        if total_processed == 0:
+            _log_no_records_reason()
+            return True
 
         if progress_tracker:
             progress_tracker.complete_import(total_processed, total_failed)
