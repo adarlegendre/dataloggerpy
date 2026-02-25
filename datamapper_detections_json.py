@@ -333,13 +333,13 @@ def save_sent_state(state):
         logger.error(f"Failed to save sent state: {e}")
 
 
-def iter_pending_detections(folder=DETECTIONS_FOLDER):
+def iter_pending_detections(folder=DETECTIONS_FOLDER, prioritize_active=True):
     """
-    Yield only unsent detections. Tracks each file; sends per new records on active file.
-    - completed_files: never re-read
-    - current_file: yields from current_index+1 only (new records since last send)
-    - new files: yields from start
-    When radaranprvms appends to today's file, next poll yields only the new records.
+    Yield only unsent detections. Efficient tracking:
+    - completed_files: past files fully synced, never re-read
+    - current_file + current_index: partial progress (resume after crash)
+    - Per file: only yields from current_index+1 (new records since last send)
+    - prioritize_active: if True, yield from today's file first, then backlog chronologically
     Yields (ticket_id, detection, filepath, basename, index, total_in_file).
     Call mark_sent() after each successful send.
     """
@@ -354,7 +354,28 @@ def iter_pending_detections(folder=DETECTIONS_FOLDER):
         return
 
     files = sorted(files, key=lambda p: os.path.basename(p))
+    active_basename = get_active_file_basename()
 
+    def process_file(filepath, basename):
+        nonlocal next_ticket_id
+        detections = load_detections_from_file(filepath)
+        start = (current_index + 1) if (basename == current_file) else 0
+        total = len(detections)
+        for j in range(start, total):
+            yield next_ticket_id, detections[j], filepath, basename, j, total
+            next_ticket_id += 1
+
+    # 1. If prioritize_active and we're ALREADY on today's file, process it first (new records)
+    #    Never skip backlog: we always process in chronological order; only when current_file
+    #    is today do we prioritize (so new records get sent promptly).
+    if prioritize_active and active_basename == current_file:
+        active_path = next((p for p in files if os.path.basename(p) == active_basename), None)
+        if active_path:
+            for item in process_file(active_path, active_basename):
+                yield item
+            return
+
+    # 2. Backlog: process in chronological order (oldest first) - never skip past files
     if current_file:
         try:
             idx = next(i for i, p in enumerate(files) if os.path.basename(p) == current_file)
@@ -370,14 +391,10 @@ def iter_pending_detections(folder=DETECTIONS_FOLDER):
         basename = os.path.basename(filepath)
         if basename in completed:
             continue
-
-        detections = load_detections_from_file(filepath)
-        start = (current_index + 1) if (basename == current_file) else 0
-        total = len(detections)
-
-        for j in range(start, total):
-            yield next_ticket_id, detections[j], filepath, basename, j, total
-            next_ticket_id += 1
+        if prioritize_active and basename == active_basename:
+            continue
+        for item in process_file(filepath, basename):
+            yield item
 
 
 def mark_sent(basename, index, total_in_file):
@@ -386,10 +403,14 @@ def mark_sent(basename, index, total_in_file):
     state["next_ticket_id"] = state.get("next_ticket_id", 1) + 1
     state["current_file"] = basename
     state["current_index"] = index
+    # Only mark file complete if we've sent the last record AND it's not today's file.
+    # Today's file can keep growing (radaranprvms appends); we must keep checking it.
     if index == total_in_file - 1:
-        state["completed_files"] = state.get("completed_files", []) + [basename]
-        state["current_file"] = None
-        state["current_index"] = -1
+        if basename != get_active_file_basename():
+            state["completed_files"] = state.get("completed_files", []) + [basename]
+            state["current_file"] = None
+            state["current_index"] = -1
+        # else: keep current_file/current_index so next poll re-reads and gets new records
     save_sent_state(state)
 
 
@@ -417,6 +438,28 @@ def is_on_active_file():
     """True if we're currently processing the active (today's) file."""
     state = load_sent_state()
     return state.get("current_file") == get_active_file_basename()
+
+
+def get_sync_status(folder=DETECTIONS_FOLDER):
+    """
+    Return sync status: (total_files, completed_count, backlog_count, current_file, on_active).
+    Efficient: only dir listing + state read, no file content reads.
+    """
+    state = load_sent_state()
+    completed = set(state["completed_files"])
+    files = get_detection_json_files(folder)
+    total = len(files)
+    completed_count = sum(1 for p in files if os.path.basename(p) in completed)
+    backlog_count = total - completed_count
+    if state["current_file"] and state["current_file"] not in completed:
+        backlog_count = max(1, backlog_count)
+    return {
+        "total_files": total,
+        "completed_count": completed_count,
+        "backlog_count": backlog_count,
+        "current_file": state.get("current_file"),
+        "on_active_file": is_on_active_file(),
+    }
 
 
 # ============================================================================
@@ -513,6 +556,12 @@ def run_watch_loop(progress_tracker=None, force_new=False):
             if not has_pending_detections():
                 time.sleep(POLL_INTERVAL)
                 continue
+
+            status = get_sync_status()
+            if status["backlog_count"] > 0:
+                logger.info("Sync: %d/%d files done, %d backlog | current: %s",
+                    status["completed_count"], status["total_files"], status["backlog_count"],
+                    status["current_file"] or "none")
 
             # When on active file (today's), process in tight loop until caught up -
             # new records may be added while we send, so we re-check frequently
