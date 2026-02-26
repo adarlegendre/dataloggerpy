@@ -345,6 +345,40 @@ def save_sent_state(state):
         logger.error(f"Failed to save sent state: {e}")
 
 
+def _basename_eq(a, b):
+    """Case-insensitive basename comparison (Windows can have .json vs .JSON)."""
+    return (a or "").lower() == (b or "").lower()
+
+
+def _find_in_list(files, target_basename):
+    """Find file path whose basename matches target (case-insensitive)."""
+    t = (target_basename or "").lower()
+    for p in files:
+        if os.path.basename(p).lower() == t:
+            return p
+    return None
+
+
+def mark_file_complete(basename, filepath):
+    """Mark file as complete without sending (empty file or already sent all). Unsticks the mapper.
+    Skips today's file - it can keep growing."""
+    if _basename_eq(basename, get_active_file_basename()):
+        return  # Today's file: don't mark complete, it may get new records
+    detections = load_detections_from_file(filepath)
+    total = len(detections)
+    last_index = total - 1 if total > 0 else -1
+    state = load_sent_state()
+    state.setdefault("completed_file_last_index", {})
+    if basename not in state.get("completed_files", []):
+        state["completed_files"] = state.get("completed_files", []) + [basename]
+    state["completed_file_last_index"][basename] = last_index
+    if _basename_eq(state.get("current_file"), basename):
+        state["current_file"] = None
+        state["current_index"] = -1
+    save_sent_state(state)
+    logger.info("Marked %s complete (0 records to send, total=%d)", basename, total)
+
+
 def iter_pending_detections(folder=DETECTIONS_FOLDER, prioritize_active=True, force_process_file=None):
     """
     Yield only unsent detections. Efficient tracking:
@@ -370,6 +404,7 @@ def iter_pending_detections(folder=DETECTIONS_FOLDER, prioritize_active=True, fo
 
     files = sorted(files, key=lambda p: os.path.basename(p))
     active_basename = get_active_file_basename()
+    completed_lower = {b.lower() for b in completed}
 
     def process_file(filepath, basename, start_override=None):
         nonlocal next_ticket_id
@@ -377,33 +412,43 @@ def iter_pending_detections(folder=DETECTIONS_FOLDER, prioritize_active=True, fo
         if start_override is not None:
             start = start_override
         else:
-            start = (current_index + 1) if (basename == current_file) else 0
+            start = (current_index + 1) if _basename_eq(basename, current_file) else 0
         total = len(detections)
         for j in range(start, total):
             yield next_ticket_id, detections[j], filepath, basename, j, total
             next_ticket_id += 1
 
     def start_for_file(basename):
-        if basename == current_file:
+        if _basename_eq(basename, current_file):
             return current_index + 1
-        if basename in completed:
-            return cfli.get(basename, -1) + 1
-        if basename == active_basename:
+        if basename.lower() in completed_lower:
+            cfli_key = next((k for k in cfli if k.lower() == basename.lower()), basename)
+            return cfli.get(cfli_key, -1) + 1
+        if _basename_eq(basename, active_basename):
             return active_file_last_index + 1
         return 0
 
+    def is_completed(basename):
+        return basename.lower() in completed_lower
+
     # 1. When sync flag says a specific file changed: process that file first (today, past, or completed)
     if force_process_file:
-        target_path = next((p for p in files if os.path.basename(p) == force_process_file), None)
+        target_path = _find_in_list(files, force_process_file)
         if target_path:
             start = start_for_file(force_process_file)
-            for item in process_file(target_path, force_process_file, start_override=start):
-                yield item
+            gen = process_file(target_path, os.path.basename(target_path), start_override=start)
+            first = next(gen, None)
+            if first is None:
+                mark_file_complete(os.path.basename(target_path), target_path)
+            else:
+                yield first
+                for item in gen:
+                    yield item
             return
 
     # 2. When prioritize_active and we're on today's file: process active first
-    if prioritize_active and active_basename == current_file:
-        active_path = next((p for p in files if os.path.basename(p) == active_basename), None)
+    if prioritize_active and _basename_eq(active_basename, current_file):
+        active_path = _find_in_list(files, active_basename)
         if active_path:
             start = start_for_file(active_basename)
             for item in process_file(active_path, active_basename, start_override=start):
@@ -412,9 +457,8 @@ def iter_pending_detections(folder=DETECTIONS_FOLDER, prioritize_active=True, fo
 
     # 3. Backlog: process in chronological order (oldest first)
     if current_file:
-        try:
-            idx = next(i for i, p in enumerate(files) if os.path.basename(p) == current_file)
-        except StopIteration:
+        idx = next((i for i, p in enumerate(files) if _basename_eq(os.path.basename(p), current_file)), None)
+        if idx is None:
             idx = 0
             current_file = None
             current_index = -1
@@ -424,11 +468,17 @@ def iter_pending_detections(folder=DETECTIONS_FOLDER, prioritize_active=True, fo
     for i in range(idx, len(files)):
         filepath = files[i]
         basename = os.path.basename(filepath)
-        if basename in completed:
+        if is_completed(basename):
             continue
-        if prioritize_active and basename == active_basename:
+        if prioritize_active and _basename_eq(basename, active_basename):
             continue
-        for item in process_file(filepath, basename, start_override=None):
+        gen = process_file(filepath, basename, start_override=None)
+        first = next(gen, None)
+        if first is None:
+            mark_file_complete(basename, filepath)
+            continue
+        yield first
+        for item in gen:
             yield item
 
 
@@ -460,16 +510,17 @@ def has_pending_detections(folder=DETECTIONS_FOLDER):
     """Check if there are unsent detections. Includes sync flag: completed file changed = pending."""
     state = load_sent_state()
     completed = set(state["completed_files"])
+    completed_lower = {b.lower() for b in completed}
     files = get_detection_json_files(folder)
     for p in files:
-        if os.path.basename(p) not in completed:
+        if os.path.basename(p).lower() not in completed_lower:
             return True
     if state["current_file"]:
         for p in files:
-            if os.path.basename(p) == state["current_file"]:
+            if _basename_eq(os.path.basename(p), state["current_file"]):
                 return True
     flag = read_sync_flag()
-    if flag and flag.get("file") in completed:
+    if flag and flag.get("file") and flag.get("file").lower() in completed_lower:
         return True
     return False
 
@@ -494,7 +545,7 @@ def read_sync_flag():
 def is_on_active_file():
     """True if we're currently processing the active (today's) file."""
     state = load_sent_state()
-    return state.get("current_file") == get_active_file_basename()
+    return _basename_eq(state.get("current_file"), get_active_file_basename())
 
 
 def get_sync_status(folder=DETECTIONS_FOLDER):
@@ -504,9 +555,10 @@ def get_sync_status(folder=DETECTIONS_FOLDER):
     """
     state = load_sent_state()
     completed = set(state["completed_files"])
+    completed_lower = {b.lower() for b in completed}
     files = get_detection_json_files(folder)
     total = len(files)
-    completed_count = sum(1 for p in files if os.path.basename(p) in completed)
+    completed_count = sum(1 for p in files if os.path.basename(p).lower() in completed_lower)
     backlog_count = total - completed_count
     if state["current_file"] and state["current_file"] not in completed:
         backlog_count = max(1, backlog_count)
