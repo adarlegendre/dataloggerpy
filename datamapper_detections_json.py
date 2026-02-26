@@ -650,8 +650,14 @@ def run_watch_loop(progress_tracker=None, force_new=False):
                     status["current_file"] or "none",
                     f" | flag: {force_file}" if force_file else "")
 
-            # When sync flag says a file changed: process that file first (today, past, or completed)
-            if force_file or is_on_active_file():
+            # When on backlog (stuck on a past file): process backlog first so we don't starve.
+            # Otherwise the sync flag (today's file) would always win and we'd never finish yesterday's file.
+            if not status["on_active_file"] and status.get("current_file"):
+                sent, success, failed = process_pending_detections(progress_tracker=None)
+                if sent > 0:
+                    logger.info("Sent: %d | Success: %d | Failed: %d", sent, success, failed)
+            # When sync flag says a file changed or we're on today's file: process that file (with prioritization)
+            elif force_file or is_on_active_file():
                 total_sent = 0
                 for _ in range(ACTIVE_FILE_MAX_ITERATIONS):
                     pf = force_file if force_file else (get_active_file_basename() if is_on_active_file() else None)
