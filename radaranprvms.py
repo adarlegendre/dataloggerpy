@@ -44,13 +44,13 @@ CAMERA_URL = f'http://{CAMERA_IP}:{CAMERA_PORT}/LAPI/V1.0/System/Event/Subscript
 RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
 RADAR_TIMEOUT = 0.1  # Increased timeout to prevent blocking
-ONLY_POSITIVE_DIRECTION = False  # Set to False to display all directions
+ONLY_POSITIVE_DIRECTION = True  # True = only match plates with positive direction (A+) radar
 POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
-RADAR_CAMERA_TIME_WINDOW = 5  # Maximum seconds between radar detection and camera detection to consider them matched
+RADAR_CAMERA_TIME_WINDOW = 8  # Seconds between radar detection and camera plate to match (widened for reliable sync)
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -257,28 +257,29 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             'timestamp': datetime.now().isoformat()
         }
 
-        # Thread-safe append to completed detections
-        # Use timeout to avoid deadlock if lock is held elsewhere
-        # Retry a few times since this is critical for camera matching
-        lock_acquired = False
-        for attempt in range(3):
-            lock_acquired = _radar_lock.acquire(timeout=0.5)
+        # Thread-safe append to completed detections (for plate matching)
+        # When ONLY_POSITIVE_DIRECTION: only add positive (+) detections to matching pool
+        if not ONLY_POSITIVE_DIRECTION or direction_sign == '+':
+            lock_acquired = False
+            for attempt in range(3):
+                lock_acquired = _radar_lock.acquire(timeout=0.5)
+                if lock_acquired:
+                    break
+                time.sleep(0.1)
+            
             if lock_acquired:
-                break
-            time.sleep(0.1)
-        
-        if lock_acquired:
-            try:
-                _completed_detections.append(completed)
-                if len(_completed_detections) > _max_completed_detections:
-                    _completed_detections.pop(0)
-            finally:
-                _radar_lock.release()
-        else:
-            print(f"  ⚠️  Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
+                try:
+                    _completed_detections.append(completed)
+                    if len(_completed_detections) > _max_completed_detections:
+                        _completed_detections.pop(0)
+                finally:
+                    _radar_lock.release()
+            else:
+                print(f"  ⚠️  Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
 
         # Save radar detection even without plate (for vehicles 10km/h and above)
-        if peak_speed >= 10:
+        # When ONLY_POSITIVE_DIRECTION: only save positive direction (streamline)
+        if peak_speed >= 10 and (not ONLY_POSITIVE_DIRECTION or direction_sign == '+'):
             radar_only_data = {
                 'timestamp': datetime.now().isoformat(),
                 'plate_number': None,
@@ -297,16 +298,19 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             print(f"   Speed: {peak_speed}km/h", flush=True)
             print(f"   Status: 💾 Saving to queue...", flush=True)
             print(f"{'='*60}\n", flush=True)
-        else:
+        elif peak_speed < 10:
             print(f"\n{'='*60}", flush=True)
             print(f"📡 RADAR DETECTION - TOO SLOW", flush=True)
             print(f"   Direction: {direction_name}", flush=True)
             print(f"   Speed: {peak_speed}km/h", flush=True)
             print(f"   Status: ⏭️  Not saved (<10km/h)", flush=True)
             print(f"{'='*60}\n", flush=True)
+        elif ONLY_POSITIVE_DIRECTION and direction_sign == '-':
+            print(f"\n📡 RADAR (negative) - skipped (positive direction only)", flush=True)
 
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
-        if peak_speed > SPEED_LIMIT:
+        # When ONLY_POSITIVE_DIRECTION: only check positive direction
+        if peak_speed > SPEED_LIMIT and (not ONLY_POSITIVE_DIRECTION or direction_sign == '+'):
             print(f"  ⚠️  Speed violation detected: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check...", flush=True)
             Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
 
@@ -472,31 +476,33 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
     
     with _radar_lock:
         # Check in-progress detection first (most likely to match)
+        # When ONLY_POSITIVE_DIRECTION: only consider positive (+) direction
         if _current_detection and _current_direction:
-            vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
-            if vehicle_readings:
-                try:
-                    latest_reading_time = datetime.fromisoformat(_current_detection[-1]['timestamp'])
-                    time_diff = (now - latest_reading_time).total_seconds()
-                    
-                    if time_diff <= 5:
-                        peak_speed = max(r['speed'] for r in vehicle_readings)
-                        direction_name = POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME
-                        # Return immediately without copy for speed
-                        return {
-                            'direction_sign': _current_direction,
-                            'direction_name': direction_name,
-                            'peak_speed': peak_speed,
-                            'readings_count': len(_current_detection),
-                            'start_time': _current_detection[0]['timestamp'],
-                            'end_time': _current_detection[-1]['timestamp'],
-                            'timestamp': now.isoformat(),
-                            'in_progress': True
-                        }
-                except (ValueError, KeyError):
-                    pass
+            if not ONLY_POSITIVE_DIRECTION or _current_direction == '+':
+                vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
+                if vehicle_readings:
+                    try:
+                        latest_reading_time = datetime.fromisoformat(_current_detection[-1]['timestamp'])
+                        time_diff = (now - latest_reading_time).total_seconds()
+                        
+                        if time_diff <= max_age_seconds:
+                            peak_speed = max(r['speed'] for r in vehicle_readings)
+                            direction_name = POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME
+                            return {
+                                'direction_sign': _current_direction,
+                                'direction_name': direction_name,
+                                'peak_speed': peak_speed,
+                                'readings_count': len(_current_detection),
+                                'start_time': _current_detection[0]['timestamp'],
+                                'end_time': _current_detection[-1]['timestamp'],
+                                'timestamp': now.isoformat(),
+                                'in_progress': True
+                            }
+                    except (ValueError, KeyError):
+                        pass
         
-        # Check completed detections (most recent first) - fast path
+        # Check completed detections (most recent first)
+        # When ONLY_POSITIVE_DIRECTION: only positive detections are in this list
         if not _completed_detections:
             return None
         
