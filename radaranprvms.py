@@ -964,12 +964,15 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"{'='*60}\n", flush=True)
                 else:
                     speed = 0
+                    # When ONLY_POSITIVE_DIRECTION: use IMR_KD-B as default for plates without radar match
+                    default_direction = POSITIVE_DIRECTION_NAME if ONLY_POSITIVE_DIRECTION else 'Unknown'
+                    default_sign = '+' if ONLY_POSITIVE_DIRECTION else None
                     detection_data = {
                         'timestamp': timestamp,
                         'plate_number': plate_no,
                         'speed': speed,
-                        'direction': 'Unknown',
-                        'radar_direction_sign': None,
+                        'direction': default_direction,
+                        'radar_direction_sign': default_sign,
                         'vms_displayed': 'no',
                         'radar_readings_count': 0,
                         'radar_detection_start': None,
@@ -979,6 +982,8 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"⚠️  PLATE DETECTION - NO RADAR MATCH", flush=True)
                     print(f"   Plate: {plate_no}", flush=True)
                     print(f"   Reason: Outside {RADAR_CAMERA_TIME_WINDOW}s window", flush=True)
+                    if ONLY_POSITIVE_DIRECTION:
+                        print(f"   Direction: {default_direction} (default, positive only)", flush=True)
                     print(f"   Status: 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     send_plate_to_vms("")
