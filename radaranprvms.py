@@ -51,8 +51,8 @@ CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_CAMERA_TIME_WINDOW = 8  # Legacy: max age for detection (seconds)
-RADAR_CAMERA_PEAK_WINDOW = 8  # Symmetric window (±seconds) around plate time for peak-time matching
-RADAR_DEFER_SAVE_SECONDS = 7  # Delay radar-only save to avoid duplicate when plate matches (plate retry ~1.5s + window 5s)
+RADAR_CAMERA_PEAK_WINDOW = 10  # Symmetric window (±seconds) around plate time for peak-time matching
+RADAR_DEFER_SAVE_SECONDS = 12  # Delay radar-only save (must exceed window + retry: 10 + 3)
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -558,8 +558,8 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
 
 def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAMERA_PEAK_WINDOW) -> Optional[Dict[str, Any]]:
     """
-    Find the radar detection whose peak_time is closest to plate capture time.
-    Matches by peak (max speed) moment, not completion time. Excludes already-matched detections.
+    Find radar detection for plate: first by peak_time (closest), then fallback to last detection by end_time.
+    Excludes already-matched detections. 10s window for both strategies.
     """
     global _completed_detections, _current_detection, _current_direction, _matched_radar_detections
 
@@ -568,11 +568,7 @@ def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAME
     else:
         plate_t = plate_timestamp
 
-    best = None
-    best_diff = float('inf')
-
     with _radar_lock:
-        # Build list of candidate detections (completed + in-progress)
         candidates = []
 
         # In-progress detection
@@ -594,30 +590,58 @@ def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAME
                         'in_progress': True
                     })
 
-        # Completed detections (with peak_time)
         for det in _completed_detections:
-            if det.get('peak_time'):
-                candidates.append(det.copy())
+            candidates.append(det.copy())
 
     with _matched_detections_lock:
         matched_set = set(_matched_radar_detections)
 
+    best = None
+    best_diff = float('inf')
+
+    # Strategy 1: match by peak_time (closest within window)
     for det in candidates:
         detection_id = det.get('end_time')
         if detection_id and detection_id in matched_set:
             continue
-
+        time_str = det.get('peak_time') or det.get('end_time')
+        if not time_str:
+            continue
         try:
-            peak_t = datetime.fromisoformat(det.get('peak_time', det.get('end_time', '')).replace('Z', '+00:00'))
+            t = datetime.fromisoformat(str(time_str).replace('Z', '+00:00'))
         except (ValueError, TypeError):
             continue
-
-        diff = abs((plate_t - peak_t).total_seconds())
+        diff = abs((plate_t - t).total_seconds())
         if diff <= window_seconds and diff < best_diff:
             best_diff = diff
             best = det.copy()
             if 'in_progress' not in best:
                 best['in_progress'] = False
+
+    if best:
+        return best
+
+    # Strategy 2: fallback - last radar detection by end_time (closest within window)
+    best_diff = float('inf')
+    for det in candidates:
+        detection_id = det.get('end_time')
+        if detection_id and detection_id in matched_set:
+            continue
+        time_str = det.get('end_time')
+        if not time_str:
+            continue
+        try:
+            t = datetime.fromisoformat(str(time_str).replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            continue
+        diff = abs((plate_t - t).total_seconds())
+        if diff <= window_seconds and diff < best_diff:
+            best_diff = diff
+            best = det.copy()
+            if 'in_progress' not in best:
+                best['in_progress'] = False
+            if not best.get('peak_time') and best.get('end_time'):
+                best['peak_time'] = best['end_time']
 
     return best
 
