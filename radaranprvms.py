@@ -50,7 +50,8 @@ NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
-RADAR_CAMERA_TIME_WINDOW = 8  # Seconds between radar detection and camera plate to match (widened for reliable sync)
+RADAR_CAMERA_TIME_WINDOW = 8  # Legacy: max age for detection (seconds)
+RADAR_CAMERA_PEAK_WINDOW = 5  # Symmetric window (±seconds) around plate time for peak-time matching
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -77,7 +78,7 @@ _radar_lock = Lock()
 _current_detection = []  # List of readings for current vehicle (0 -> peak -> 0)
 _current_direction = None  # '+' or '-' for current detection
 _completed_detections = []  # Queue of completed detections with peak speed
-_max_completed_detections = 10  # Keep last 10 completed detections
+_max_completed_detections = 25  # Keep last 25 completed detections (for ±5s peak window)
 
 # Detection storage - Queue-based file writer
 _detections_queue = Queue()
@@ -247,10 +248,20 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
     global _completed_detections
 
     try:
+        # Find peak_time: timestamp when peak speed was observed (for plate matching)
+        peak_time = None
+        for r in reversed(detection_readings):
+            if r.get('speed') == peak_speed:
+                peak_time = r.get('timestamp')
+                break
+        if not peak_time:
+            peak_time = datetime.now().isoformat()
+
         completed = {
             'direction_sign': direction_sign,
             'direction_name': direction_name,
             'peak_speed': peak_speed,
+            'peak_time': peak_time,
             'readings_count': len(detection_readings),
             'start_time': start_time,
             'end_time': datetime.now().isoformat(),
@@ -289,7 +300,8 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
                 'vms_displayed': 'no',
                 'radar_readings_count': len(detection_readings),
                 'radar_detection_start': start_time,
-                'radar_detection_end': completed['end_time']
+                'radar_detection_end': completed['end_time'],
+                'radar_peak_time': completed.get('peak_time'),
             }
             save_detection(radar_only_data)
             print(f"\n{'='*60}", flush=True)
@@ -529,6 +541,71 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
                 continue
         
         return None
+
+def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAMERA_PEAK_WINDOW) -> Optional[Dict[str, Any]]:
+    """
+    Find the radar detection whose peak_time is closest to plate capture time.
+    Matches by peak (max speed) moment, not completion time. Excludes already-matched detections.
+    """
+    global _completed_detections, _current_detection, _current_direction, _matched_radar_detections
+
+    if isinstance(plate_timestamp, str):
+        plate_t = datetime.fromisoformat(plate_timestamp.replace('Z', '+00:00'))
+    else:
+        plate_t = plate_timestamp
+
+    best = None
+    best_diff = float('inf')
+
+    with _radar_lock:
+        # Build list of candidate detections (completed + in-progress)
+        candidates = []
+
+        # In-progress detection
+        if _current_detection and _current_direction and (not ONLY_POSITIVE_DIRECTION or _current_direction == '+'):
+            vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
+            if vehicle_readings:
+                peak_speed = max(r['speed'] for r in vehicle_readings)
+                peak_reading = next((r for r in reversed(vehicle_readings) if r['speed'] == peak_speed), vehicle_readings[-1])
+                peak_time_str = peak_reading.get('timestamp')
+                if peak_time_str:
+                    candidates.append({
+                        'direction_sign': _current_direction,
+                        'direction_name': POSITIVE_DIRECTION_NAME if _current_direction == '+' else NEGATIVE_DIRECTION_NAME,
+                        'peak_speed': peak_speed,
+                        'peak_time': peak_time_str,
+                        'readings_count': len(_current_detection),
+                        'start_time': _current_detection[0]['timestamp'],
+                        'end_time': _current_detection[-1]['timestamp'],
+                        'in_progress': True
+                    })
+
+        # Completed detections (with peak_time)
+        for det in _completed_detections:
+            if det.get('peak_time'):
+                candidates.append(det.copy())
+
+    with _matched_detections_lock:
+        matched_set = set(_matched_radar_detections)
+
+    for det in candidates:
+        detection_id = det.get('end_time')
+        if detection_id and detection_id in matched_set:
+            continue
+
+        try:
+            peak_t = datetime.fromisoformat(det.get('peak_time', det.get('end_time', '')).replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            continue
+
+        diff = abs((plate_t - peak_t).total_seconds())
+        if diff <= window_seconds and diff < best_diff:
+            best_diff = diff
+            best = det.copy()
+            if 'in_progress' not in best:
+                best['in_progress'] = False
+
+    return best
 
 def read_radar_data():
     """Read radar data from serial port - simplified for continuous reliable streaming"""
@@ -907,19 +984,21 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  ⚠️  No plate: JSON structure issue", flush=True)
             
             if plate_no:
-                # Get latest completed radar detection (fast lookup)
-                radar_detection = get_latest_completed_detection()
-                
-                # Debug: show if we found a radar match
+                # Create timestamp when plate is received (for peak-time matching)
+                plate_timestamp = datetime.now()
+                timestamp = plate_timestamp.isoformat()
+
+                # Match by peak time: find radar detection whose peak is closest to plate capture
+                radar_detection = get_best_match_for_plate(plate_timestamp)
+                if not radar_detection:
+                    time.sleep(1.5)  # Retry: radar may complete shortly after plate
+                    radar_detection = get_best_match_for_plate(plate_timestamp)
+
                 if radar_detection:
                     print(f"  🔗 Found radar match: {radar_detection['peak_speed']}km/h | {radar_detection['direction_name']}", flush=True)
                 else:
                     print(f"  ⚠️  No radar match found for plate {plate_no}", flush=True)
-                
-                # Create timestamp once
-                timestamp = datetime.now().isoformat()
-                
-                # Prepare detection data efficiently
+
                 if radar_detection:
                     # Mark this radar detection as matched (fast operation)
                     detection_id = radar_detection['end_time']
@@ -943,7 +1022,8 @@ def _handle_camera_client(client_socket, client_address):
                         'vms_displayed': vms_displayed,
                         'radar_readings_count': radar_detection['readings_count'],
                         'radar_detection_start': radar_detection['start_time'],
-                        'radar_detection_end': radar_detection['end_time']
+                        'radar_detection_end': radar_detection['end_time'],
+                        'radar_peak_time': radar_detection.get('peak_time'),
                     }
                     
                     # Save detection (non-blocking via queue)
@@ -981,7 +1061,7 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"\n{'='*60}", flush=True)
                     print(f"⚠️  PLATE DETECTION - NO RADAR MATCH", flush=True)
                     print(f"   Plate: {plate_no}", flush=True)
-                    print(f"   Reason: Outside {RADAR_CAMERA_TIME_WINDOW}s window", flush=True)
+                    print(f"   Reason: No radar peak within ±{RADAR_CAMERA_PEAK_WINDOW}s of plate capture", flush=True)
                     if ONLY_POSITIVE_DIRECTION:
                         print(f"   Direction: {default_direction} (default, positive only)", flush=True)
                     print(f"   Status: 💾 Saving...", flush=True)
