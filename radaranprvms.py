@@ -51,7 +51,7 @@ CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_CAMERA_TIME_WINDOW = 8  # Legacy: max age for detection (seconds)
-RADAR_CAMERA_PEAK_WINDOW = 5  # Symmetric window (±seconds) around plate time for peak-time matching
+RADAR_CAMERA_PEAK_WINDOW = 8  # Symmetric window (±seconds) around plate time for peak-time matching
 RADAR_DEFER_SAVE_SECONDS = 7  # Delay radar-only save to avoid duplicate when plate matches (plate retry ~1.5s + window 5s)
 
 # VMS Configuration (CP5200 Display)
@@ -1005,7 +1005,7 @@ def _handle_camera_client(client_socket, client_address):
                 # Match by peak time: find radar detection whose peak is closest to plate capture
                 radar_detection = get_best_match_for_plate(plate_timestamp)
                 if not radar_detection:
-                    time.sleep(1.5)  # Retry: radar may complete shortly after plate
+                    time.sleep(3.0)  # Retry: radar may complete shortly after plate
                     radar_detection = get_best_match_for_plate(plate_timestamp)
 
                 if radar_detection:
