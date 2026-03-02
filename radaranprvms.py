@@ -52,6 +52,7 @@ MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_CAMERA_TIME_WINDOW = 8  # Legacy: max age for detection (seconds)
 RADAR_CAMERA_PEAK_WINDOW = 5  # Symmetric window (±seconds) around plate time for peak-time matching
+RADAR_DEFER_SAVE_SECONDS = 7  # Delay radar-only save to avoid duplicate when plate matches (plate retry ~1.5s + window 5s)
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -242,6 +243,26 @@ def _start_file_writer():
 # RADAR FUNCTIONS - Vehicle Detection Tracking
 # ============================================================================
 
+def _deferred_radar_only_save(radar_only_data: Dict[str, Any], completed: Dict[str, Any],
+                             direction_name: str, peak_speed: int):
+    """
+    Wait before saving radar-only. If a plate matches this detection in the meantime, skip save
+    to avoid duplicate records (one with plate, one without) for the same vehicle.
+    """
+    time.sleep(RADAR_DEFER_SAVE_SECONDS)
+    detection_id = completed.get('end_time')
+    with _matched_detections_lock:
+        if detection_id and detection_id in _matched_radar_detections:
+            print(f"\n  ⏭️  RADAR DETECTION - skipped (plate matched): {peak_speed}km/h | {direction_name}", flush=True)
+            return
+    save_detection(radar_only_data)
+    print(f"\n{'='*60}", flush=True)
+    print(f"🚨 RADAR DETECTION - NO PLATE", flush=True)
+    print(f"   Direction: {direction_name}", flush=True)
+    print(f"   Speed: {peak_speed}km/h", flush=True)
+    print(f"   Status: 💾 Saving to queue...", flush=True)
+    print(f"{'='*60}\n", flush=True)
+
 def _complete_detection(direction_sign: str, direction_name: str, peak_speed: int, 
                         detection_readings: list, start_time: str) -> Dict[str, Any]:
     """Helper to complete a detection and add to queue - thread-safe"""
@@ -288,8 +309,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             else:
                 print(f"  ⚠️  Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
 
-        # Save radar detection even without plate (for vehicles 10km/h and above)
-        # When ONLY_POSITIVE_DIRECTION: only save positive direction (streamline)
+        # Defer radar-only save: wait to see if plate arrives and matches (avoids 2 records for 1 vehicle)
         if peak_speed >= 10 and (not ONLY_POSITIVE_DIRECTION or direction_sign == '+'):
             radar_only_data = {
                 'timestamp': datetime.now().isoformat(),
@@ -303,13 +323,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
                 'radar_detection_end': completed['end_time'],
                 'radar_peak_time': completed.get('peak_time'),
             }
-            save_detection(radar_only_data)
-            print(f"\n{'='*60}", flush=True)
-            print(f"🚨 RADAR DETECTION - NO PLATE", flush=True)
-            print(f"   Direction: {direction_name}", flush=True)
-            print(f"   Speed: {peak_speed}km/h", flush=True)
-            print(f"   Status: 💾 Saving to queue...", flush=True)
-            print(f"{'='*60}\n", flush=True)
+            Thread(target=_deferred_radar_only_save, args=(radar_only_data, completed, direction_name, peak_speed), daemon=True).start()
         elif peak_speed < 10:
             print(f"\n{'='*60}", flush=True)
             print(f"📡 RADAR DETECTION - TOO SLOW", flush=True)
