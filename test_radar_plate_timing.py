@@ -166,10 +166,10 @@ def main():
                         if ch[0] == ord("A") and ch[1] in (ord("+"), ord("-")):
                             try:
                                 dd = "+" if ch[1] == ord("+") else "-"
-                                if ONLY_NEGATIVE_DIRECTION and dd != "-":
-                                    pass  # skip positive
+                                ss = int(ch[2:].decode())
+                                if ONLY_NEGATIVE_DIRECTION and ss > 0 and dd != "-":
+                                    pass  # skip positive speed readings
                                 else:
-                                    ss = int(ch[2:].decode())
                                     on_radar(dd, ss)
                             except (ValueError, UnicodeDecodeError):
                                 pass
