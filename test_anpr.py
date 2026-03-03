@@ -54,6 +54,19 @@ def extract_plate_number(data_json):
         return None
 
 
+def format_camera_time(raw: str) -> str:
+    """Format YYYYMMDDHHMMSSmmm (e.g. 20260303192141830) to readable string."""
+    if not raw or len(raw) < 14:
+        return raw
+    try:
+        # YYYYMMDD HHMMSS mmm
+        if len(raw) >= 17:
+            return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]} {raw[8:10]}:{raw[10:12]}:{raw[12:14]}.{raw[14:17]}"
+        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]} {raw[8:10]}:{raw[10:12]}:{raw[12:14]}"
+    except (IndexError, TypeError):
+        return raw
+
+
 def extract_time_info(data_json):
     """Extract time/capture info from camera event - common Hikvision/LAPI fields"""
     for path in [
@@ -169,6 +182,8 @@ def handle_camera_client(client_socket, dump_json=False):
         plate_no = extract_plate_number(data_json)
         ts_receive = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         ts_camera = extract_time_info(data_json)
+        if ts_camera and len(ts_camera) >= 14 and ts_camera.isdigit():
+            ts_camera = format_camera_time(ts_camera)
         time_info = f" | camera_time: {ts_camera}" if ts_camera else ""
         if plate_no:
             print(f"{ts_receive} | PLATE: {plate_no}{time_info}")
