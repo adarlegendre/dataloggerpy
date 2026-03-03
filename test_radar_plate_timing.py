@@ -13,6 +13,7 @@ import json
 import re
 import socket
 import time
+import threading
 from datetime import datetime
 
 # Same as radaranprvms.py
@@ -20,6 +21,13 @@ RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
 RECEIVE_ALARM_DATA_PORT = 8090
 LOG_FILE = "timing_log.txt"
+CAMERA_IP = '192.168.2.13'
+CAMERA_PORT = 80
+RECEIVE_ALARM_DATA_IP = "192.168.2.101"
+CAMERA_USERNAME = 'admin'
+CAMERA_PASSWORD = 'kObliha12@'
+DURATION = 300
+CAMERA_URL = f'http://{CAMERA_IP}:{CAMERA_PORT}/LAPI/V1.0/System/Event/Subscription'
 
 
 def out(msg):
@@ -66,7 +74,7 @@ def main():
         has_radar = False
         ser = None
 
-    # Camera - same as radaranprvms (bind, Content-Length read)
+    # Camera - bind first, then subscribe (same as radaranprvms)
     out("Binding camera port...")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -74,6 +82,42 @@ def main():
     server.bind(("", RECEIVE_ALARM_DATA_PORT))
     server.listen(99)
     write(f"camera listen {RECEIVE_ALARM_DATA_PORT}")
+
+    # Subscribe to camera so it sends plate events here
+    out("Subscribing to camera...")
+    try:
+        from requests.auth import HTTPDigestAuth
+        import requests
+        sub_data = {
+            "AddressType": 0,
+            "IPAddress": RECEIVE_ALARM_DATA_IP,
+            "Port": RECEIVE_ALARM_DATA_PORT,
+            "Duration": DURATION
+        }
+        headers = {"Content-Type": "application/json", "Host": f"{CAMERA_IP}:{CAMERA_PORT}", "Connection": "Close"}
+        r = requests.post(CAMERA_URL, headers=headers, data=json.dumps(sub_data),
+                         auth=HTTPDigestAuth(CAMERA_USERNAME, CAMERA_PASSWORD), timeout=5)
+        if r.status_code == 200:
+            sub_id = r.json()["Response"]["Data"]["ID"]
+            write("camera subscribed")
+            out(f"Subscribed (ID: {sub_id})")
+
+            def keepalive():
+                while True:
+                    try:
+                        requests.put(f"{CAMERA_URL}/{sub_id}", headers=headers, data=json.dumps({"Duration": DURATION}),
+                                    auth=HTTPDigestAuth(CAMERA_USERNAME, CAMERA_PASSWORD), timeout=5)
+                    except Exception:
+                        pass
+                    time.sleep(DURATION / 2)
+
+            threading.Thread(target=keepalive, daemon=True).start()
+        else:
+            out(f"Subscribe failed: {r.status_code}")
+            write("camera subscribe failed")
+    except Exception as e:
+        out(f"Subscribe error: {e}")
+        write(f"camera subscribe error {e}")
     write("")
 
     buf = b""
@@ -153,6 +197,7 @@ def main():
                 client.close()
                 if len(data) < 50:
                     continue
+                write(f"camera_event {len(data)} bytes")
                 raw = data.decode("utf-8", errors="ignore")
                 body = raw.split("\r\n\r\n", 1)[1] if "\r\n\r\n" in raw else raw
                 body = re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]", "", body)
@@ -171,7 +216,6 @@ def main():
             except Exception:
                 pass
 
-    import threading
     if has_radar:
         threading.Thread(target=radar_loop, daemon=True).start()
     threading.Thread(target=camera_loop, daemon=True).start()
