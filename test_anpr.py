@@ -4,6 +4,7 @@ ANPR/Camera test - same implementation as radaranprvms.py
 Subscribe to camera, receive plate events, display only. No radar, no VMS.
 """
 
+import argparse
 import json
 import re
 import socket
@@ -56,6 +57,7 @@ def extract_plate_number(data_json):
 def extract_time_info(data_json):
     """Extract time/capture info from camera event - common Hikvision/LAPI fields"""
     for path in [
+        ("StructureInfo", "ImageInfoList", 0, "CaptureTime"),
         ("StructureInfo", "ObjInfo", "Time"),
         ("StructureInfo", "ObjInfo", "TimeStamp"),
         ("StructureInfo", "ObjInfo", "DateTime"),
@@ -69,11 +71,21 @@ def extract_time_info(data_json):
     ]:
         obj = data_json
         for key in path:
-            obj = obj.get(key) if isinstance(obj, dict) else None
+            if isinstance(key, int):
+                obj = obj[key] if isinstance(obj, list) and 0 <= key < len(obj) else None
+            else:
+                obj = obj.get(key) if isinstance(obj, dict) else None
             if obj is None:
                 break
         if obj and isinstance(obj, str):
             return obj
+    # TimeStamp at top level is often Unix seconds (numeric)
+    ts = data_json.get("TimeStamp")
+    if ts is not None and isinstance(ts, (int, float)):
+        try:
+            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        except (ValueError, OSError):
+            pass
     return None
 
 
@@ -96,7 +108,7 @@ def keepalive(subscription_id):
         time.sleep(DURATION / 2)
 
 
-def handle_camera_client(client_socket):
+def handle_camera_client(client_socket, dump_json=False):
     """Handle camera connection - same logic as radaranprvms _handle_camera_client"""
     try:
         data = b''
@@ -149,6 +161,11 @@ def handle_camera_client(client_socket):
                 client_socket.close()
                 return
 
+        if dump_json:
+            print("\n" + "=" * 60 + "\nRAW CAMERA JSON (for time extraction):\n" + "=" * 60)
+            print(json.dumps(data_json, indent=2, ensure_ascii=False))
+            print("=" * 60 + "\n")
+
         plate_no = extract_plate_number(data_json)
         ts_receive = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         ts_camera = extract_time_info(data_json)
@@ -168,6 +185,9 @@ def handle_camera_client(client_socket):
             pass
 
 
+DUMP_JSON = False
+
+
 def listen_camera_events():
     """Listen for camera ANPR events - same as radaranprvms.py"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -180,7 +200,7 @@ def listen_camera_events():
     while True:
         try:
             client_socket, client_address = server_socket.accept()
-            threading.Thread(target=handle_camera_client, args=(client_socket,), daemon=True).start()
+            threading.Thread(target=handle_camera_client, args=(client_socket, DUMP_JSON), daemon=True).start()
         except socket.timeout:
             continue
         except Exception as e:
@@ -188,6 +208,12 @@ def listen_camera_events():
 
 
 def main():
+    global DUMP_JSON
+    parser = argparse.ArgumentParser(description="ANPR/Camera test - receive plate events")
+    parser.add_argument("--dump-json", action="store_true", help="Print raw JSON for each event (to inspect time fields)")
+    args = parser.parse_args()
+    DUMP_JSON = args.dump_json
+
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(line_buffering=True)
         sys.stderr.reconfigure(line_buffering=True)
@@ -230,7 +256,9 @@ def main():
         print(f'Subscribe error: {e}')
         return
 
-    print("\nWaiting for plate events. Ctrl+C to stop.\n")
+    if DUMP_JSON:
+        print("(--dump-json: raw JSON will be printed for each event)\n")
+    print("Waiting for plate events. Ctrl+C to stop.\n")
     try:
         while True:
             time.sleep(1)
