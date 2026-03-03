@@ -44,7 +44,8 @@ CAMERA_URL = f'http://{CAMERA_IP}:{CAMERA_PORT}/LAPI/V1.0/System/Event/Subscript
 RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
 RADAR_TIMEOUT = 0.1  # Increased timeout to prevent blocking
-ONLY_POSITIVE_DIRECTION = True  # True = only match plates with positive direction (A+) radar
+ONLY_POSITIVE_DIRECTION = False  # True = only positive (A+), False when using negative
+ONLY_NEGATIVE_DIRECTION = True   # True = only negative (A-) radar
 POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
 NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
 CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
@@ -109,6 +110,14 @@ _VMS_BASE_CMD = [
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
+
+def _direction_ok(direction_sign: str) -> bool:
+    """True if this direction should be processed (positive-only, negative-only, or both)."""
+    if ONLY_POSITIVE_DIRECTION:
+        return direction_sign == '+'
+    if ONLY_NEGATIVE_DIRECTION:
+        return direction_sign == '-'
+    return True
 
 def ensure_detections_folder():
     """Ensure detections folder exists"""
@@ -291,8 +300,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
         }
 
         # Thread-safe append to completed detections (for plate matching)
-        # When ONLY_POSITIVE_DIRECTION: only add positive (+) detections to matching pool
-        if not ONLY_POSITIVE_DIRECTION or direction_sign == '+':
+        if _direction_ok(direction_sign):
             lock_acquired = False
             for attempt in range(3):
                 lock_acquired = _radar_lock.acquire(timeout=0.5)
@@ -311,7 +319,7 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
                 print(f"  ⚠️  Could not acquire lock after 3 attempts, detection saved but won't match with camera", flush=True)
 
         # Defer radar-only save: wait to see if plate arrives and matches (avoids 2 records for 1 vehicle)
-        if peak_speed >= 10 and (not ONLY_POSITIVE_DIRECTION or direction_sign == '+'):
+        if peak_speed >= 10 and _direction_ok(direction_sign):
             radar_only_data = {
                 'timestamp': datetime.now().isoformat(),
                 'plate_number': None,
@@ -332,12 +340,11 @@ def _complete_detection(direction_sign: str, direction_name: str, peak_speed: in
             print(f"   Speed: {peak_speed}km/h", flush=True)
             print(f"   Status: ⏭️  Not saved (<10km/h)", flush=True)
             print(f"{'='*60}\n", flush=True)
-        elif ONLY_POSITIVE_DIRECTION and direction_sign == '-':
-            print(f"\n📡 RADAR (negative) - skipped (positive direction only)", flush=True)
+        elif not _direction_ok(direction_sign):
+            print(f"\n📡 RADAR ({direction_sign}) - skipped (direction filter)", flush=True)
 
         # Check for speed violation (no plate detected, speed > limit) - non-blocking
-        # When ONLY_POSITIVE_DIRECTION: only check positive direction
-        if peak_speed > SPEED_LIMIT and (not ONLY_POSITIVE_DIRECTION or direction_sign == '+'):
+        if peak_speed > SPEED_LIMIT and _direction_ok(direction_sign):
             print(f"  ⚠️  Speed violation detected: {peak_speed}km/h > {SPEED_LIMIT}km/h - Starting check...", flush=True)
             Thread(target=_check_and_display_speed_violation, args=(completed,), daemon=True).start()
 
@@ -503,9 +510,8 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
     
     with _radar_lock:
         # Check in-progress detection first (most likely to match)
-        # When ONLY_POSITIVE_DIRECTION: only consider positive (+) direction
         if _current_detection and _current_direction:
-            if not ONLY_POSITIVE_DIRECTION or _current_direction == '+':
+            if _direction_ok(_current_direction):
                 vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
                 if vehicle_readings:
                     try:
@@ -529,7 +535,6 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
                         pass
         
         # Check completed detections (most recent first)
-        # When ONLY_POSITIVE_DIRECTION: only positive detections are in this list
         if not _completed_detections:
             return None
         
@@ -574,7 +579,7 @@ def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAME
         candidates = []
 
         # In-progress: plate captured DURING radar detection, before it ends
-        if _current_detection and _current_direction and (not ONLY_POSITIVE_DIRECTION or _current_direction == '+'):
+        if _current_detection and _current_direction and _direction_ok(_current_direction):
             vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
             if vehicle_readings:
                 peak_speed = max(r['speed'] for r in vehicle_readings)
@@ -1101,9 +1106,8 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"{'='*60}\n", flush=True)
                 else:
                     speed = 0
-                    # When ONLY_POSITIVE_DIRECTION: use IMR_KD-B as default for plates without radar match
-                    default_direction = POSITIVE_DIRECTION_NAME if ONLY_POSITIVE_DIRECTION else 'Unknown'
-                    default_sign = '+' if ONLY_POSITIVE_DIRECTION else None
+                    default_direction = NEGATIVE_DIRECTION_NAME if ONLY_NEGATIVE_DIRECTION else (POSITIVE_DIRECTION_NAME if ONLY_POSITIVE_DIRECTION else 'Unknown')
+                    default_sign = '-' if ONLY_NEGATIVE_DIRECTION else ('+' if ONLY_POSITIVE_DIRECTION else None)
                     detection_data = {
                         'timestamp': timestamp,
                         'plate_number': plate_no,
@@ -1119,8 +1123,8 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"⚠️  PLATE DETECTION - NO RADAR MATCH", flush=True)
                     print(f"   Plate: {plate_no}", flush=True)
                     print(f"   Reason: No radar detection (before plate) within {RADAR_CAMERA_PEAK_WINDOW}s window", flush=True)
-                    if ONLY_POSITIVE_DIRECTION:
-                        print(f"   Direction: {default_direction} (default, positive only)", flush=True)
+                    if ONLY_POSITIVE_DIRECTION or ONLY_NEGATIVE_DIRECTION:
+                        print(f"   Direction: {default_direction} (default)", flush=True)
                     print(f"   Status: 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     send_plate_to_vms("")
@@ -1179,7 +1183,7 @@ def main():
     print(f"  Camera: {CAMERA_IP}:{CAMERA_PORT}")
     print(f"  Radar: {RADAR_PORT} @ {RADAR_BAUDRATE} baud")
     print(f"  VMS: {VMS_IP}:{VMS_PORT}")
-    print(f"  Only Positive Direction (A+): {ONLY_POSITIVE_DIRECTION}")
+    print(f"  Direction filter: positive={ONLY_POSITIVE_DIRECTION} negative={ONLY_NEGATIVE_DIRECTION}")
     print(f"  Detections Folder: {DETECTIONS_FOLDER}")
     print("=" * 60)
     
