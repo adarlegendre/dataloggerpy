@@ -3,11 +3,12 @@
 Dumb logger: radar + camera events to a file.
 Same connections as radaranprvms.py. Run on Pi, Ctrl+C to stop, share the file.
 
-  python test_radar_plate_timing.py
+  python3 -u test_radar_plate_timing.py
 
 Output: timing_log.txt
 """
 
+import sys
 import json
 import re
 import socket
@@ -42,6 +43,10 @@ def plate_from_json(j):
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    print("Starting...", flush=True)
     open(LOG_FILE, "w").write("")
     write("START")
     write("")
@@ -49,15 +54,18 @@ def main():
     # Radar - same as radaranprvms
     try:
         import serial
+        print("Opening radar...", flush=True)
         ser = serial.Serial(port=RADAR_PORT, baudrate=RADAR_BAUDRATE, timeout=0.1)
         has_radar = True
         write(f"radar ok {RADAR_PORT}")
     except Exception as e:
+        print(f"Radar: {e}", flush=True)
         write(f"radar fail {e}")
         has_radar = False
         ser = None
 
     # Camera - same as radaranprvms (bind, Content-Length read)
+    print("Binding camera port...", flush=True)
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.settimeout(1.0)
@@ -165,6 +173,7 @@ def main():
     if has_radar:
         threading.Thread(target=radar_loop, daemon=True).start()
     threading.Thread(target=camera_loop, daemon=True).start()
+    print("Running. Ctrl+C to stop.", flush=True)
 
     try:
         while True:
