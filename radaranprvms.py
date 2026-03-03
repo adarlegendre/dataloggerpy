@@ -51,7 +51,8 @@ CONSECUTIVE_ZEROS_THRESHOLD = 3  # Number of consecutive zeros to end detection
 MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_CAMERA_TIME_WINDOW = 8  # Legacy: max age for detection (seconds)
-RADAR_CAMERA_PEAK_WINDOW = 10  # Symmetric window (±seconds) around plate time for peak-time matching
+RADAR_CAMERA_PEAK_WINDOW = 10  # Window (seconds) for matching plate to radar
+RADAR_IN_PROGRESS_AFTER_TOLERANCE = 3  # Allow in-progress match if plate within 3s after last radar reading
 RADAR_DEFER_SAVE_SECONDS = 12  # Delay radar-only save (must exceed window + retry: 10 + 3)
 
 # VMS Configuration (CP5200 Display)
@@ -558,8 +559,9 @@ def get_latest_completed_detection(max_age_seconds: float = RADAR_CAMERA_TIME_WI
 
 def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAMERA_PEAK_WINDOW) -> Optional[Dict[str, Any]]:
     """
-    Find radar detection for plate: first by peak_time (closest), then fallback to last detection by end_time.
-    Excludes already-matched detections. 10s window for both strategies.
+    Find radar detection for plate. MOST COMMON: plate during radar (after peak, before end).
+    Check in-progress FIRST - if radar is still tracking when plate arrives, that's the match.
+    Fallback: completed detections (plate arrived after radar ended).
     """
     global _completed_detections, _current_detection, _current_direction, _matched_radar_detections
 
@@ -571,7 +573,7 @@ def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAME
     with _radar_lock:
         candidates = []
 
-        # In-progress detection
+        # In-progress: plate captured DURING radar detection, before it ends
         if _current_detection and _current_direction and (not ONLY_POSITIVE_DIRECTION or _current_direction == '+'):
             vehicle_readings = [r for r in _current_detection if r['speed'] > 0]
             if vehicle_readings:
@@ -599,49 +601,66 @@ def get_best_match_for_plate(plate_timestamp, window_seconds: float = RADAR_CAME
     best = None
     best_diff = float('inf')
 
-    # Strategy 1: match by peak_time (closest within window)
-    for det in candidates:
+    def _check_candidate(det, time_str, is_in_progress):
+        nonlocal best, best_diff
         detection_id = det.get('end_time')
         if detection_id and detection_id in matched_set:
-            continue
-        time_str = det.get('peak_time') or det.get('end_time')
+            return
         if not time_str:
-            continue
+            return
         try:
             t = datetime.fromisoformat(str(time_str).replace('Z', '+00:00'))
         except (ValueError, TypeError):
-            continue
-        diff = abs((plate_t - t).total_seconds())
-        if diff <= window_seconds and diff < best_diff:
-            best_diff = diff
-            best = det.copy()
-            if 'in_progress' not in best:
-                best['in_progress'] = False
+            return
+        diff = (plate_t - t).total_seconds()  # Positive = radar before plate
 
+        if det.get('in_progress'):
+            # Plate captured during radar: allow if plate within tolerance of last reading
+            # end_time can be slightly after plate (we're still tracking)
+            end_str = det.get('end_time')
+            if end_str:
+                try:
+                    end_t = datetime.fromisoformat(str(end_str).replace('Z', '+00:00'))
+                    end_diff = (plate_t - end_t).total_seconds()
+                    if end_diff < -RADAR_IN_PROGRESS_AFTER_TOLERANCE:
+                        return  # Plate too long after last reading - wrong vehicle
+                except (ValueError, TypeError):
+                    pass
+            # Peak was before plate (vehicle at radar, then camera) - diff should be positive
+            # Or plate arrived during falling phase - diff could be small positive
+            if diff >= -0.5 and diff <= window_seconds and diff < best_diff:
+                best_diff = diff
+                best = det.copy()
+        else:
+            # Completed: radar must be before plate (never match next vehicle)
+            if diff < -0.5:
+                return
+            if diff <= window_seconds and diff < best_diff:
+                best_diff = diff
+                best = det.copy()
+                if 'in_progress' not in best:
+                    best['in_progress'] = False
+                if not best.get('peak_time') and best.get('end_time'):
+                    best['peak_time'] = best['end_time']
+
+    # MOST COMMON: in-progress first (plate during radar detection)
+    in_progress = [c for c in candidates if c.get('in_progress')]
+    completed = [c for c in candidates if not c.get('in_progress')]
+
+    for det in in_progress:
+        _check_candidate(det, det.get('peak_time') or det.get('end_time'), True)
     if best:
         return best
 
-    # Strategy 2: fallback - last radar detection by end_time (closest within window)
+    for det in completed:
+        _check_candidate(det, det.get('peak_time') or det.get('end_time'), False)
+    if best:
+        return best
+
+    # Fallback by end_time (completed only)
     best_diff = float('inf')
-    for det in candidates:
-        detection_id = det.get('end_time')
-        if detection_id and detection_id in matched_set:
-            continue
-        time_str = det.get('end_time')
-        if not time_str:
-            continue
-        try:
-            t = datetime.fromisoformat(str(time_str).replace('Z', '+00:00'))
-        except (ValueError, TypeError):
-            continue
-        diff = abs((plate_t - t).total_seconds())
-        if diff <= window_seconds and diff < best_diff:
-            best_diff = diff
-            best = det.copy()
-            if 'in_progress' not in best:
-                best['in_progress'] = False
-            if not best.get('peak_time') and best.get('end_time'):
-                best['peak_time'] = best['end_time']
+    for det in completed:
+        _check_candidate(det, det.get('end_time'), False)
 
     return best
 
@@ -1099,7 +1118,7 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"\n{'='*60}", flush=True)
                     print(f"⚠️  PLATE DETECTION - NO RADAR MATCH", flush=True)
                     print(f"   Plate: {plate_no}", flush=True)
-                    print(f"   Reason: No radar peak within ±{RADAR_CAMERA_PEAK_WINDOW}s of plate capture", flush=True)
+                    print(f"   Reason: No radar detection (before plate) within {RADAR_CAMERA_PEAK_WINDOW}s window", flush=True)
                     if ONLY_POSITIVE_DIRECTION:
                         print(f"   Direction: {default_direction} (default, positive only)", flush=True)
                     print(f"   Status: 💾 Saving...", flush=True)
