@@ -22,10 +22,15 @@ RECEIVE_ALARM_DATA_PORT = 8090
 LOG_FILE = "timing_log.txt"
 
 
+def out(msg):
+    """Print to console (stderr = unbuffered)"""
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
+
 def write(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     line = f"{ts} | {msg}\n"
-    print(line.strip(), flush=True)
+    out(line.strip())
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(line)
 
@@ -43,10 +48,7 @@ def plate_from_json(j):
 
 
 def main():
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(line_buffering=True)
-        sys.stderr.reconfigure(line_buffering=True)
-    print("Starting...", flush=True)
+    out("Starting...")
     open(LOG_FILE, "w").write("")
     write("START")
     write("")
@@ -54,18 +56,18 @@ def main():
     # Radar - same as radaranprvms
     try:
         import serial
-        print("Opening radar...", flush=True)
+        out("Opening radar...")
         ser = serial.Serial(port=RADAR_PORT, baudrate=RADAR_BAUDRATE, timeout=0.1)
         has_radar = True
         write(f"radar ok {RADAR_PORT}")
     except Exception as e:
-        print(f"Radar: {e}", flush=True)
+        out(f"Radar: {e}")
         write(f"radar fail {e}")
         has_radar = False
         ser = None
 
     # Camera - same as radaranprvms (bind, Content-Length read)
-    print("Binding camera port...", flush=True)
+    out("Binding camera port...")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.settimeout(1.0)
@@ -173,12 +175,22 @@ def main():
     if has_radar:
         threading.Thread(target=radar_loop, daemon=True).start()
     threading.Thread(target=camera_loop, daemon=True).start()
-    print("Running. Ctrl+C to stop.", flush=True)
+    out("Running. Ctrl+C to stop.")
 
     try:
+        last_beat = time.time()
         while True:
             time.sleep(1)
+            if time.time() - last_beat >= 10:
+                out(f"... {datetime.now().strftime('%H:%M:%S')} still waiting")
+                last_beat = time.time()
     except KeyboardInterrupt:
         write("")
         write("STOP")
-        print(f"\nSaved to {LOG_FILE}")
+        out(f"Saved to {LOG_FILE}")
+
+
+if __name__ == "__main__":
+    sys.stderr.write("test_radar_plate_timing starting\n")
+    sys.stderr.flush()
+    main()
