@@ -191,6 +191,11 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.stderr.write("test_radar_plate_timing starting\n")
-    sys.stderr.flush()
-    main()
+    try:
+        sys.stderr.write("test_radar_plate_timing starting\n")
+        sys.stderr.flush()
+        main()
+    except Exception as e:
+        sys.stderr.write(f"Error: {e}\n")
+        sys.stderr.flush()
+        raise
