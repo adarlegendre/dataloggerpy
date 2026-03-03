@@ -17,7 +17,6 @@ import threading
 from datetime import datetime
 
 # Same as radaranprvms.py
-ONLY_NEGATIVE_DIRECTION = True  # True = only log negative (A-) radar
 RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
 RECEIVE_ALARM_DATA_PORT = 8090
@@ -166,11 +165,8 @@ def main():
                         if ch[0] == ord("A") and ch[1] in (ord("+"), ord("-")):
                             try:
                                 dd = "+" if ch[1] == ord("+") else "-"
-                                if ONLY_NEGATIVE_DIRECTION and dd != "-":
-                                    pass  # skip positive
-                                else:
-                                    ss = int(ch[2:].decode())
-                                    on_radar(dd, ss)
+                                ss = int(ch[2:].decode())
+                                on_radar(dd, ss)
                             except (ValueError, UnicodeDecodeError):
                                 pass
                         elif b"A" in ch:
