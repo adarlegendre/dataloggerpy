@@ -51,10 +51,10 @@ MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
 SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
 RADAR_DEFER_SAVE_SECONDS = 12  # Delay before ZPOMAL/radar-only (wait for plate to arrive)
 # Capture-time sync: match plate to radar by camera CaptureTime (no 0-peak-0 dependency)
-RADAR_READINGS_BUFFER_SECONDS = 30  # Keep last N seconds of A+ readings for capture-time matching
-RADAR_CAPTURE_WINDOW_BEFORE = 5  # Seconds before capture time to search for radar
-RADAR_CAPTURE_WINDOW_AFTER = 2   # Seconds after capture time (vehicle may pass radar slightly after camera)
-RADAR_CLUSTER_GAP_SECONDS = 5    # Gap > Ns between A+ readings = cluster ended (for ZPOMAL/radar-only)
+RADAR_READINGS_BUFFER_SECONDS = 60  # Keep last N seconds of A+ readings (wider for clock skew)
+RADAR_CAPTURE_WINDOW_BEFORE = 15  # Seconds before capture/receive time to search for radar
+RADAR_CAPTURE_WINDOW_AFTER = 5    # Seconds after capture/receive time (vehicle may pass radar after camera)
+RADAR_CLUSTER_GAP_SECONDS = 5     # Gap > Ns between A+ readings = cluster ended (for ZPOMAL/radar-only)
 
 # VMS Configuration (CP5200 Display)
 VMS_IP = "192.168.1.222"
@@ -382,6 +382,16 @@ def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dic
             continue
 
     if not candidates:
+        # Debug: help diagnose why no match (clock skew, empty buffer, etc.)
+        try:
+            if readings:
+                buf_first = datetime.fromisoformat(readings[0][0])
+                buf_last = datetime.fromisoformat(readings[-1][0])
+                print(f"  📡 [Match] No overlap: search {capture_time.strftime('%H:%M:%S')} vs buffer {buf_first.strftime('%H:%M:%S')}–{buf_last.strftime('%H:%M:%S')} ({len(readings)} readings)", flush=True)
+            else:
+                print(f"  📡 [Match] Buffer empty - no A+ readings in last {RADAR_READINGS_BUFFER_SECONDS}s", flush=True)
+        except Exception:
+            pass
         return None
 
     peak_speed = max(s for _, s in candidates)
@@ -400,6 +410,15 @@ def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dic
         'end_time': datetime.fromtimestamp(max(t for t, _ in candidates)).isoformat(),
         'in_progress': False,
     }
+
+
+def get_best_radar_match_by_receive_time(receive_time: datetime) -> Optional[Dict[str, Any]]:
+    """
+    Fallback: match by receive time when capture-time fails (clock skew, missing CaptureTime).
+    Vehicle typically passed radar 0-15s before we received the plate.
+    """
+    return get_best_radar_match_by_capture_time(receive_time)
+
 
 def read_radar_data():
     """Read radar data from serial port - simplified for continuous reliable streaming"""
@@ -823,15 +842,23 @@ def _handle_camera_client(client_socket, client_address):
                 plate_timestamp = capture_time if capture_time else datetime.now()
                 timestamp = plate_timestamp.isoformat()
 
-                # Match by capture time: max A+ speed in window (no 0-peak-0 dependency)
+                # Match by capture time first, then receive time (handles clock skew / missing CaptureTime)
+                receive_time = datetime.now()
                 radar_detection = None
-                if ONLY_POSITIVE_DIRECTION and capture_time:
-                    radar_detection = get_best_radar_match_by_capture_time(capture_time)
-                    if radar_detection:
-                        print(f"  📷 Capture-time sync: {capture_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h", flush=True)
-                if not radar_detection and capture_time:
-                    time.sleep(3.0)  # Retry: radar may arrive shortly after plate
-                    radar_detection = get_best_radar_match_by_capture_time(capture_time)
+                if ONLY_POSITIVE_DIRECTION:
+                    if capture_time:
+                        radar_detection = get_best_radar_match_by_capture_time(capture_time)
+                        if radar_detection:
+                            print(f"  📷 Capture-time sync: {capture_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h", flush=True)
+                    if not radar_detection:
+                        time.sleep(2.0)  # Brief wait for radar to arrive
+                        if capture_time:
+                            radar_detection = get_best_radar_match_by_capture_time(capture_time)
+                    if not radar_detection:
+                        # Fallback: match by receive time (camera clock skew or missing CaptureTime)
+                        radar_detection = get_best_radar_match_by_receive_time(receive_time)
+                        if radar_detection:
+                            print(f"  📷 Receive-time sync: {receive_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h", flush=True)
 
                 if radar_detection:
                     print(f"  🔗 Found radar match: {radar_detection['peak_speed']}km/h | {radar_detection['direction_name']}", flush=True)
