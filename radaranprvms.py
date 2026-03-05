@@ -52,7 +52,7 @@ SPEED_LIMIT = 50
 ZPOMAL_DEFER_SECONDS = 3
 RADAR_DEFER_SAVE_SECONDS = 12
 RADAR_READINGS_BUFFER_SECONDS = 60
-RADAR_CAPTURE_WINDOW_BEFORE = 8
+RADAR_CAPTURE_WINDOW_BEFORE = 10
 RADAR_CAPTURE_WINDOW_AFTER = 2
 RADAR_CLUSTER_GAP_SECONDS = 5
 
@@ -350,7 +350,8 @@ def process_radar_reading(direction_sign: str, speed: int):
                 except (ValueError, TypeError):
                     _negative_radar_readings.pop(0)
 
-def _match_readings_in_window(readings: list, t_min: float, t_max: float) -> Optional[tuple]:
+def _readings_in_window(readings: list, t_min: float, t_max: float) -> list:
+    """Get (ts, speed) pairs within time window."""
     candidates = []
     for ts_str, speed in readings:
         try:
@@ -359,12 +360,43 @@ def _match_readings_in_window(readings: list, t_min: float, t_max: float) -> Opt
                 candidates.append((ts, speed))
         except (ValueError, TypeError):
             continue
+    return candidates
+
+
+def _cluster_by_gap(candidates: list, gap_seconds: float) -> list:
+    """
+    Group readings into clusters by time gap. Gap > gap_seconds starts new cluster.
+    Returns list of (start_ts, end_ts, peak_speed, cluster_readings).
+    """
     if not candidates:
-        return None
-    peak_speed = max(s for _, s in candidates)
-    return (peak_speed, candidates)
+        return []
+    sorted_candidates = sorted(candidates, key=lambda x: x[0])
+    clusters = []
+    current = [sorted_candidates[0]]
+    for i in range(1, len(sorted_candidates)):
+        ts, _ = sorted_candidates[i]
+        last_ts = current[-1][0]
+        if ts - last_ts > gap_seconds:
+            start_ts = current[0][0]
+            end_ts = current[-1][0]
+            peak_speed = max(s for _, s in current)
+            clusters.append((start_ts, end_ts, peak_speed, list(current)))
+            current = [sorted_candidates[i]]
+        else:
+            current.append(sorted_candidates[i])
+    if current:
+        start_ts = current[0][0]
+        end_ts = current[-1][0]
+        peak_speed = max(s for _, s in current)
+        clusters.append((start_ts, end_ts, peak_speed, list(current)))
+    return clusters
+
 
 def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dict[str, Any]]:
+    """
+    Match plate to radar by clustering readings in time window, then picking the cluster
+    whose time best matches the plate (closest end_time to plate time; radar comes first).
+    """
     global _positive_radar_readings, _negative_radar_readings
 
     if not isinstance(capture_time, datetime):
@@ -378,20 +410,25 @@ def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dic
     t_min = t0 - RADAR_CAPTURE_WINDOW_BEFORE
     t_max = t0 + RADAR_CAPTURE_WINDOW_AFTER
 
-    best = None
-    pos_match = _match_readings_in_window(pos_readings, t_min, t_max)
-    if pos_match:
-        peak_speed, candidates = pos_match
-        best = (peak_speed, candidates, t0, '+', POSITIVE_DIRECTION_NAME)
+    best_cluster = None  # (start_ts, end_ts, peak_speed, candidates, direction_sign, direction_name)
 
-    if not ONLY_POSITIVE_DIRECTION:
-        neg_match = _match_readings_in_window(neg_readings, t_min, t_max)
-        if neg_match:
-            peak_speed, candidates = neg_match
-            if best is None or peak_speed > best[0]:
-                best = (peak_speed, candidates, t0, '-', NEGATIVE_DIRECTION_NAME)
+    for direction_sign, direction_name, readings in [
+        ('+', POSITIVE_DIRECTION_NAME, pos_readings),
+        ('-', NEGATIVE_DIRECTION_NAME, neg_readings),
+    ]:
+        if not readings and direction_sign == '-':
+            continue
+        if ONLY_POSITIVE_DIRECTION and direction_sign == '-':
+            continue
+        candidates = _readings_in_window(readings, t_min, t_max)
+        clusters = _cluster_by_gap(candidates, RADAR_CLUSTER_GAP_SECONDS)
+        for start_ts, end_ts, peak_speed, cluster_readings in clusters:
+            # Pick cluster whose end_time is closest to plate time (radar comes first)
+            dist = abs(end_ts - t0)
+            if best_cluster is None or dist < best_cluster[4]:
+                best_cluster = (start_ts, end_ts, peak_speed, cluster_readings, dist, direction_sign, direction_name)
 
-    if best is None:
+    if best_cluster is None:
         try:
             all_readings = pos_readings + neg_readings
             if all_readings:
@@ -404,8 +441,8 @@ def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dic
             pass
         return None
 
-    peak_speed, candidates, t0, direction_sign, direction_name = best
-    peak_readings = [(t, s) for t, s in candidates if s == peak_speed]
+    start_ts, end_ts, peak_speed, cluster_readings, _dist, direction_sign, direction_name = best_cluster
+    peak_readings = [(t, s) for t, s in cluster_readings if s == peak_speed]
     peak_ts = min(peak_readings, key=lambda x: abs(x[0] - t0))[0]
     peak_time_str = datetime.fromtimestamp(peak_ts).isoformat()
 
@@ -414,9 +451,9 @@ def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dic
         'direction_name': direction_name,
         'peak_speed': peak_speed,
         'peak_time': peak_time_str,
-        'readings_count': len(candidates),
-        'start_time': datetime.fromtimestamp(min(t for t, _ in candidates)).isoformat(),
-        'end_time': datetime.fromtimestamp(max(t for t, _ in candidates)).isoformat(),
+        'readings_count': len(cluster_readings),
+        'start_time': datetime.fromtimestamp(start_ts).isoformat(),
+        'end_time': datetime.fromtimestamp(end_ts).isoformat(),
     }
 
 def get_best_radar_match_by_receive_time(receive_time: datetime) -> Optional[Dict[str, Any]]:
@@ -836,7 +873,7 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"{'='*60}\n", flush=True)
                 else:
                     speed = 0
-                    default_direction = 'Unknown'
+                    default_direction = 'IMR_KD'  # Fallback when plate misses radar
                     default_sign = None
                     detection_data = {
                         'timestamp': timestamp,
