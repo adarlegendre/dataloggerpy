@@ -43,24 +43,24 @@ CAMERA_URL = f'http://{CAMERA_IP}:{CAMERA_PORT}/LAPI/V1.0/System/Event/Subscript
 # Radar configuration
 RADAR_PORT = '/dev/ttyAMA0'
 RADAR_BAUDRATE = 9600
-RADAR_TIMEOUT = 0.1  # Increased timeout to prevent blocking
-ONLY_POSITIVE_DIRECTION = True  # True = only match plates with positive direction (A+) radar
-POSITIVE_DIRECTION_NAME = "IMR_KD-B"  # Name for positive direction (+)
-NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"  # Name for negative direction (-)
-MIN_SPEED_FOR_DISPLAY = 40  # Minimum speed (km/h) to display plate on VMS
-SPEED_LIMIT = 50  # Speed limit (km/h) - vehicles above this speed without plate detection show "ZPOMAL!"
-RADAR_DEFER_SAVE_SECONDS = 12  # Delay before ZPOMAL/radar-only (wait for plate to arrive)
-# Capture-time sync: match plate to radar by camera CaptureTime (no 0-peak-0 dependency)
-RADAR_READINGS_BUFFER_SECONDS = 60  # Keep last N seconds of A+ readings (wider for clock skew)
-RADAR_CAPTURE_WINDOW_BEFORE = 15  # Seconds before capture/receive time to search for radar
-RADAR_CAPTURE_WINDOW_AFTER = 5    # Seconds after capture/receive time (vehicle may pass radar after camera)
-RADAR_CLUSTER_GAP_SECONDS = 5     # Gap > Ns between A+ readings = cluster ended (for ZPOMAL/radar-only)
+RADAR_TIMEOUT = 0.1
+ONLY_POSITIVE_DIRECTION = False
+POSITIVE_DIRECTION_NAME = "IMR_KD-B"
+NEGATIVE_DIRECTION_NAME = "IMR_KD-KO"
+MIN_SPEED_FOR_DISPLAY = 40
+SPEED_LIMIT = 50
+ZPOMAL_DEFER_SECONDS = 3
+RADAR_DEFER_SAVE_SECONDS = 12
+RADAR_READINGS_BUFFER_SECONDS = 60
+RADAR_CAPTURE_WINDOW_BEFORE = 8
+RADAR_CAPTURE_WINDOW_AFTER = 2
+RADAR_CLUSTER_GAP_SECONDS = 5
 
-# VMS Configuration (CP5200 Display)
+# VMS Configuration
 VMS_IP = "192.168.1.222"
 VMS_PORT = 5200
 SENDCP5200_PATH = "./sendcp5200/dist/Debug/GNU-Linux/sendcp5200"
-VMS_DISPLAY_TIME = 3  # Time in seconds to display plate before clearing
+VMS_DISPLAY_TIME = 3
 
 # Data storage
 DETECTIONS_FOLDER = "detections"
@@ -69,42 +69,37 @@ DETECTIONS_FOLDER = "detections"
 # GLOBAL STATE
 # ============================================================================
 
-# HTTP request header
 headers = {
     'Content-Type': 'application/json',
     'Host': f'{CAMERA_IP}:{CAMERA_PORT}',
     'Connection': 'Close',
 }
 
-# Radar state - readings buffer only (no 0-peak-0)
 _radar_lock = Lock()
-
-# Detection storage - Queue-based file writer
 _detections_queue = Queue()
 _detections_lock = Lock()
 _current_date = None
 _detections_file = None
 _file_writer_running = False
 
-# VMS display state
 _vms_clear_thread = None
 _vms_lock = Lock()
-_speed_violation_active = False  # Track if speed violation is currently displayed
+_speed_violation_active = False
 _speed_violation_lock = Lock()
-_matched_capture_times = set()  # Capture times (iso str) that matched a plate - for ZPOMAL/radar-only skip
+_matched_capture_times = set()
 _matched_detections_lock = Lock()
-_max_matched_capture_times = 200  # Keep last N matched capture times
-# Rolling buffer of A+ radar readings for capture-time sync
-_positive_radar_readings = []  # [(timestamp_iso, speed), ...]
-# Current cluster for ZPOMAL/radar-only (gap-based)
-_current_cluster = []  # [(timestamp_iso, speed), ...]
-_last_positive_reading_time = None  # last timestamp when we saw A+
+_max_matched_capture_times = 200
+_positive_radar_readings = []
+_negative_radar_readings = []
+_current_cluster = []
+_current_cluster_negative = []
+_last_positive_reading_time = None
+_last_negative_reading_time = None
 
-# VMS command cache
 _VMS_BASE_CMD = [
     SENDCP5200_PATH,
     "0", VMS_IP, str(VMS_PORT),
-    "2", "0", "",  # Text will be inserted here
+    "2", "0", "",
     "-1", "22", "0", "0", "10", "1"
 ]
 
@@ -113,55 +108,44 @@ _VMS_BASE_CMD = [
 # ============================================================================
 
 def ensure_detections_folder():
-    """Ensure detections folder exists"""
     if not os.path.exists(DETECTIONS_FOLDER):
         os.makedirs(DETECTIONS_FOLDER)
         print(f"Created detections folder: {DETECTIONS_FOLDER}")
 
 def get_daily_json_filename():
-    """Get filename for today's detection JSON file (DD_MM_YYYY.json)"""
     return datetime.now().strftime('%d_%m_%Y.json')
 
 def get_daily_json_path():
-    """Get full path for today's detection JSON file"""
     filename = get_daily_json_filename()
     return os.path.join(DETECTIONS_FOLDER, filename)
 
 def _file_writer_worker():
-    """Background worker thread that efficiently writes detections to file"""
     global _current_date, _detections_file, _file_writer_running
     
     _file_writer_running = True
     ensure_detections_folder()
-    
-    # Confirm file writer is running
     print("✅ File writer worker thread started and running", flush=True)
     
-    # Cache for batch writing
     pending_detections = []
     last_write_time = time.time()
-    batch_timeout = 0.2  # Write batch every 0.2 seconds for faster save confirmation
+    batch_timeout = 0.2
     
     while _file_writer_running:
         try:
-            # Get detection from queue with timeout
             try:
                 detection_data = _detections_queue.get(timeout=batch_timeout)
                 pending_detections.append(detection_data)
                 print(f"  📬 [File Writer] Received item from queue (total pending: {len(pending_detections)})", flush=True)
             except Empty:
-                pass  # Timeout - check if we should flush pending
+                pass
             
-            # Check if we should write (timeout or enough items)
             should_write = (
                 pending_detections and 
                 (time.time() - last_write_time >= batch_timeout or len(pending_detections) >= 10)
             )
             
             if should_write:
-                # Debug: show we're about to write
                 print(f"📝 [File Writer] Writing {len(pending_detections)} detection(s) to file...", flush=True)
-                # Update file path if date changed
                 today = datetime.now().date()
                 if _current_date != today or _detections_file is None:
                     with _detections_lock:
@@ -171,7 +155,6 @@ def _file_writer_worker():
                 filepath = _detections_file
                 
                 try:
-                    # Read existing detections (if file exists)
                     detections = []
                     if os.path.exists(filepath):
                         try:
@@ -182,16 +165,13 @@ def _file_writer_worker():
                         except (json.JSONDecodeError, IOError):
                             detections = []
                     
-                    # Add all pending detections
                     detections.extend(pending_detections)
                     
-                    # Write to file
                     with open(filepath, 'w', encoding='utf-8') as f:
                         json.dump(detections, f, indent=2, ensure_ascii=False)
                         f.flush()
                         os.fsync(f.fileno())
 
-                    # Flag for datamapper: file changed, needs sync
                     sync_flag_path = os.path.join(DETECTIONS_FOLDER, '.sync_needed')
                     try:
                         with open(sync_flag_path, 'w', encoding='utf-8') as sf:
@@ -200,7 +180,6 @@ def _file_writer_worker():
                     except Exception:
                         pass
 
-                    # Log saved detections - show ALL saves with clear indication
                     for detection in pending_detections:
                         plate = detection.get('plate_number')
                         speed = detection.get('speed', 0)
@@ -210,7 +189,6 @@ def _file_writer_worker():
                         else:
                             print(f"💾 SAVED: Radar-only | {speed}km/h | {direction} → {os.path.basename(filepath)}", flush=True)
                     
-                    # Show batch save confirmation
                     if pending_detections:
                         print(f"✅ File write complete: {len(pending_detections)} detection(s) saved to {os.path.basename(filepath)}", flush=True)
                     
@@ -219,37 +197,32 @@ def _file_writer_worker():
                     
                 except Exception as e:
                     print(f"❌ Error saving detections: {e}", flush=True)
-                    # Keep pending detections for retry
                     
         except Exception as e:
-            print(f"File writer error: {e}")
+            print(f"File writer error: {e}", flush=True)
             time.sleep(0.1)
 
 def save_detection(detection_data: Dict[str, Any]):
-    """Save a detection to today's JSON file via queue (non-blocking)"""
     _detections_queue.put(detection_data)
-    # Show immediate confirmation that it's queued
     plate = detection_data.get('plate_number', 'Radar-only')
     speed = detection_data.get('speed', 0)
     print(f"  📥 Queued for save: {plate} | {speed}km/h (queue size: {_detections_queue.qsize()})", flush=True)
 
 def _start_file_writer():
-    """Start the file writer thread"""
     global _file_writer_running
     if not _file_writer_running:
         writer_thread = Thread(target=_file_writer_worker, daemon=True)
         writer_thread.start()
-        time.sleep(0.1)  # Give thread time to start
+        time.sleep(0.1)
         print("✅ File writer thread started", flush=True)
 
 # ============================================================================
-# RADAR FUNCTIONS - Vehicle Detection Tracking
+# RADAR FUNCTIONS
 # ============================================================================
 
 def _cluster_matched_plate(cluster_start: float, cluster_end: float) -> bool:
-    """Check if any plate with capture_time in [cluster_start-2, cluster_end+2] was matched."""
     with _matched_detections_lock:
-        for ct_str in _matched_capture_times:
+        for ct_str in list(_matched_capture_times):
             try:
                 ct = datetime.fromisoformat(ct_str).timestamp()
                 if (cluster_start - 2) <= ct <= (cluster_end + 2):
@@ -258,14 +231,8 @@ def _cluster_matched_plate(cluster_start: float, cluster_end: float) -> bool:
                 continue
     return False
 
-
-def _deferred_cluster_check(cluster_readings: list, start_time: str, end_time: str):
-    """
-    After RADAR_DEFER_SAVE_SECONDS, check if plate matched. If not: ZPOMAL (if speed>limit),
-    radar-only save (if speed>=10).
-    """
+def _deferred_cluster_check(cluster_readings: list, start_time: str, end_time: str, direction_sign: str = '+'):
     global _speed_violation_active
-    time.sleep(RADAR_DEFER_SAVE_SECONDS)
     if not cluster_readings:
         return
     peak_speed = max(s for _, s in cluster_readings)
@@ -274,36 +241,18 @@ def _deferred_cluster_check(cluster_readings: list, start_time: str, end_time: s
         t_end = datetime.fromisoformat(end_time).timestamp()
     except (ValueError, TypeError):
         return
+
+    time.sleep(ZPOMAL_DEFER_SECONDS)
     if _cluster_matched_plate(t_start, t_end):
-        print(f"\n  ⏭️  RADAR CLUSTER - skipped (plate matched): {peak_speed}km/h", flush=True)
+        dir_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+        print(f"\n  ⏭️  RADAR CLUSTER - skipped (plate matched): {peak_speed}km/h {dir_name}", flush=True)
         return
-    # Radar-only save
-    if peak_speed >= 10:
-        radar_only_data = {
-            'timestamp': datetime.now().isoformat(),
-            'plate_number': None,
-            'speed': peak_speed,
-            'direction': POSITIVE_DIRECTION_NAME,
-            'radar_direction_sign': '+',
-            'vms_displayed': 'no',
-            'radar_readings_count': len(cluster_readings),
-            'radar_detection_start': start_time,
-            'radar_detection_end': end_time,
-        }
-        save_detection(radar_only_data)
-        print(f"\n{'='*60}", flush=True)
-        print(f"🚨 RADAR DETECTION - NO PLATE", flush=True)
-        print(f"   Speed: {peak_speed}km/h", flush=True)
-        print(f"   Status: 💾 Saving to queue...", flush=True)
-        print(f"{'='*60}\n", flush=True)
-    if peak_speed < 10:
-        print(f"\n📡 RADAR CLUSTER - too slow ({peak_speed}km/h), not saved", flush=True)
-    # ZPOMAL (speed violation)
+    
     if peak_speed > SPEED_LIMIT:
-        print(f"  ⚠️  Speed violation: {peak_speed}km/h > {SPEED_LIMIT}km/h - displaying ZPOMAL!", flush=True)
         with _speed_violation_lock:
             if not _speed_violation_active:
                 _speed_violation_active = True
+                print(f"  ⚠️  Speed violation: {peak_speed}km/h > {SPEED_LIMIT}km/h - displaying ZPOMAL!", flush=True)
                 print(f"\n{'='*60}", flush=True)
                 print(f"🚨 SPEED VIOLATION - NO PLATE DETECTED", flush=True)
                 print(f"   Speed: {peak_speed}km/h (Limit: {SPEED_LIMIT}km/h)", flush=True)
@@ -312,37 +261,60 @@ def _deferred_cluster_check(cluster_readings: list, start_time: str, end_time: s
                 time.sleep(VMS_DISPLAY_TIME)
                 _speed_violation_active = False
 
+    remaining = max(0, RADAR_DEFER_SAVE_SECONDS - ZPOMAL_DEFER_SECONDS)
+    if remaining > 0:
+        time.sleep(remaining)
+    if _cluster_matched_plate(t_start, t_end):
+        return
+    
+    if peak_speed >= 10:
+        dir_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
+        vms_displayed = 'yes' if peak_speed > SPEED_LIMIT else 'no'
+        radar_only_data = {
+            'timestamp': datetime.now().isoformat(),
+            'plate_number': None,
+            'speed': peak_speed,
+            'direction': dir_name,
+            'radar_direction_sign': direction_sign,
+            'vms_displayed': vms_displayed,
+            'radar_readings_count': len(cluster_readings),
+            'radar_detection_start': start_time,
+            'radar_detection_end': end_time,
+        }
+        save_detection(radar_only_data)
+        print(f"\n{'='*60}", flush=True)
+        print(f"🚨 RADAR DETECTION - NO PLATE ({dir_name})", flush=True)
+        print(f"   Speed: {peak_speed}km/h", flush=True)
+        print(f"   Status: 💾 Saving to queue...", flush=True)
+        print(f"{'='*60}\n", flush=True)
+    if peak_speed < 10:
+        print(f"\n📡 RADAR CLUSTER - too slow ({peak_speed}km/h), not saved", flush=True)
 
 def process_radar_reading(direction_sign: str, speed: int):
-    """
-    Process radar reading - buffer A+ readings for capture-time sync.
-    Detect clusters (gap > RADAR_CLUSTER_GAP_SECONDS) for ZPOMAL and radar-only.
-    """
-    global _positive_radar_readings, _current_cluster, _last_positive_reading_time
-    
+    global _positive_radar_readings, _negative_radar_readings
+    global _current_cluster, _current_cluster_negative
+    global _last_positive_reading_time, _last_negative_reading_time
+
     timestamp = datetime.now().isoformat()
     now_ts = datetime.now().timestamp()
-    
+    cutoff = now_ts - RADAR_READINGS_BUFFER_SECONDS
+
     with _radar_lock:
-        if ONLY_POSITIVE_DIRECTION and direction_sign == '+' and speed > 0:
-            # Check for cluster gap - previous cluster ended
+        if direction_sign == '+' and speed > 0:
             if _last_positive_reading_time is not None:
                 try:
                     last_ts = datetime.fromisoformat(_last_positive_reading_time).timestamp()
                     if (now_ts - last_ts) > RADAR_CLUSTER_GAP_SECONDS and _current_cluster:
-                        # Complete previous cluster
                         cluster_copy = list(_current_cluster)
                         start_t = cluster_copy[0][0]
                         end_t = cluster_copy[-1][0]
                         _current_cluster = []
-                        Thread(target=_deferred_cluster_check, args=(cluster_copy, start_t, end_t), daemon=True).start()
+                        Thread(target=_deferred_cluster_check, args=(cluster_copy, start_t, end_t, '+'), daemon=True).start()
                 except (ValueError, TypeError):
                     pass
             _last_positive_reading_time = timestamp
             _current_cluster.append((timestamp, speed))
             _positive_radar_readings.append((timestamp, speed))
-            # Prune buffer
-            cutoff = now_ts - RADAR_READINGS_BUFFER_SECONDS
             while _positive_radar_readings:
                 try:
                     ts = datetime.fromisoformat(_positive_radar_readings[0][0]).timestamp()
@@ -353,25 +325,32 @@ def process_radar_reading(direction_sign: str, speed: int):
                 except (ValueError, TypeError):
                     _positive_radar_readings.pop(0)
 
+        if not ONLY_POSITIVE_DIRECTION and direction_sign == '-' and speed > 0:
+            if _last_negative_reading_time is not None:
+                try:
+                    last_ts = datetime.fromisoformat(_last_negative_reading_time).timestamp()
+                    if (now_ts - last_ts) > RADAR_CLUSTER_GAP_SECONDS and _current_cluster_negative:
+                        cluster_copy = list(_current_cluster_negative)
+                        start_t = cluster_copy[0][0]
+                        end_t = cluster_copy[-1][0]
+                        _current_cluster_negative = []
+                        Thread(target=_deferred_cluster_check, args=(cluster_copy, start_t, end_t, '-'), daemon=True).start()
+                except (ValueError, TypeError):
+                    pass
+            _last_negative_reading_time = timestamp
+            _current_cluster_negative.append((timestamp, speed))
+            _negative_radar_readings.append((timestamp, speed))
+            while _negative_radar_readings:
+                try:
+                    ts = datetime.fromisoformat(_negative_radar_readings[0][0]).timestamp()
+                    if ts < cutoff:
+                        _negative_radar_readings.pop(0)
+                    else:
+                        break
+                except (ValueError, TypeError):
+                    _negative_radar_readings.pop(0)
 
-def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dict[str, Any]]:
-    """
-    Match plate to radar by camera capture time (no 0-peak-0 dependency).
-    For positive direction only: find max A+ speed among readings within time window
-    around capture_time. Vehicle typically passes radar before camera.
-    """
-    global _positive_radar_readings
-
-    if not isinstance(capture_time, datetime):
-        return None
-
-    with _radar_lock:
-        readings = list(_positive_radar_readings)
-
-    t0 = capture_time.timestamp()
-    t_min = t0 - RADAR_CAPTURE_WINDOW_BEFORE
-    t_max = t0 + RADAR_CAPTURE_WINDOW_AFTER
-
+def _match_readings_in_window(readings: list, t_min: float, t_max: float) -> Optional[tuple]:
     candidates = []
     for ts_str, speed in readings:
         try:
@@ -380,59 +359,77 @@ def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dic
                 candidates.append((ts, speed))
         except (ValueError, TypeError):
             continue
-
     if not candidates:
-        # Debug: help diagnose why no match (clock skew, empty buffer, etc.)
+        return None
+    peak_speed = max(s for _, s in candidates)
+    return (peak_speed, candidates)
+
+def get_best_radar_match_by_capture_time(capture_time: datetime) -> Optional[Dict[str, Any]]:
+    global _positive_radar_readings, _negative_radar_readings
+
+    if not isinstance(capture_time, datetime):
+        return None
+
+    with _radar_lock:
+        pos_readings = list(_positive_radar_readings)
+        neg_readings = list(_negative_radar_readings) if not ONLY_POSITIVE_DIRECTION else []
+
+    t0 = capture_time.timestamp()
+    t_min = t0 - RADAR_CAPTURE_WINDOW_BEFORE
+    t_max = t0 + RADAR_CAPTURE_WINDOW_AFTER
+
+    best = None
+    pos_match = _match_readings_in_window(pos_readings, t_min, t_max)
+    if pos_match:
+        peak_speed, candidates = pos_match
+        best = (peak_speed, candidates, t0, '+', POSITIVE_DIRECTION_NAME)
+
+    if not ONLY_POSITIVE_DIRECTION:
+        neg_match = _match_readings_in_window(neg_readings, t_min, t_max)
+        if neg_match:
+            peak_speed, candidates = neg_match
+            if best is None or peak_speed > best[0]:
+                best = (peak_speed, candidates, t0, '-', NEGATIVE_DIRECTION_NAME)
+
+    if best is None:
         try:
-            if readings:
-                buf_first = datetime.fromisoformat(readings[0][0])
-                buf_last = datetime.fromisoformat(readings[-1][0])
-                print(f"  📡 [Match] No overlap: search {capture_time.strftime('%H:%M:%S')} vs buffer {buf_first.strftime('%H:%M:%S')}–{buf_last.strftime('%H:%M:%S')} ({len(readings)} readings)", flush=True)
+            all_readings = pos_readings + neg_readings
+            if all_readings:
+                buf_first = datetime.fromisoformat(all_readings[0][0])
+                buf_last = datetime.fromisoformat(all_readings[-1][0])
+                print(f"  📡 [Match] No overlap: search {capture_time.strftime('%H:%M:%S')} vs buffer {buf_first.strftime('%H:%M:%S')}–{buf_last.strftime('%H:%M:%S')} ({len(all_readings)} readings)", flush=True)
             else:
-                print(f"  📡 [Match] Buffer empty - no A+ readings in last {RADAR_READINGS_BUFFER_SECONDS}s", flush=True)
+                print(f"  📡 [Match] Buffer empty - no readings in last {RADAR_READINGS_BUFFER_SECONDS}s", flush=True)
         except Exception:
             pass
         return None
 
-    peak_speed = max(s for _, s in candidates)
-    # Use timestamp of reading with peak speed (or closest to capture)
+    peak_speed, candidates, t0, direction_sign, direction_name = best
     peak_readings = [(t, s) for t, s in candidates if s == peak_speed]
     peak_ts = min(peak_readings, key=lambda x: abs(x[0] - t0))[0]
     peak_time_str = datetime.fromtimestamp(peak_ts).isoformat()
 
     return {
-        'direction_sign': '+',
-        'direction_name': POSITIVE_DIRECTION_NAME,
+        'direction_sign': direction_sign,
+        'direction_name': direction_name,
         'peak_speed': peak_speed,
         'peak_time': peak_time_str,
         'readings_count': len(candidates),
         'start_time': datetime.fromtimestamp(min(t for t, _ in candidates)).isoformat(),
         'end_time': datetime.fromtimestamp(max(t for t, _ in candidates)).isoformat(),
-        'in_progress': False,
     }
 
-
 def get_best_radar_match_by_receive_time(receive_time: datetime) -> Optional[Dict[str, Any]]:
-    """
-    Fallback: match by receive time when capture-time fails (clock skew, missing CaptureTime).
-    Vehicle typically passed radar 0-15s before we received the plate.
-    """
     return get_best_radar_match_by_capture_time(receive_time)
 
-
 def read_radar_data():
-    """Read radar data from serial port - simplified for continuous reliable streaming"""
     print(f"Starting radar reader on {RADAR_PORT}...")
     
     ser = None
     retry_count = 0
     max_retries = 5
     buffer = b''
-    last_data_time = time.time()
-    last_watchdog_time = time.time()
-    watchdog_interval = 3.0
-    max_buffer_size = 1000  # Maximum buffer size to prevent memory issues
-    processed_count = 0
+    max_buffer_size = 1000
     
     while True:
         try:
@@ -446,35 +443,21 @@ def read_radar_data():
                 print(f"✓ Connected to radar on {RADAR_PORT}")
                 retry_count = 0
                 buffer = b''
-                processed_count = 0
-                last_watchdog_time = time.time()
             
-            current_time = time.time()
-            
-            # Watchdog check - runs independently every 3 seconds regardless of data
-            if current_time - last_watchdog_time >= watchdog_interval:
-                last_watchdog_time = current_time
-            
-            # Simple read with timeout
             data = ser.read(32)
             
             if data:
-                last_data_time = current_time
                 buffer += data
                 
-                # Prevent buffer from growing too large
                 if len(buffer) > max_buffer_size:
-                    # Try to find last 'A' to keep valid data
                     last_a = buffer.rfind(b'A')
                     if last_a > 0 and last_a < len(buffer) - 4:
                         buffer = buffer[last_a:]
                         print(f"📡 [Buffer cleared] Size exceeded, kept last {len(buffer)} bytes", flush=True)
                     else:
-                        # No valid start found, clear buffer
                         buffer = b''
                         print(f"📡 [Buffer cleared] No valid data found", flush=True)
                 
-                # Process messages - limit iterations to prevent getting stuck
                 max_iterations = 50
                 iteration = 0
                 while len(buffer) >= 5 and iteration < max_iterations:
@@ -482,17 +465,12 @@ def read_radar_data():
                     chunk = buffer[:5]
                     buffer = buffer[5:]
                     
-                    # Check if valid: A+XXX or A-XXX
                     if chunk[0] == ord('A') and len(chunk) == 5:
                         if chunk[1] == ord('+') or chunk[1] == ord('-'):
                             try:
                                 direction_sign = '+' if chunk[1] == ord('+') else '-'
                                 speed = int(chunk[2:].decode('utf-8'))
-                                direction_name = POSITIVE_DIRECTION_NAME if direction_sign == '+' else NEGATIVE_DIRECTION_NAME
-                                processed_count += 1
                                 
-                                # Process in background thread to never block display
-                                # This ensures radar display continues even if processing is slow
                                 def process_async(direction, spd):
                                     try:
                                         process_radar_reading(direction, spd)
@@ -503,34 +481,23 @@ def read_radar_data():
                                 
                                 Thread(target=process_async, args=(direction_sign, speed), daemon=True).start()
                             except (ValueError, UnicodeDecodeError):
-                                # Invalid speed value or decode error - skip this chunk
                                 pass
                         else:
-                            # Invalid direction, look for next 'A'
                             if b'A' in chunk[1:]:
                                 idx = chunk[1:].index(b'A') + 1
                                 buffer = chunk[idx:] + buffer
                             break
                     else:
-                        # Look for 'A' to realign
                         if b'A' in chunk:
                             idx = chunk.index(b'A')
                             buffer = chunk[idx:] + buffer
                         break
                 
-                # If we hit max iterations, clear buffer to prevent getting stuck
                 if iteration >= max_iterations:
                     print(f"📡 [Buffer cleared] Max iterations reached", flush=True)
                     buffer = b''
             
-            # Small delay - but ensure watchdog can still run
-            # 300ms interval between radar reads
             time.sleep(0.3)
-            
-            # Force watchdog check even during active reading
-            current_check = time.time()
-            if current_check - last_watchdog_time >= watchdog_interval:
-                last_watchdog_time = current_check
                 
         except serial.SerialException as e:
             if ser and ser.is_open:
@@ -556,7 +523,6 @@ def read_radar_data():
             import traceback
             print(f"   Traceback: {traceback.format_exc()}")
             time.sleep(1)
-            # Reset buffer on error to prevent getting stuck
             buffer = b''
 
 # ============================================================================
@@ -564,39 +530,32 @@ def read_radar_data():
 # ============================================================================
 
 def _send_vms_command(display_text: str) -> bool:
-    """Send command to VMS display (internal helper) - non-blocking"""
     cmd = _VMS_BASE_CMD.copy()
-    cmd[6] = display_text  # Insert text at position 6
+    cmd[6] = display_text
     
-    # Show the exact command being sent
     cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd)
     print(f"  📤 VMS Command: {cmd_str}", flush=True)
     
     try:
-        # Use Popen for truly non-blocking execution
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
     except Exception as e:
         print(f"  ❌ VMS Command failed: {e}", flush=True)
         return False
 
 def send_plate_to_vms(plate_number: str):
-    """Send plate number to VMS display - fully non-blocking and efficient"""
     global _vms_clear_thread
     
     display_text = plate_number if plate_number and plate_number.strip() else ""
     
-    # Cancel any pending clear thread if new plate is being displayed
     with _vms_lock:
         if _vms_clear_thread is not None and display_text:
             _vms_clear_thread = None
     
-    # Cancel speed violation if displaying a plate
     if display_text and display_text != "ZPOMAL!":
         with _speed_violation_lock:
             _speed_violation_active = False
     
-    # Send command immediately (non-blocking)
     if display_text:
         print(f"\n{'='*60}", flush=True)
         print(f"📺 VMS DISPLAY EVENT", flush=True)
@@ -615,7 +574,6 @@ def send_plate_to_vms(plate_number: str):
             print(f"   Status: ❌ Command failed", flush=True)
             print(f"{'='*60}\n", flush=True)
         
-        # Schedule auto-clear after display time
         def clear_after_delay():
             global _vms_clear_thread
             time.sleep(VMS_DISPLAY_TIME)
@@ -623,10 +581,9 @@ def send_plate_to_vms(plate_number: str):
             with _vms_lock:
                 if _vms_clear_thread is not None:
                     sys.stdout.flush()
-                    _send_vms_command("")  # Clear display
+                    _send_vms_command("")
                     _vms_clear_thread = None
-    
-    if display_text:
+        
         with _vms_lock:
             _vms_clear_thread = Thread(target=clear_after_delay, daemon=True)
             _vms_clear_thread.start()
@@ -638,11 +595,6 @@ def send_plate_to_vms(plate_number: str):
 # ============================================================================
 
 def extract_camera_capture_time(data_json) -> Optional[datetime]:
-    """
-    Extract camera capture time from event JSON.
-    CaptureTime format: YYYYMMDDHHMMSSmmm (e.g. 20260303192141830)
-    Returns datetime or None.
-    """
     for path in [
         ("StructureInfo", "ImageInfoList", 0, "CaptureTime"),
         ("StructureInfo", "ObjInfo", "Time"),
@@ -652,16 +604,23 @@ def extract_camera_capture_time(data_json) -> Optional[datetime]:
         obj = data_json
         for key in path:
             if isinstance(key, int):
-                obj = obj[key] if isinstance(obj, list) and 0 <= key < len(obj) else None
+                if isinstance(obj, list) and 0 <= key < len(obj):
+                    obj = obj[key]
+                else:
+                    obj = None
+                    break
             else:
-                obj = obj.get(key) if isinstance(obj, dict) else None
+                if isinstance(obj, dict):
+                    obj = obj.get(key)
+                else:
+                    obj = None
+                    break
             if obj is None:
                 break
         if obj and isinstance(obj, str) and len(obj) >= 14:
             raw = obj.replace("-", "").replace(":", "").replace(".", "")
             if raw.isdigit():
                 try:
-                    # YYYYMMDD HHMMSS mmm
                     y, m, d = int(raw[:4]), int(raw[4:6]), int(raw[6:8])
                     h, mi, s = int(raw[8:10]), int(raw[10:12]), int(raw[12:14])
                     ms = int(raw[14:17]) if len(raw) >= 17 else 0
@@ -676,9 +635,7 @@ def extract_camera_capture_time(data_json) -> Optional[datetime]:
             pass
     return None
 
-
 def extract_plate_number(data_json):
-    """Extract plate number from camera event data"""
     try:
         structure_info = data_json.get("StructureInfo", {})
         if not structure_info:
@@ -696,7 +653,6 @@ def extract_plate_number(data_json):
         plate_attr = vehicle_info.get("PlateAttributeInfo", {})
         plate_no = plate_attr.get("PlateNo", None)
         
-        # Debug output
         if plate_no:
             print(f"    🔍 Found PlateNo in JSON: '{plate_no}'", flush=True)
         
@@ -708,7 +664,6 @@ def extract_plate_number(data_json):
         return None
 
 def keepalive():
-    """Keep camera subscription alive"""
     while True:
         keepalive_url = f"{CAMERA_URL}/{SUBSCRIPTION_ID}"
         data = {'Duration': DURATION}
@@ -731,48 +686,40 @@ def keepalive():
         time.sleep(DURATION / 2)
 
 def _handle_camera_client(client_socket, client_address):
-    """Handle individual camera client connection - optimized for fast real-time processing"""
     global _matched_capture_times
     
     try:
         data = b''
-        client_socket.settimeout(10.0)  # Longer timeout to ensure all data arrives
+        client_socket.settimeout(10.0)
         
-        # Read all data - camera sends HTTP POST with JSON body
-        # Strategy: Read until connection closes (recv returns empty) or we detect complete message
-        max_reads = 100  # Safety limit to prevent infinite loop
+        max_reads = 100
         read_count = 0
         
         while read_count < max_reads:
             try:
-                tmp = client_socket.recv(16384)  # Large buffer (16KB) for faster read
+                tmp = client_socket.recv(16384)
                 if not tmp:
-                    # Connection closed by camera - all data received
                     break
                 data += tmp
                 read_count += 1
                 
-                # Try to detect if we have complete HTTP message using Content-Length
                 if b'\r\n\r\n' in data and len(data) > 100:
                     try:
                         raw_str = data.decode('utf-8', errors='ignore')
                         headers_end = raw_str.find('\r\n\r\n')
                         if headers_end > 0:
                             headers_str = raw_str[:headers_end]
-                            # Look for Content-Length header
                             content_length_match = re.search(r'Content-Length:\s*(\d+)', headers_str, re.IGNORECASE)
                             if content_length_match:
                                 content_length = int(content_length_match.group(1))
                                 body_start = headers_end + 4
                                 body_received = len(data) - body_start
                                 if body_received >= content_length:
-                                    # We have all the data according to Content-Length
                                     break
                     except Exception:
                         pass
                         
             except socket.timeout:
-                # Timeout - if we have data, assume it's complete (camera might have sent everything)
                 if len(data) > 100:
                     break
                 else:
@@ -789,27 +736,21 @@ def _handle_camera_client(client_socket, client_address):
             client_socket.close()
             return
         
-        # Show camera event received
         print(f"📷 Camera event received ({len(data)} bytes)", flush=True)
         
         try:
-            # Parse HTTP message
             raw_data_str = data.decode('utf-8', errors='ignore')
             
-            # Extract body from HTTP POST
             if '\r\n\r\n' in raw_data_str:
                 body = raw_data_str.split('\r\n\r\n', 1)[1]
             else:
                 body = raw_data_str
             
-            # Clean control characters but preserve JSON structure
             body = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', body)
             
-            # Try to parse JSON
             try:
                 data_json = json.loads(body)
             except json.JSONDecodeError as json_err:
-                # If JSON decode fails, try to find and extract just the JSON part
                 json_start = body.find('{')
                 json_end = body.rfind('}')
                 if json_start >= 0 and json_end > json_start:
@@ -817,16 +758,13 @@ def _handle_camera_client(client_socket, client_address):
                     data_json = json.loads(json_str)
                 else:
                     print(f"  ❌ JSON parse failed: {json_err}", flush=True)
-                    raise  # Re-raise original error
+                    raise
             
-            # Extract plate number
             plate_no = extract_plate_number(data_json)
             
-            # Debug: show what we found
             if plate_no:
                 print(f"  ✅ Plate extracted: {plate_no}", flush=True)
             else:
-                # Debug: show why plate extraction failed
                 try:
                     structure_info = data_json.get("StructureInfo", {})
                     if structure_info:
@@ -837,28 +775,19 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  ⚠️  No plate: JSON structure issue", flush=True)
             
             if plate_no:
-                # Prefer camera capture time for accurate sync (no network delay)
                 capture_time = extract_camera_capture_time(data_json)
                 plate_timestamp = capture_time if capture_time else datetime.now()
                 timestamp = plate_timestamp.isoformat()
 
-                # Match by capture time first, then receive time (handles clock skew / missing CaptureTime)
                 receive_time = datetime.now()
                 radar_detection = None
-                if ONLY_POSITIVE_DIRECTION:
-                    if capture_time:
-                        radar_detection = get_best_radar_match_by_capture_time(capture_time)
-                        if radar_detection:
-                            print(f"  📷 Capture-time sync: {capture_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h", flush=True)
-                    if not radar_detection:
-                        time.sleep(2.0)  # Brief wait for radar to arrive
-                        if capture_time:
-                            radar_detection = get_best_radar_match_by_capture_time(capture_time)
-                    if not radar_detection:
-                        # Fallback: match by receive time (camera clock skew or missing CaptureTime)
-                        radar_detection = get_best_radar_match_by_receive_time(receive_time)
-                        if radar_detection:
-                            print(f"  📷 Receive-time sync: {receive_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h", flush=True)
+                radar_detection = get_best_radar_match_by_receive_time(receive_time)
+                if radar_detection:
+                    print(f"  📷 Receive-time sync: {receive_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h {radar_detection['direction_name']}", flush=True)
+                if not radar_detection and capture_time:
+                    radar_detection = get_best_radar_match_by_capture_time(capture_time)
+                    if radar_detection:
+                        print(f"  📷 Capture-time sync: {capture_time.strftime('%H:%M:%S.%f')[:-3]} → {radar_detection['peak_speed']}km/h {radar_detection['direction_name']}", flush=True)
 
                 if radar_detection:
                     print(f"  🔗 Found radar match: {radar_detection['peak_speed']}km/h | {radar_detection['direction_name']}", flush=True)
@@ -866,7 +795,6 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"  ⚠️  No radar match found for plate {plate_no}", flush=True)
 
                 if radar_detection and capture_time:
-                    # Mark capture time as matched (avoids ZPOMAL/radar-only for same vehicle)
                     with _matched_detections_lock:
                         _matched_capture_times.add(capture_time.isoformat())
                         if len(_matched_capture_times) > _max_matched_capture_times:
@@ -892,7 +820,6 @@ def _handle_camera_client(client_socket, client_address):
                     if capture_time:
                         detection_data['camera_capture_time'] = capture_time.isoformat()
                     
-                    # Save detection (non-blocking via queue)
                     print(f"\n{'='*60}", flush=True)
                     print(f"✅ DETECTION WITH PLATE", flush=True)
                     print(f"   Plate: {plate_no}", flush=True)
@@ -901,7 +828,6 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"   Status: 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     
-                    # Display on VMS immediately (non-blocking)
                     if speed > MIN_SPEED_FOR_DISPLAY:
                         send_plate_to_vms(plate_no)
                     else:
@@ -910,9 +836,8 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"{'='*60}\n", flush=True)
                 else:
                     speed = 0
-                    # When ONLY_POSITIVE_DIRECTION: use IMR_KD-B as default for plates without radar match
-                    default_direction = POSITIVE_DIRECTION_NAME if ONLY_POSITIVE_DIRECTION else 'Unknown'
-                    default_sign = '+' if ONLY_POSITIVE_DIRECTION else None
+                    default_direction = 'Unknown'
+                    default_sign = None
                     detection_data = {
                         'timestamp': timestamp,
                         'plate_number': plate_no,
@@ -930,22 +855,19 @@ def _handle_camera_client(client_socket, client_address):
                     print(f"⚠️  PLATE DETECTION - NO RADAR MATCH", flush=True)
                     print(f"   Plate: {plate_no}", flush=True)
                     print(f"   Reason: No radar match for capture time (window ±{RADAR_CAPTURE_WINDOW_BEFORE}/{RADAR_CAPTURE_WINDOW_AFTER}s)", flush=True)
-                    if ONLY_POSITIVE_DIRECTION:
-                        print(f"   Direction: {default_direction} (default, positive only)", flush=True)
                     print(f"   Status: 💾 Saving...", flush=True)
                     save_detection(detection_data)
                     send_plate_to_vms("")
                     print(f"   VMS: ⏭️  Not displaying (no speed data)", flush=True)
                     print(f"{'='*60}\n", flush=True)
             else:
-                # Camera event received but no plate detected
                 print(f"📷 Camera event: No plate detected", flush=True)
                 send_plate_to_vms("")
         
         except json.JSONDecodeError:
-            pass  # Silently skip invalid JSON
+            pass
         except Exception:
-            pass  # Silently skip processing errors
+            pass
     
     finally:
         try:
@@ -954,7 +876,6 @@ def _handle_camera_client(client_socket, client_address):
             pass
 
 def listen_camera_events():
-    """Listen for camera ANPR events (non-blocking - each client handled in separate thread)"""
     try:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -990,31 +911,27 @@ def main():
     print(f"  Camera: {CAMERA_IP}:{CAMERA_PORT}")
     print(f"  Radar: {RADAR_PORT} @ {RADAR_BAUDRATE} baud")
     print(f"  VMS: {VMS_IP}:{VMS_PORT}")
-    print(f"  Only Positive Direction (A+): {ONLY_POSITIVE_DIRECTION}")
+    print(f"  Directions: {'A+ only' if ONLY_POSITIVE_DIRECTION else 'A+ and A-'}")
+    print(f"  ZPOMAL: {SPEED_LIMIT}+ km/h, defer {ZPOMAL_DEFER_SECONDS}s (immediate if no plate)")
     print(f"  Detections Folder: {DETECTIONS_FOLDER}")
     print("=" * 60)
     
-    # Ensure detections folder exists
     ensure_detections_folder()
     print(f"✓ Detections will be saved to: {get_daily_json_path()}")
     
-    # Start file writer thread
     _start_file_writer()
     
-    # Verify file writer started
-    time.sleep(0.2)  # Give it time to start
+    time.sleep(0.2)
     if _file_writer_running:
         print("✓ File writer is running")
     else:
         print("⚠️  WARNING: File writer may not be running!")
     
-    # Step 1: Start radar reader thread
     print("\nStarting radar reader...")
     radar_thread = Thread(target=read_radar_data, daemon=True)
     radar_thread.start()
-    time.sleep(1)  # Give radar thread time to initialize
+    time.sleep(1)
     
-    # Step 2: Subscribe to camera events
     print("\nSubscribing to camera events...")
     data = {
         "AddressType": 0,
@@ -1037,11 +954,9 @@ def main():
             SUBSCRIPTION_ID = subscribe_res_json['Response']['Data']['ID']
             print(f'✓ Subscribed successfully (ID: {SUBSCRIPTION_ID})')
             
-            # Step 3: Start keepalive thread
             keepalive_thread = Thread(target=keepalive, daemon=True)
             keepalive_thread.start()
             
-            # Step 4: Start camera listener thread
             camera_thread = Thread(target=listen_camera_events, daemon=True)
             camera_thread.start()
             
@@ -1050,13 +965,11 @@ def main():
             print("Press Ctrl+C to stop")
             print("=" * 60 + "\n")
             
-            # Keep main thread alive - show periodic status
             last_status_time = time.time()
-            status_interval = 30  # Show status every 30 seconds
+            status_interval = 30
             
             while True:
                 time.sleep(1)
-                # Show periodic status to indicate system is alive
                 current_time = time.time()
                 if current_time - last_status_time >= status_interval:
                     print(f"\n[System active - {datetime.now().strftime('%H:%M:%S')}]")
@@ -1069,8 +982,6 @@ def main():
         raise SystemExit(1)
 
 if __name__ == "__main__":
-    # Force unbuffered output for immediate display on Raspberry Pi
-    # This ensures all output appears immediately without buffering
     import sys
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(line_buffering=True)
